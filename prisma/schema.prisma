@@ -1,0 +1,197 @@
+// OneMinute Cloud database schema.
+// Every table has org_id so Row Level Security can filter cross-org data.
+// Follow the semantic model of the on-prem OneMinute (see CLAUDE.md).
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// --------------------------------------------------------------
+// Tenancy
+// --------------------------------------------------------------
+
+model Org {
+  id        String    @id @default(uuid()) @db.Uuid
+  name      String
+  createdAt DateTime  @default(now()) @map("created_at")
+
+  users     User[]
+  projects  Project[]
+  meetings  Meeting[]
+  minutes   Minute[]
+  areas     MeetingArea[]
+  audit     AuditLog[]
+
+  @@map("orgs")
+}
+
+model User {
+  id            String    @id @default(uuid()) @db.Uuid
+  orgId         String    @map("org_id") @db.Uuid
+  email         String    @unique
+  displayName   String    @map("display_name")
+  entraObjectId String?   @unique @map("entra_object_id") // Microsoft Entra OID
+  createdAt     DateTime  @default(now()) @map("created_at")
+
+  org           Org       @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  meetingsOwned Meeting[] @relation("meeting_owner")
+  minutesOwned  Minute[]  @relation("minute_assignee")
+
+  @@index([orgId])
+  @@map("users")
+}
+
+// --------------------------------------------------------------
+// Core domain
+// --------------------------------------------------------------
+
+model Project {
+  id        String    @id @default(uuid()) @db.Uuid
+  orgId     String    @map("org_id") @db.Uuid
+  name      String
+  ownerName String?   @map("owner_name")
+  createdAt DateTime  @default(now()) @map("created_at")
+
+  org       Org       @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  meetings  Meeting[]
+
+  @@unique([orgId, name])
+  @@index([orgId])
+  @@map("projects")
+}
+
+model Meeting {
+  id                String        @id @default(uuid()) @db.Uuid
+  orgId             String        @map("org_id") @db.Uuid
+  projectId         String        @map("project_id") @db.Uuid
+
+  title             String
+  description       String?
+  meetingDate       DateTime      @map("meeting_date")
+  attendee          String?
+  ownerUserId       String?       @map("owner_user_id") @db.Uuid
+
+  // follow-up semantics from on-prem OneMinute:
+  //   parentMeetingId = null       → standalone meeting; auto-create "General" area
+  //   parentMeetingId = "*ALL*"    → project-wide followup; copy areas from all prior project meetings
+  //   parentMeetingId = <id>       → followup to a specific meeting; copy areas from that meeting
+  parentMeetingIdRaw String?      @map("parent_meeting_id_raw")
+
+  // list of parent-minute ids that were "marked complete" during this meeting (mirrors MeetingMinuteID)
+  completedParentMinuteIds String[] @map("completed_parent_minute_ids") @db.Uuid
+
+  createdAt         DateTime      @default(now()) @map("created_at")
+
+  org               Org           @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  project           Project       @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  ownerUser         User?         @relation("meeting_owner", fields: [ownerUserId], references: [id])
+
+  minutes           Minute[]
+  areas             MeetingArea[]
+
+  @@index([orgId])
+  @@index([projectId])
+  @@map("meetings")
+}
+
+model MeetingArea {
+  id           String   @id @default(uuid()) @db.Uuid
+  orgId        String   @map("org_id") @db.Uuid
+  meetingId    String   @map("meeting_id") @db.Uuid
+
+  areaName     String   @map("area_name")
+  createdOnFly Boolean  @default(false) @map("created_on_fly")
+
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  org          Org      @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  meeting      Meeting  @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+
+  @@unique([meetingId, areaName])
+  @@index([orgId])
+  @@map("meeting_areas")
+}
+
+enum MinuteType {
+  Note
+  Todo    @map("To-Do")
+  Action
+  Devops
+}
+
+enum MinuteStatus {
+  New
+  Initiated
+  InProgress  @map("In Progress")
+  Completed
+  Cancelled
+}
+
+model Minute {
+  id                String        @id @default(uuid()) @db.Uuid
+  orgId             String        @map("org_id") @db.Uuid
+  meetingId         String        @map("meeting_id") @db.Uuid
+
+  area              String        @default("General")
+  title             String
+  description       String?
+  type              MinuteType    @default(Note)
+  status            MinuteStatus  @default(New)
+  tags              String?
+
+  // follow-up chain: null means new minute, set means this updates that parent minute
+  parentMinuteId    String?       @map("parent_minute_id") @db.Uuid
+
+  // when true, this minute persists into follow-up meetings until Completed (was `MinuteType='Standalone'`)
+  isPersistent      Boolean       @default(false) @map("is_persistent")
+
+  assignedToUserId  String?       @map("assigned_to_user_id") @db.Uuid
+  dueDate           DateTime?     @map("due_date")
+
+  devopsItemId      Int?          @map("devops_item_id")
+  devopsArea        String?       @map("devops_area")
+
+  remarks           String?
+  createdOnFly      Boolean       @default(false) @map("created_on_fly")
+
+  createdAt         DateTime      @default(now()) @map("created_at")
+  updatedAt         DateTime      @updatedAt @map("updated_at")
+
+  org               Org           @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  meeting           Meeting       @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+  parentMinute      Minute?       @relation("minute_followups", fields: [parentMinuteId], references: [id])
+  followUps         Minute[]      @relation("minute_followups")
+  assignedTo        User?         @relation("minute_assignee", fields: [assignedToUserId], references: [id])
+
+  @@index([orgId])
+  @@index([meetingId])
+  @@index([parentMinuteId])
+  @@map("minutes")
+}
+
+// --------------------------------------------------------------
+// Audit log — every mutation lands here
+// --------------------------------------------------------------
+
+model AuditLog {
+  id        BigInt   @id @default(autoincrement())
+  orgId     String   @map("org_id") @db.Uuid
+  userId    String?  @map("user_id") @db.Uuid
+  action    String
+  tableName String   @map("table_name")
+  rowId     String   @map("row_id")
+  before    Json?
+  after     Json?
+  createdAt DateTime @default(now()) @map("created_at")
+
+  org       Org      @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  @@index([orgId, createdAt])
+  @@index([tableName, rowId])
+  @@map("audit_log")
+}
