@@ -17,9 +17,12 @@ export default function HomePage() {
           <li>… Microsoft SSO (next)</li>
           <li>… Gemini AI integration (next)</li>
         </ul>
-        <p className="mt-6 text-sm">
+        <p className="mt-6 flex gap-4 text-sm">
+          <a href="/auto" className="font-semibold text-brand-pink underline">
+            → Auto Mode (record a meeting)
+          </a>
           <a href="/status" className="text-brand-purple underline">
-            → Check database connectivity
+            → Database status
           </a>
         </p>
       </div>
