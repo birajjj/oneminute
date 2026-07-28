@@ -2,6 +2,8 @@
 
 Cloud-native rebuild of OneMinute with AI-driven meeting capture.
 
+Live: https://oneminute-nu.vercel.app (auto-deployed from `main`)
+
 Read [CLAUDE.md](./CLAUDE.md) before making any changes (human or AI).
 
 ## Quick start
