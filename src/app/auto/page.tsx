@@ -1,8 +1,18 @@
+import { redirect } from "next/navigation";
+import { getCurrentUser } from "@/lib/auth";
 import AutoModeClient from "./AutoModeClient";
 
 export const metadata = { title: "Auto Mode — OneMinute Cloud" };
+export const dynamic = "force-dynamic";
 
-export default function AutoPage() {
+export default async function AutoPage() {
+  const user = await getCurrentUser();
+  if (!user) redirect("/login?next=/auto");
+
+  return renderAuto();
+}
+
+function renderAuto() {
   return (
     <main className="mx-auto max-w-4xl px-6 py-10">
       <div className="mb-6">

@@ -1,5 +1,6 @@
 import { db } from "@/lib/db";
-import { currentOrgId } from "@/lib/dev-context";
+import { getCurrentUser } from "@/lib/auth";
+import { redirect } from "next/navigation";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Browse — OneMinute Cloud" };
@@ -20,10 +21,11 @@ const STATUS_LABEL: Record<string, string> = {
 };
 
 export default async function BrowsePage() {
-  const orgId = currentOrgId();
+  const user = await getCurrentUser();
+  if (!user) redirect("/login?next=/browse");
 
   const projects = await db.project.findMany({
-    where: { orgId },
+    where: { orgId: user.orgId },
     orderBy: { createdAt: "desc" },
     include: {
       meetings: {
@@ -39,9 +41,15 @@ export default async function BrowsePage() {
     <main className="mx-auto max-w-4xl px-6 py-10">
       <div className="mb-6 flex items-center justify-between">
         <h1 className="text-2xl font-bold">Browse</h1>
-        <a href="/auto" className="rounded bg-gradient-to-r from-brand-pink to-brand-purple px-3 py-1.5 text-sm font-medium text-white">
-          + Capture a meeting
-        </a>
+        <div className="flex items-center gap-3 text-sm">
+          <span className="text-slate-500">{user.displayName}</span>
+          <a href="/auto" className="rounded bg-gradient-to-r from-brand-pink to-brand-purple px-3 py-1.5 font-medium text-white">
+            + Capture a meeting
+          </a>
+          <form action="/auth/signout" method="post">
+            <button className="rounded border border-slate-300 px-3 py-1.5">Sign out</button>
+          </form>
+        </div>
       </div>
 
       {projects.length === 0 && (
