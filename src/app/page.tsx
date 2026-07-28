@@ -11,12 +11,17 @@ export default function HomePage() {
           database, and AI features are wired in the next step.
         </p>
         <ul className="space-y-1 text-sm text-slate-700">
-          <li>✓ Next.js 15 (App Router) + TypeScript</li>
+          <li>✓ Next.js 16 (App Router) + TypeScript</li>
           <li>✓ Tailwind CSS</li>
-          <li>✓ Prisma schema ready</li>
-          <li>… Supabase auth + Microsoft SSO (next)</li>
+          <li>✓ Prisma + Supabase Postgres (with RLS)</li>
+          <li>… Microsoft SSO (next)</li>
           <li>… Gemini AI integration (next)</li>
         </ul>
+        <p className="mt-6 text-sm">
+          <a href="/status" className="text-brand-purple underline">
+            → Check database connectivity
+          </a>
+        </p>
       </div>
     </main>
   );
