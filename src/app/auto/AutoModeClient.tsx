@@ -212,6 +212,7 @@ export default function AutoModeClient() {
               {result.projectCreated && <span className="ml-2 rounded bg-brand-purple px-1.5 py-0.5 text-xs text-white">new project</span>}
             </div>
           </div>
+          <a href="/browse" className="rounded border border-emerald-300 px-4 py-2 font-medium text-emerald-700">View in Browse</a>
           <button onClick={reset} className="rounded bg-brand-blue px-4 py-2 font-medium text-white">Capture another</button>
         </div>
       )}

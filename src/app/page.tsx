@@ -21,6 +21,9 @@ export default function HomePage() {
           <a href="/auto" className="font-semibold text-brand-pink underline">
             → Auto Mode (record a meeting)
           </a>
+          <a href="/browse" className="font-semibold text-brand-blue underline">
+            → Browse meetings &amp; minutes
+          </a>
           <a href="/status" className="text-brand-purple underline">
             → Database status
           </a>
