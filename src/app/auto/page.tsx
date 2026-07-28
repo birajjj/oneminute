@@ -1,20 +1,44 @@
 import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/auth";
+import { db } from "@/lib/db";
+import AppShell from "@/components/AppShell";
 import AutoModeClient from "./AutoModeClient";
 
-export const metadata = { title: "Auto Mode — OneMinute Cloud" };
+export const metadata = { title: "Auto Capture — Meeting Minutes" };
 export const dynamic = "force-dynamic";
 
 export default async function AutoPage() {
   const user = await getCurrentUser();
   if (!user) redirect("/login?next=/auto");
 
-  return renderAuto();
-}
+  const [projects, meetings] = await Promise.all([
+    db.project.findMany({
+      where: { orgId: user.orgId },
+      orderBy: { name: "asc" },
+      select: { id: true, name: true }
+    }),
+    db.meeting.findMany({
+      where: { orgId: user.orgId },
+      orderBy: { meetingDate: "desc" },
+      select: {
+        id: true,
+        title: true,
+        meetingDate: true,
+        project: { select: { id: true, name: true } }
+      }
+    })
+  ]);
 
-function renderAuto() {
+  const shellMeetings = meetings.map((m) => ({
+    id: m.id,
+    title: m.title,
+    date: m.meetingDate.toISOString(),
+    projectId: m.project.id,
+    projectName: m.project.name
+  }));
+
   return (
-    <main className="mx-auto max-w-4xl px-6 py-10">
+    <AppShell meetings={shellMeetings} projects={projects} userName={user.displayName}>
       <div className="mb-6">
         <span className="mb-2 inline-block rounded bg-gradient-to-r from-brand-pink to-brand-purple px-2 py-0.5 text-xs font-semibold uppercase tracking-wider text-white">
           Auto
@@ -26,6 +50,6 @@ function renderAuto() {
         </p>
       </div>
       <AutoModeClient />
-    </main>
+    </AppShell>
   );
 }

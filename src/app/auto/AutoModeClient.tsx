@@ -187,7 +187,7 @@ export default function AutoModeClient() {
             onChange={(e) => setTranscript(e.target.value)}
             readOnly={isRecording || isTranscribing}
             placeholder="Record audio, or paste a transcript here directly."
-            className="h-48 w-full rounded border border-slate-300 p-2 text-sm"
+            className="h-96 w-full resize-y rounded border border-slate-300 p-3 text-sm"
           />
         </div>
       )}
