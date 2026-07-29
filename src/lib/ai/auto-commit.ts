@@ -95,14 +95,26 @@ export async function commitAutoPlan(
         // Option A: every follow-up links to the THREAD ROOT, not the
         // immediate predecessor. If the AI referenced a minute that is itself
         // a follow-up, walk up to its root so the whole thread shares one parent.
+        //
+        // GUARD: a follow-up may only link to a minute in the SAME meeting's
+        // project. The AI sometimes cross-links to a similarly-worded minute in
+        // an unrelated project — we reject that and treat the item as new.
         let rootId: string | null = null;
         if (m.type === "followup" && m.referenceMinuteId) {
           const referenced = await tx.minute.findUnique({
             where: { id: m.referenceMinuteId },
-            select: { id: true, parentMinuteId: true }
+            select: {
+              id: true,
+              parentMinuteId: true,
+              meeting: { select: { projectId: true } }
+            }
           });
-          if (referenced) {
+          if (referenced && referenced.meeting.projectId === projectId) {
             rootId = referenced.parentMinuteId ?? referenced.id;
+          } else if (referenced) {
+            warnings.push(
+              `"${m.title}" was flagged as a follow-up to a minute in a different project — saved as new instead.`
+            );
           }
         }
 

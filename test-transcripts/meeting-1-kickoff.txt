@@ -1,0 +1,25 @@
+VCMS Portal Rebuild — Kickoff Meeting. Attendees: Biraj, Rifat, Samson, Tracey, Anita.
+
+Anita: Alright everyone, thanks for joining. This is the kickoff for the VCMS Portal Rebuild project. Let's go through what needs to happen before our next sprint.
+
+Rifat: I can take the infrastructure side. I'll set up the staging database environment so we have somewhere to deploy and test. I should have that ready within a week.
+
+Anita: Great, so Rifat is setting up the staging database. Biraj, can you look at the timeline screen? There's a bug where long text entries overflow and break the layout.
+
+Biraj: Yes, I'll fix the timeline text overflow bug. I'm thinking we truncate to the first 200 characters with an expand toggle. Probably about two hours of work.
+
+Anita: Perfect. Samson, we got the penetration test results back on Friday. Can you review the security report and flag anything that's a blocker for go-live?
+
+Samson: Sure, I'll review the security report and come back with a list of anything critical.
+
+Anita: One more thing — we need to decide how organisation names are stored. Do we use a structured dropdown or free text?
+
+Tracey: For the MVP I think free text is fine. Formalising the list is too hard in phase one.
+
+Anita: Agreed. Decision: organisation names will be free text for the MVP. We can revisit a structured list later.
+
+Anita: Tracey, can you own the data migration plan for the existing records?
+
+Tracey: Yes, I'll draft the data migration plan and share it before the next meeting.
+
+Anita: Excellent. That's everything. Let's reconvene next week to check progress.

@@ -1,0 +1,27 @@
+VCMS Portal Rebuild — Progress Follow-up Meeting. Attendees: Biraj, Rifat, Samson, Tracey, Anita.
+
+Anita: Welcome back everyone, this is our follow-up on the VCMS Portal Rebuild. Let's go around and check on last week's action items.
+
+Rifat: Good news — I finished setting up the staging database. It's fully provisioned and the team can deploy to it now. That one's done.
+
+Anita: Excellent, so the staging database is complete. Biraj, how did the timeline bug go?
+
+Biraj: Done as well. I fixed the timeline text overflow — it now truncates to 200 characters with an expand and shrink toggle. It's deployed to staging so people can test it.
+
+Anita: Great, timeline overflow is resolved. Samson, where are we with the security review?
+
+Samson: I'm still working through it. I'm about halfway through the security report. Nothing critical so far, but I need a few more days before I can sign it off.
+
+Anita: Okay, so the security review is in progress, not finished yet. Tracey, the migration plan?
+
+Tracey: I've drafted the data migration plan and shared it in the channel. I'd call that done, though we'll refine the field mappings as we go.
+
+Anita: Good, migration plan drafted. Now, a couple of new things came up. Samson, once the security review is done, can you also set up the automated vulnerability scanning?
+
+Samson: Yes, I'll set up automated vulnerability scanning after I finish the review.
+
+Anita: And Biraj — we need an automation to notify organisations that aren't linked to the nightly DECYP feed. Can you scope that?
+
+Biraj: Sure, I'll scope the automation for flagging organisations not in the nightly DW3 feed. Need to work out how often it should run.
+
+Anita: Perfect. Thanks everyone, good progress this week.

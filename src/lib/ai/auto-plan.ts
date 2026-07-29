@@ -143,6 +143,26 @@ export async function buildAutoPlan(
     approved: true
   }));
 
+  // GUARD: strip cross-project follow-up links so the review UI matches what
+  // commit will actually save. A follow-up is only valid if its referenceMinuteId
+  // belongs to the project the AI selected. New projects have no valid targets.
+  const selectedProjectId =
+    data.project?.action === "use_existing" ? data.project.existingProjectId : null;
+  const validRefIds = new Set<string>(
+    selectedProjectId
+      ? (context.projects.find((p) => p.id === selectedProjectId)?.openMinutes ?? []).map(
+          (om) => om.id
+        )
+      : []
+  );
+
+  data.minutes = data.minutes.map((m) => {
+    if (m.type === "followup" && (!m.referenceMinuteId || !validRefIds.has(m.referenceMinuteId))) {
+      return { ...m, type: "new", referenceMinuteId: null, referenceMinuteTitle: null, statusChange: "" };
+    }
+    return m;
+  });
+
   data.raw = raw;
   return data;
 }
@@ -226,11 +246,11 @@ function buildPrompt(transcript: string, ctx: Context): string {
   lines.push("- A 30-min meeting has 8-20 minutes; a 60-min meeting 15-40. Prefer MORE.");
   lines.push("");
   lines.push("### FOLLOW-UP DETECTION");
-  lines.push("When open minutes are listed, check the transcript for updates on each one.");
-  lines.push("Set type='followup' + referenceMinuteId (the exact id) when an item updates an open minute.");
-  lines.push("Use statusChange like 'In Progress -> Completed' when the transcript implies it.");
-  lines.push("Be generous — prefer linking to an open minute over duplicating it as new.");
-  lines.push("New topics with no matching open minute → type='new'.");
+  lines.push("Follow-ups ONLY make sense within the SAME project you select in project.action.");
+  lines.push("CRITICAL: only set type='followup' + referenceMinuteId when the referenced open minute is listed UNDER the project you selected. NEVER link to an open minute from a different project, even if the wording is similar.");
+  lines.push("If project.action = 'create_new', there are no prior minutes to follow up — EVERY minute must be type='new'.");
+  lines.push("When following up, use statusChange like 'In Progress -> Completed' if the transcript implies it.");
+  lines.push("New topics, or anything in a brand-new project → type='new'.");
   lines.push("");
   lines.push("### RULES");
   lines.push("- project.action 'use_existing' (set existingProjectId) when it clearly matches a listed project, else 'create_new' with newProjectName.");
