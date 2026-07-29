@@ -186,6 +186,11 @@ export async function commitAutoPlan(
     });
 
     return { projectId, meetingId: meeting.id, minutesSaved, projectCreated, warnings };
+  }, {
+    // Commits do many sequential writes round-tripping to Sydney; the default
+    // 5s interactive-transaction limit is too tight. Give it generous headroom.
+    maxWait: 15000,
+    timeout: 60000
   });
 }
 
