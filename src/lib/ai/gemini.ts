@@ -6,10 +6,38 @@
 const GEMINI_MODEL = process.env.GEMINI_MODEL || "gemini-flash-latest";
 const GEMINI_BASE_URL = "https://generativelanguage.googleapis.com/v1beta";
 
+// Gemini's free tier can transiently return 503 UNAVAILABLE ("high demand"),
+// 429 (rate limit), or 500. These are worth retrying with backoff rather than
+// failing the user's request outright.
+const RETRYABLE_STATUS = new Set([429, 500, 503]);
+
 function apiKey(): string {
   const key = process.env.GEMINI_API_KEY;
   if (!key) throw new Error("GEMINI_API_KEY is not set");
   return key;
+}
+
+// POSTs JSON to Gemini, retrying transient overload / rate-limit responses with
+// exponential backoff. Returns the raw response body text on success.
+async function postWithRetry(url: string, body: unknown, attempts = 4): Promise<string> {
+  let lastErr = "Gemini request failed";
+  for (let attempt = 0; attempt < attempts; attempt++) {
+    const resp = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body)
+    });
+    const text = await resp.text();
+    if (resp.ok) return text;
+
+    lastErr = `Gemini ${resp.status}: ${text}`;
+    if (!RETRYABLE_STATUS.has(resp.status) || attempt === attempts - 1) {
+      throw new Error(lastErr);
+    }
+    // Back off ~1s, 2s, 4s (+ jitter) before retrying.
+    await sleep(1000 * 2 ** attempt + Math.random() * 250);
+  }
+  throw new Error(lastErr);
 }
 
 // ---------------------------------------------------------------------------
@@ -39,16 +67,7 @@ export async function generateJson<T = unknown>({
     }
   };
 
-  const resp = await fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body)
-  });
-
-  const rawResponse = await resp.text();
-  if (!resp.ok) {
-    throw new Error(`Gemini ${resp.status}: ${rawResponse}`);
-  }
+  const rawResponse = await postWithRetry(url, body);
 
   const parsed = JSON.parse(rawResponse) as {
     candidates?: Array<{
