@@ -56,7 +56,7 @@ export async function commitAutoPlan(
     }
 
     // ---- Meeting ----
-    const meetingDate = parseDate(plan.meeting.meetingDate) ?? new Date();
+    const meetingDate = resolveMeetingDate(plan.meeting.meetingDate);
     const meeting = await tx.meeting.create({
       data: {
         orgId,
@@ -140,6 +140,36 @@ export async function commitAutoPlan(
   });
 }
 
+// The AI returns a date-only string like "2026-07-28" (no time). Parsing that
+// alone yields midnight UTC, so every meeting would show the same wall-clock
+// time. To keep meetings distinct and ordered, we combine the AI's DATE with
+// the actual capture TIME (now). If the AI omits/garbles the date, fall back
+// to the full current timestamp.
+function resolveMeetingDate(s: string | null | undefined): Date {
+  const now = new Date();
+  if (!s || !s.trim()) return now;
+
+  const m = s.trim().match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (m) {
+    const year = Number(m[1]);
+    const month = Number(m[2]) - 1;
+    const day = Number(m[3]);
+    // Local-time date with current time-of-day.
+    return new Date(
+      year,
+      month,
+      day,
+      now.getHours(),
+      now.getMinutes(),
+      now.getSeconds()
+    );
+  }
+
+  const parsed = new Date(s);
+  return isNaN(parsed.getTime()) ? now : parsed;
+}
+
+// Used for optional fields like a minute's due date — may legitimately be null.
 function parseDate(s: string | null | undefined): Date | null {
   if (!s || !s.trim()) return null;
   const d = new Date(s);
