@@ -252,10 +252,11 @@ function buildPrompt(transcript: string, ctx: Context): string {
   lines.push("You are the auto-planner for a meeting minutes system.");
   lines.push("Given a meeting transcript, decide project + meeting + minutes in ONE JSON reply.");
   lines.push("");
-  lines.push("### BE EXHAUSTIVE ON MINUTES");
-  lines.push("- Extract EVERY distinct topic, decision, action item, question, blocker, and status update.");
-  lines.push("- Split unrelated items into separate minutes; capture discussion points as 'Note'.");
-  lines.push("- A 30-min meeting has 8-20 minutes; a 60-min meeting 15-40. Prefer MORE.");
+  lines.push("### MINUTES TO EXTRACT");
+  lines.push("- Capture each distinct decision, action item, and important discussion point as its own minute.");
+  lines.push("- Merge trivially-related points; skip pure small talk. Capture discussion points as 'Note'.");
+  lines.push("- Aim for the meaningful items — typically 8-20 minutes; do NOT exceed 30.");
+  lines.push("- Keep each description to ONE concise sentence (the source detail, not a paragraph).");
   lines.push("");
   lines.push("### FOLLOW-UP DETECTION");
   lines.push("Follow-ups ONLY make sense within the SAME project you select in project.action.");
