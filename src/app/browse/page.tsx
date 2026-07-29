@@ -64,7 +64,8 @@ export default async function BrowsePage() {
         status: STATUS_LABEL[mn.status] ?? mn.status,
         date: m.meetingDate.toISOString(),
         meetingTitle: m.title,
-        isRoot: !mn.parentMinuteId
+        isRoot: !mn.parentMinuteId,
+        devopsItemId: mn.devopsItemId ?? null
       });
     }
   }

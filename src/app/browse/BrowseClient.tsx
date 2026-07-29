@@ -27,6 +27,7 @@ export interface ThreadEntry {
   date: string;
   meetingTitle: string;
   isRoot: boolean;
+  devopsItemId: number | null;
 }
 
 export interface BrowseMeeting {
@@ -297,20 +298,7 @@ export default function BrowseClient({
                                 </span>
                               )}
                               {mn.devopsItemId && (
-                                devopsBaseUrl ? (
-                                  <a
-                                    href={`${devopsBaseUrl}/_workitems/edit/${mn.devopsItemId}`}
-                                    target="_blank"
-                                    rel="noreferrer"
-                                    className="rounded bg-orange-100 px-1.5 py-0.5 text-[10px] font-medium text-orange-700 hover:bg-orange-200"
-                                  >
-                                    🔗 DevOps #{mn.devopsItemId}
-                                  </a>
-                                ) : (
-                                  <span className="rounded bg-orange-100 px-1.5 py-0.5 text-[10px] font-medium text-orange-700">
-                                    🔗 DevOps #{mn.devopsItemId}
-                                  </span>
-                                )
+                                <DevopsBadge id={mn.devopsItemId} baseUrl={devopsBaseUrl} />
                               )}
                               {mn.dueDate && (
                                 <span className="text-[11px] text-slate-400">
@@ -386,15 +374,35 @@ export default function BrowseClient({
       {openThreadRoot && (
         <ThreadModal
           entries={threads[openThreadRoot] ?? []}
+          devopsBaseUrl={devopsBaseUrl}
           onClose={() => setOpenThreadRoot(null)}
         />
       )}
 
       {/* Single follow-up detail dialog (opened from a nested table row) */}
       {openEntry && (
-        <EntryModal entry={openEntry} onClose={() => setOpenEntry(null)} />
+        <EntryModal entry={openEntry} devopsBaseUrl={devopsBaseUrl} onClose={() => setOpenEntry(null)} />
       )}
     </div>
+  );
+}
+
+// Clickable Azure DevOps work-item badge. Shown for both created and linked
+// items (both store the same devopsItemId). Falls back to a non-link chip if we
+// don't know the DevOps base URL.
+function DevopsBadge({ id, baseUrl }: { id: number; baseUrl: string }) {
+  const cls = "rounded bg-orange-100 px-1.5 py-0.5 text-[11px] font-medium text-orange-700";
+  if (!baseUrl) return <span className={cls}>🔗 DevOps #{id}</span>;
+  return (
+    <a
+      href={`${baseUrl}/_workitems/edit/${id}`}
+      target="_blank"
+      rel="noreferrer"
+      title="Open this work item in Azure DevOps"
+      className={`${cls} hover:bg-orange-200`}
+    >
+      🔗 DevOps #{id}
+    </a>
   );
 }
 
@@ -411,7 +419,15 @@ function typeBadgeClass(type: string): string {
   }
 }
 
-function EntryModal({ entry, onClose }: { entry: ThreadEntry; onClose: () => void }) {
+function EntryModal({
+  entry,
+  devopsBaseUrl,
+  onClose
+}: {
+  entry: ThreadEntry;
+  devopsBaseUrl: string;
+  onClose: () => void;
+}) {
   const open = entry.status !== "Completed" && entry.status !== "Cancelled";
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
@@ -436,6 +452,7 @@ function EntryModal({ entry, onClose }: { entry: ThreadEntry; onClose: () => voi
           {open && (
             <span className="rounded bg-amber-200 px-1.5 py-0.5 font-semibold text-amber-800">● still open</span>
           )}
+          {entry.devopsItemId && <DevopsBadge id={entry.devopsItemId} baseUrl={devopsBaseUrl} />}
           <span className="text-slate-400">{entry.meetingTitle} · {fmtDate(entry.date)}</span>
         </div>
       </div>
@@ -445,9 +462,11 @@ function EntryModal({ entry, onClose }: { entry: ThreadEntry; onClose: () => voi
 
 function ThreadModal({
   entries,
+  devopsBaseUrl,
   onClose
 }: {
   entries: ThreadEntry[];
+  devopsBaseUrl: string;
   onClose: () => void;
 }) {
   const rootTitle = entries.find((e) => e.isRoot)?.title ?? entries[entries.length - 1]?.title ?? "Thread";
@@ -494,6 +513,7 @@ function ThreadModal({
                   {e.isRoot && (
                     <span className="rounded bg-brand-blue px-1.5 py-0.5 text-white">original</span>
                   )}
+                  {e.devopsItemId && <DevopsBadge id={e.devopsItemId} baseUrl={devopsBaseUrl} />}
                   <span className="text-slate-400">
                     {e.meetingTitle} · {fmtDate(e.date)}
                   </span>
