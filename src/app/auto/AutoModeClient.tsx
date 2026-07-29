@@ -14,6 +14,14 @@ export interface Member {
 const TYPE_OPTIONS = ["Note", "To-Do", "Action", "Devops"];
 const STATUS_OPTIONS = ["New", "Initiated", "In Progress", "Completed", "Cancelled"];
 
+// Long meetings are captured as independent ~10-minute audio segments, each
+// transcribed on its own. This keeps every transcription request small and well
+// under the serverless timeout, and lets earlier segments transcribe while
+// recording continues — so even a 1-hour meeting is nearly done transcribing by
+// the time you press Stop. To the user it's just record/stop; segmenting is
+// invisible.
+const SEGMENT_MS = 10 * 60 * 1000;
+
 export default function AutoModeClient({
   members,
   devopsEnabled
@@ -32,15 +40,22 @@ export default function AutoModeClient({
   const [isTranscribing, setIsTranscribing] = useState(false);
   const [captureMic, setCaptureMic] = useState(true);
   const [captureTab, setCaptureTab] = useState(true);
+  // Progress across audio segments (long meetings record in ~10-min segments).
+  const [segTotal, setSegTotal] = useState(0);
+  const [segDone, setSegDone] = useState(0);
 
   const recorderRef = useRef<MediaRecorder | null>(null);
-  const chunksRef = useRef<Blob[]>([]);
+  const destRef = useRef<MediaStreamAudioDestinationNode | null>(null);
   const streamsRef = useRef<MediaStream[]>([]);
   const audioCtxRef = useRef<AudioContext | null>(null);
+  const cycleTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const segIndexRef = useRef(0);
+  const transcriptPartsRef = useRef<string[]>([]);
+  const pendingRef = useRef<Promise<void>[]>([]);
+  const mimeRef = useRef<string>("audio/webm");
 
   async function startRecording() {
     setError("");
-    chunksRef.current = [];
     if (!captureMic && !captureTab) {
       setError("Pick at least one audio source.");
       return;
@@ -66,6 +81,9 @@ export default function AutoModeClient({
       return;
     }
 
+    // Mix every granted source into one destination stream. We reuse this
+    // destination for every segment so the user is only prompted for mic/tab
+    // audio once, at the start.
     const audioCtx = new AudioContext();
     const dest = audioCtx.createMediaStreamDestination();
     streams.forEach((s) => {
@@ -76,44 +94,111 @@ export default function AutoModeClient({
     const mime = ["audio/webm;codecs=opus", "audio/webm", "audio/mp4"].find((t) =>
       MediaRecorder.isTypeSupported(t)
     );
-    const recorder = new MediaRecorder(dest.stream, mime ? { mimeType: mime } : undefined);
-    recorder.ondataavailable = (e) => { if (e.data.size) chunksRef.current.push(e.data); };
-    recorder.onstop = onRecordingStop;
-    recorder.start(1000);
 
-    recorderRef.current = recorder;
+    // Fresh bookkeeping for this recording.
+    mimeRef.current = mime || "audio/webm";
+    destRef.current = dest;
     streamsRef.current = streams;
     audioCtxRef.current = audioCtx;
+    segIndexRef.current = 0;
+    transcriptPartsRef.current = [];
+    pendingRef.current = [];
+    setSegTotal(0);
+    setSegDone(0);
+    setTranscript("");
+
     setIsRecording(true);
+    startSegment();
+    // Roll over to a new segment every SEGMENT_MS so no single clip runs long.
+    cycleTimerRef.current = setInterval(cycleSegment, SEGMENT_MS);
   }
 
-  function stopRecording() {
+  // Records one segment on the shared mixed-audio destination. Each segment is a
+  // complete, standalone audio file (its own container header), so it can be
+  // transcribed on its own the moment it finishes.
+  function startSegment() {
+    const dest = destRef.current;
+    if (!dest) return;
+    const index = segIndexRef.current++;
+    const localChunks: Blob[] = [];
+
+    const opts: MediaRecorderOptions = { audioBitsPerSecond: 48000 };
+    if (mimeRef.current) opts.mimeType = mimeRef.current;
+    const recorder = new MediaRecorder(dest.stream, opts);
+
+    recorder.ondataavailable = (e) => { if (e.data.size) localChunks.push(e.data); };
+    recorder.onstop = () => {
+      if (localChunks.length === 0) return;
+      const blob = new Blob(localChunks, { type: mimeRef.current });
+      // Transcribe this segment now, in the background. Track the promise so
+      // Stop can wait for every outstanding segment to finish.
+      pendingRef.current.push(transcribeSegment(index, blob));
+    };
+    recorder.start(1000);
+    recorderRef.current = recorder;
+    setSegTotal((n) => Math.max(n, index + 1));
+  }
+
+  // Ends the current segment (which triggers its transcription) and immediately
+  // starts the next one on the same audio source. Fired by the cycle timer.
+  function cycleSegment() {
+    const rec = recorderRef.current;
+    if (rec && rec.state !== "inactive") rec.stop();
+    startSegment();
+  }
+
+  async function stopRecording() {
+    if (cycleTimerRef.current) {
+      clearInterval(cycleTimerRef.current);
+      cycleTimerRef.current = null;
+    }
     setIsRecording(false);
-    recorderRef.current?.stop();
-  }
 
-  async function onRecordingStop() {
+    // Finalize the last segment. Wait for its 'stop' to fire so the segment's
+    // onstop (registered first) has queued its transcription before we await.
+    const rec = recorderRef.current;
+    await new Promise<void>((resolve) => {
+      if (!rec || rec.state === "inactive") { resolve(); return; }
+      rec.addEventListener("stop", () => resolve(), { once: true });
+      rec.stop();
+    });
+
+    // Release the mic / tab audio.
     streamsRef.current.forEach((s) => s.getTracks().forEach((t) => t.stop()));
     streamsRef.current = [];
     await audioCtxRef.current?.close();
     audioCtxRef.current = null;
+    destRef.current = null;
 
-    if (chunksRef.current.length === 0) { setError("No audio captured."); return; }
-    const blob = new Blob(chunksRef.current, { type: recorderRef.current?.mimeType || "audio/webm" });
-    chunksRef.current = [];
+    if (pendingRef.current.length === 0) { setError("No audio captured."); return; }
 
+    // Wait for any still-running segment transcriptions to complete.
     setIsTranscribing(true);
     try {
+      await Promise.all(pendingRef.current);
+    } finally {
+      setIsTranscribing(false);
+    }
+  }
+
+  // Uploads one recorded segment for transcription and slots its text into the
+  // ordered transcript. Segments may finish out of order, so we key by index to
+  // keep them in sequence. A failed segment is left blank rather than aborting
+  // the whole meeting.
+  async function transcribeSegment(index: number, blob: Blob) {
+    try {
       const fd = new FormData();
-      fd.append("audio", blob, "recording.webm");
+      fd.append("audio", blob, `segment-${index}.webm`);
       const res = await fetch("/api/auto/transcribe", { method: "POST", body: fd });
       if (!res.ok) throw new Error(await res.text());
       const data = await res.json();
-      setTranscript((prev) => (prev ? prev + "\n\n" : "") + (data.transcript || ""));
+      transcriptPartsRef.current[index] = (data.transcript || "").trim();
     } catch (e) {
-      setError("Transcription failed: " + (e instanceof Error ? e.message : "unknown"));
+      transcriptPartsRef.current[index] = "";
+      setError("A segment failed to transcribe: " + (e instanceof Error ? e.message : "unknown"));
     } finally {
-      setIsTranscribing(false);
+      setSegDone((n) => n + 1);
+      setTranscript(transcriptPartsRef.current.filter(Boolean).join("\n\n"));
     }
   }
 
@@ -195,7 +280,20 @@ export default function AutoModeClient({
             <label className="flex items-center gap-1 text-sm">
               <input type="checkbox" checked={captureTab} onChange={(e) => setCaptureTab(e.target.checked)} disabled={isRecording} /> Tab audio
             </label>
-            {isTranscribing && <span className="text-sm text-blue-600">Transcribing…</span>}
+            {isRecording && (
+              <span className="flex items-center gap-1.5 text-sm text-red-600">
+                <span className="h-2 w-2 animate-pulse rounded-full bg-red-500" />
+                Recording
+                {segDone < segTotal && (
+                  <span className="text-blue-600">· transcribing {segDone}/{segTotal}</span>
+                )}
+              </span>
+            )}
+            {!isRecording && isTranscribing && (
+              <span className="text-sm text-blue-600">
+                Transcribing {segDone}/{segTotal}…
+              </span>
+            )}
           </div>
           <textarea
             value={transcript}
