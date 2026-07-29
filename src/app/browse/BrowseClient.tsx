@@ -287,6 +287,11 @@ export default function BrowseClient({
                                   🔗 {mn.threadCount} in thread
                                 </button>
                               )}
+                              {mn.assignedTo && (
+                                <span className="rounded bg-slate-200 px-1.5 py-0.5 text-[10px] text-slate-600">
+                                  👤 {mn.assignedTo}
+                                </span>
+                              )}
                               {mn.dueDate && (
                                 <span className="text-[11px] text-slate-400">
                                   Due {shortDate(mn.dueDate)}

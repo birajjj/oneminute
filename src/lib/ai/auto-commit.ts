@@ -36,6 +36,15 @@ export async function commitAutoPlan(
   const warnings: string[] = [];
 
   return db.$transaction(async (tx) => {
+    // ---- Assignee lookup (name -> userId) for this org ----
+    const orgUsers = await tx.user.findMany({
+      where: { orgId },
+      select: { id: true, displayName: true }
+    });
+    const userIdByName = new Map(
+      orgUsers.map((u) => [u.displayName.toLowerCase(), u.id])
+    );
+
     // ---- Project ----
     let projectId: string;
     let projectCreated = false;
@@ -128,6 +137,11 @@ export async function commitAutoPlan(
             type: MINUTE_TYPE_MAP[m.minuteType] ?? "Note",
             status: STATUS_MAP[m.status] ?? "New",
             parentMinuteId: rootId,
+            // Map the assignee name (AI suggestion or user's dropdown pick) to a
+            // roster user. Unknown names save as unassigned.
+            assignedToUserId: m.assignedTo
+              ? userIdByName.get(m.assignedTo.toLowerCase()) ?? null
+              : null,
             // Action-like items persist into follow-up meetings until Completed
             isPersistent: ["To-Do", "Action", "Devops"].includes(m.minuteType),
             dueDate: parseDate(m.dueDate),

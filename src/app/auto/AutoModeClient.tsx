@@ -5,7 +5,16 @@ import type { AutoPlan } from "@/lib/ai/auto-plan";
 
 type Step = "record" | "analyzing" | "review" | "done";
 
-export default function AutoModeClient() {
+export interface Member {
+  id: string;
+  displayName: string;
+}
+
+// Reference data (mirrors on-prem dbo.Type and dbo.Status).
+const TYPE_OPTIONS = ["Note", "To-Do", "Action", "Devops"];
+const STATUS_OPTIONS = ["New", "Initiated", "In Progress", "Completed", "Cancelled"];
+
+export default function AutoModeClient({ members }: { members: Member[] }) {
   const [step, setStep] = useState<Step>("record");
   const [transcript, setTranscript] = useState("");
   const [plan, setPlan] = useState<AutoPlan | null>(null);
@@ -200,7 +209,7 @@ export default function AutoModeClient() {
       )}
 
       {step === "review" && plan && (
-        <PlanReview plan={plan} onChange={setPlan} onBack={reset} onCommit={commit} />
+        <PlanReview plan={plan} members={members} onChange={setPlan} onBack={reset} onCommit={commit} />
       )}
 
       {step === "done" && result && (
@@ -226,11 +235,13 @@ export default function AutoModeClient() {
 
 function PlanReview({
   plan,
+  members,
   onChange,
   onBack,
   onCommit
 }: {
   plan: AutoPlan;
+  members: Member[];
   onChange: (p: AutoPlan) => void;
   onBack: () => void;
   onCommit: () => void;
@@ -303,9 +314,42 @@ function PlanReview({
             <textarea value={m.description} onChange={(e) => updateMinute(i, { description: e.target.value })} rows={2} className="w-full rounded border border-slate-300 p-1 text-sm" />
             <div className="mt-1 grid grid-cols-3 gap-1 text-xs">
               <input value={m.area} onChange={(e) => updateMinute(i, { area: e.target.value })} className="rounded border border-slate-300 p-1" placeholder="Area" />
-              <input value={m.minuteType} onChange={(e) => updateMinute(i, { minuteType: e.target.value as never })} className="rounded border border-slate-300 p-1" placeholder="Type" />
-              <input value={m.status} onChange={(e) => updateMinute(i, { status: e.target.value })} className="rounded border border-slate-300 p-1" placeholder="Status" />
-              <input value={m.assignedTo} onChange={(e) => updateMinute(i, { assignedTo: e.target.value })} className="rounded border border-slate-300 p-1" placeholder="Assigned" />
+
+              <select
+                value={m.minuteType}
+                onChange={(e) => updateMinute(i, { minuteType: e.target.value as never })}
+                className="rounded border border-slate-300 p-1"
+              >
+                {TYPE_OPTIONS.map((t) => (
+                  <option key={t} value={t}>{t}</option>
+                ))}
+              </select>
+
+              <select
+                value={m.status}
+                onChange={(e) => updateMinute(i, { status: e.target.value })}
+                className="rounded border border-slate-300 p-1"
+              >
+                {STATUS_OPTIONS.map((s) => (
+                  <option key={s} value={s}>{s}</option>
+                ))}
+              </select>
+
+              <select
+                value={m.assignedTo}
+                onChange={(e) => updateMinute(i, { assignedTo: e.target.value })}
+                className="rounded border border-slate-300 p-1"
+              >
+                <option value="">— Unassigned —</option>
+                {/* Keep the AI's suggestion selectable even if it isn't in the roster */}
+                {m.assignedTo && !members.some((mem) => mem.displayName === m.assignedTo) && (
+                  <option value={m.assignedTo}>{m.assignedTo} (AI)</option>
+                )}
+                {members.map((mem) => (
+                  <option key={mem.id} value={mem.displayName}>{mem.displayName}</option>
+                ))}
+              </select>
+
               <input type="date" value={m.dueDate} onChange={(e) => updateMinute(i, { dueDate: e.target.value })} className="rounded border border-slate-300 p-1" />
             </div>
           </div>

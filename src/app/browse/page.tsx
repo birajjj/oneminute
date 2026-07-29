@@ -40,7 +40,10 @@ export default async function BrowsePage() {
     orderBy: { meetingDate: "desc" },
     include: {
       project: { select: { id: true, name: true } },
-      minutes: { orderBy: [{ area: "asc" }, { createdAt: "asc" }] }
+      minutes: {
+        orderBy: [{ area: "asc" }, { createdAt: "asc" }],
+        include: { assignedTo: { select: { displayName: true } } }
+      }
     }
   });
 
@@ -107,7 +110,7 @@ export default async function BrowsePage() {
           isPersistent: mn.isPersistent,
           // How many entries are in this minute's thread (1 = standalone so far).
           threadCount: threads[rootId]?.length ?? 1,
-          assignedTo: mn.assignedToUserId,
+          assignedTo: mn.assignedTo?.displayName ?? null,
           dueDate: mn.dueDate ? mn.dueDate.toISOString() : null
         };
       })

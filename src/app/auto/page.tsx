@@ -11,7 +11,7 @@ export default async function AutoPage() {
   const user = await getCurrentUser();
   if (!user) redirect("/login?next=/auto");
 
-  const [projects, meetings] = await Promise.all([
+  const [projects, meetings, members] = await Promise.all([
     db.project.findMany({
       where: { orgId: user.orgId },
       orderBy: { name: "asc" },
@@ -26,6 +26,11 @@ export default async function AutoPage() {
         meetingDate: true,
         project: { select: { id: true, name: true } }
       }
+    }),
+    db.user.findMany({
+      where: { orgId: user.orgId },
+      orderBy: { displayName: "asc" },
+      select: { id: true, displayName: true }
     })
   ]);
 
@@ -49,7 +54,7 @@ export default async function AutoPage() {
           Nothing is written until you click Approve &amp; Commit.
         </p>
       </div>
-      <AutoModeClient />
+      <AutoModeClient members={members} />
     </AppShell>
   );
 }
