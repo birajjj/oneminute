@@ -20,6 +20,13 @@ export interface PlanMinute {
   isDevopsItem: boolean;
   confidence: "high" | "medium" | "low";
   approved: boolean;
+
+  // DevOps action chosen by the user in the review screen (not from the AI).
+  // "none" = no work item; "create" = make a new one; "link" = attach existing.
+  devopsAction: "none" | "create" | "link";
+  devopsProject: string;                     // project name for create
+  devopsWorkItemType: "User Story" | "Bug";  // for create
+  devopsWorkItemId: string;                  // for link (existing id)
 }
 
 export interface AutoPlan {
@@ -140,7 +147,12 @@ export async function buildAutoPlan(
     confidence: (["high", "medium", "low"].includes(m.confidence)
       ? m.confidence
       : "medium") as PlanMinute["confidence"],
-    approved: true
+    approved: true,
+    // DevOps defaults: pre-arm "create" for items the AI flagged, else "none".
+    devopsAction: (m.isDevopsItem || m.minuteType === "Devops" ? "create" : "none") as PlanMinute["devopsAction"],
+    devopsProject: "",
+    devopsWorkItemType: "User Story" as PlanMinute["devopsWorkItemType"],
+    devopsWorkItemId: ""
   }));
 
   // GUARD: strip cross-project follow-up links so the review UI matches what

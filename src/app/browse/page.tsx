@@ -111,7 +111,8 @@ export default async function BrowsePage() {
           // How many entries are in this minute's thread (1 = standalone so far).
           threadCount: threads[rootId]?.length ?? 1,
           assignedTo: mn.assignedTo?.displayName ?? null,
-          dueDate: mn.dueDate ? mn.dueDate.toISOString() : null
+          dueDate: mn.dueDate ? mn.dueDate.toISOString() : null,
+          devopsItemId: mn.devopsItemId ?? null
         };
       })
     };
@@ -122,12 +123,16 @@ export default async function BrowsePage() {
     name: p.name
   }));
 
+  // Base URL for linking out to DevOps work items (blank if not configured).
+  const devopsBaseUrl = (process.env.DEVOPS_API_URL ?? "").replace(/\/+$/, "");
+
   return (
     <BrowseClient
       meetings={shaped}
       projects={shapedProjects}
       threads={threads}
       userName={user.displayName}
+      devopsBaseUrl={devopsBaseUrl}
     />
   );
 }

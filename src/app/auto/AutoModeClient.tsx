@@ -14,7 +14,13 @@ export interface Member {
 const TYPE_OPTIONS = ["Note", "To-Do", "Action", "Devops"];
 const STATUS_OPTIONS = ["New", "Initiated", "In Progress", "Completed", "Cancelled"];
 
-export default function AutoModeClient({ members }: { members: Member[] }) {
+export default function AutoModeClient({
+  members,
+  devopsEnabled
+}: {
+  members: Member[];
+  devopsEnabled: boolean;
+}) {
   const [step, setStep] = useState<Step>("record");
   const [transcript, setTranscript] = useState("");
   const [plan, setPlan] = useState<AutoPlan | null>(null);
@@ -209,7 +215,7 @@ export default function AutoModeClient({ members }: { members: Member[] }) {
       )}
 
       {step === "review" && plan && (
-        <PlanReview plan={plan} members={members} onChange={setPlan} onBack={reset} onCommit={commit} />
+        <PlanReview plan={plan} members={members} devopsEnabled={devopsEnabled} onChange={setPlan} onBack={reset} onCommit={commit} />
       )}
 
       {step === "done" && result && (
@@ -236,12 +242,14 @@ export default function AutoModeClient({ members }: { members: Member[] }) {
 function PlanReview({
   plan,
   members,
+  devopsEnabled,
   onChange,
   onBack,
   onCommit
 }: {
   plan: AutoPlan;
   members: Member[];
+  devopsEnabled: boolean;
   onChange: (p: AutoPlan) => void;
   onBack: () => void;
   onCommit: () => void;
@@ -352,6 +360,56 @@ function PlanReview({
 
               <input type="date" value={m.dueDate} onChange={(e) => updateMinute(i, { dueDate: e.target.value })} className="rounded border border-slate-300 p-1" />
             </div>
+
+            {/* DevOps controls — shown when the AI flags it, or the type is Devops */}
+            {(m.isDevopsItem || m.minuteType === "Devops" || m.devopsAction !== "none") && (
+              <div className="mt-2 rounded border border-orange-200 bg-orange-50 p-2">
+                <div className="mb-1 flex items-center gap-3 text-xs">
+                  <span className="font-semibold text-orange-700">DevOps</span>
+                  {(["none", "create", "link"] as const).map((act) => (
+                    <label key={act} className="flex items-center gap-1">
+                      <input
+                        type="radio"
+                        checked={m.devopsAction === act}
+                        onChange={() => updateMinute(i, { devopsAction: act })}
+                      />
+                      {act === "none" ? "No work item" : act === "create" ? "Create" : "Link existing"}
+                    </label>
+                  ))}
+                  {!devopsEnabled && m.devopsAction !== "none" && (
+                    <span className="text-orange-600">⚠ DevOps not connected yet — will be skipped</span>
+                  )}
+                </div>
+
+                {m.devopsAction === "create" && (
+                  <div className="grid grid-cols-2 gap-1 text-xs">
+                    <input
+                      value={m.devopsProject}
+                      onChange={(e) => updateMinute(i, { devopsProject: e.target.value })}
+                      className="rounded border border-slate-300 p-1"
+                      placeholder="DevOps project (e.g. 3TT.OneMinute)"
+                    />
+                    <select
+                      value={m.devopsWorkItemType}
+                      onChange={(e) => updateMinute(i, { devopsWorkItemType: e.target.value as never })}
+                      className="rounded border border-slate-300 p-1"
+                    >
+                      <option value="User Story">User Story</option>
+                      <option value="Bug">Bug</option>
+                    </select>
+                  </div>
+                )}
+
+                {m.devopsAction === "link" && (
+                  <input
+                    value={m.devopsWorkItemId}
+                    onChange={(e) => updateMinute(i, { devopsWorkItemId: e.target.value })}
+                    className="w-40 rounded border border-slate-300 p-1 text-xs"
+                    placeholder="Work Item ID"
+                  />
+                )}
+              </div>
+            )}
           </div>
         ))}
       </div>

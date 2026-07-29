@@ -2,8 +2,9 @@
 // create project if needed → create meeting → register areas → insert minutes.
 
 import { db } from "@/lib/db";
-import type { AutoPlan } from "./auto-plan";
+import type { AutoPlan, PlanMinute } from "./auto-plan";
 import type { MinuteType, MinuteStatus } from "@prisma/client";
+import { createWorkItem, getWorkItem, devopsConfigured } from "@/lib/devops";
 
 export interface CommitResult {
   projectId: string;
@@ -127,6 +128,23 @@ export async function commitAutoPlan(
           }
         }
 
+        // Create or link an Azure DevOps work item if requested. Failures here
+        // are non-fatal — the minute still saves, with a warning. This also keeps
+        // the feature dormant until DevOps auth is configured.
+        let devopsItemId: number | null = null;
+        let devopsProjectName: string | null = null;
+        if (m.devopsAction === "create" || m.devopsAction === "link") {
+          try {
+            const dv = await handleDevops(m);
+            devopsItemId = dv.id;
+            devopsProjectName = dv.project;
+          } catch (dex) {
+            warnings.push(
+              `DevOps for "${m.title}": ${dex instanceof Error ? dex.message : "failed"}`
+            );
+          }
+        }
+
         await tx.minute.create({
           data: {
             orgId,
@@ -145,7 +163,8 @@ export async function commitAutoPlan(
             // Action-like items persist into follow-up meetings until Completed
             isPersistent: ["To-Do", "Action", "Devops"].includes(m.minuteType),
             dueDate: parseDate(m.dueDate),
-            devopsArea: null
+            devopsItemId,
+            devopsArea: devopsProjectName
           }
         });
         minutesSaved += 1;
@@ -228,6 +247,37 @@ function parseDate(s: string | null | undefined): Date | null {
   if (!s || !s.trim()) return null;
   const d = new Date(s);
   return isNaN(d.getTime()) ? null : d;
+}
+
+// Creates or links a DevOps work item for a minute. Throws on failure so the
+// caller can record a warning; the minute still saves without the link.
+async function handleDevops(
+  m: PlanMinute
+): Promise<{ id: number; project: string | null }> {
+  if (!devopsConfigured()) {
+    throw new Error("DevOps not configured");
+  }
+
+  if (m.devopsAction === "link") {
+    const id = parseInt(m.devopsWorkItemId, 10);
+    if (isNaN(id)) throw new Error("invalid work item id");
+    const wi = await getWorkItem(id); // verifies it exists
+    return { id: wi.id, project: wi.project };
+  }
+
+  // create
+  const project = m.devopsProject.trim();
+  if (!project) throw new Error("no DevOps project specified");
+  // The assignee name may or may not be a DevOps identity; pass it through.
+  const id = await createWorkItem({
+    project,
+    type: m.devopsWorkItemType,
+    title: m.title.trim(),
+    description: m.description || null,
+    assignedTo: m.assignedTo || null,
+    state: m.status || null
+  });
+  return { id, project };
 }
 
 // Reads the target status out of an AI statusChange string like

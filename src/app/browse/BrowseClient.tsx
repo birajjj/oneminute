@@ -15,6 +15,7 @@ export interface BrowseMinute {
   threadCount: number;
   assignedTo: string | null;
   dueDate: string | null;
+  devopsItemId: number | null;
 }
 
 export interface ThreadEntry {
@@ -68,12 +69,14 @@ export default function BrowseClient({
   meetings,
   projects,
   threads,
-  userName
+  userName,
+  devopsBaseUrl
 }: {
   meetings: BrowseMeeting[];
   projects: BrowseProject[];
   threads: Record<string, ThreadEntry[]>;
   userName: string;
+  devopsBaseUrl: string;
 }) {
   const [projectFilter, setProjectFilter] = useState<string>("all");
   const [selectedId, setSelectedId] = useState<string | null>(meetings[0]?.id ?? null);
@@ -291,6 +294,22 @@ export default function BrowseClient({
                                 <span className="rounded bg-slate-200 px-1.5 py-0.5 text-[10px] text-slate-600">
                                   👤 {mn.assignedTo}
                                 </span>
+                              )}
+                              {mn.devopsItemId && (
+                                devopsBaseUrl ? (
+                                  <a
+                                    href={`${devopsBaseUrl}/_workitems/edit/${mn.devopsItemId}`}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="rounded bg-orange-100 px-1.5 py-0.5 text-[10px] font-medium text-orange-700 hover:bg-orange-200"
+                                  >
+                                    🔗 DevOps #{mn.devopsItemId}
+                                  </a>
+                                ) : (
+                                  <span className="rounded bg-orange-100 px-1.5 py-0.5 text-[10px] font-medium text-orange-700">
+                                    🔗 DevOps #{mn.devopsItemId}
+                                  </span>
+                                )
                               )}
                               {mn.dueDate && (
                                 <span className="text-[11px] text-slate-400">

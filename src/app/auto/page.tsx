@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/auth";
 import { db } from "@/lib/db";
+import { devopsConfigured } from "@/lib/devops";
 import AppShell from "@/components/AppShell";
 import AutoModeClient from "./AutoModeClient";
 
@@ -54,7 +55,7 @@ export default async function AutoPage() {
           Nothing is written until you click Approve &amp; Commit.
         </p>
       </div>
-      <AutoModeClient members={members} />
+      <AutoModeClient members={members} devopsEnabled={devopsConfigured()} />
     </AppShell>
   );
 }
