@@ -28,7 +28,7 @@ export default async function AutoPage() {
       }
     }),
     db.user.findMany({
-      where: { orgId: user.orgId },
+      where: { orgId: user.orgId, isRoster: true },
       orderBy: { displayName: "asc" },
       select: { id: true, displayName: true }
     })

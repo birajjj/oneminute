@@ -33,8 +33,8 @@ async function main() {
     const email = emailFor(name);
     await db.user.upsert({
       where: { email },
-      update: { displayName: name },
-      create: { orgId: ORG_ID, email, displayName: name }
+      update: { displayName: name, isRoster: true },
+      create: { orgId: ORG_ID, email, displayName: name, isRoster: true }
     });
     console.log("✔ roster:", name);
   }

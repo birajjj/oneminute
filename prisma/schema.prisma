@@ -37,6 +37,9 @@ model User {
   email         String    @unique
   displayName   String    @map("display_name")
   entraObjectId String?   @unique @map("entra_object_id") // Microsoft Entra OID
+  // true = a team member you can assign work to (reference roster);
+  // false = a login account. Keeps the assignee dropdown clean.
+  isRoster      Boolean   @default(false) @map("is_roster")
   createdAt     DateTime  @default(now()) @map("created_at")
 
   org           Org       @relation(fields: [orgId], references: [id], onDelete: Cascade)
