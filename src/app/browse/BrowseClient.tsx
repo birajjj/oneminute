@@ -82,6 +82,7 @@ export default function BrowseClient({
   const [selectedId, setSelectedId] = useState<string | null>(meetings[0]?.id ?? null);
   const [search, setSearch] = useState("");
   const [openThreadRoot, setOpenThreadRoot] = useState<string | null>(null);
+  const [openEntry, setOpenEntry] = useState<ThreadEntry | null>(null);
 
   const filteredMeetings = useMemo(() => {
     let list = meetings;
@@ -322,6 +323,49 @@ export default function BrowseClient({
                                 {mn.description}
                               </div>
                             )}
+
+                            {/* Nested follow-up updates (on-prem style): shown under
+                                the original minute. Click a row to open the detail. */}
+                            {!mn.isFollowUp && (() => {
+                              const followUps = (threads[mn.rootId] ?? []).filter((e) => !e.isRoot);
+                              if (followUps.length === 0) return null;
+                              return (
+                                <table className="mt-2 w-full border-collapse overflow-hidden rounded border border-slate-200 bg-white text-left text-sm">
+                                  <thead>
+                                    <tr className="bg-slate-50 text-xs text-slate-500">
+                                      <th className="border-b border-slate-200 px-3 py-1.5 font-medium">Follow-up</th>
+                                      <th className="border-b border-slate-200 px-3 py-1.5 font-medium">Type</th>
+                                      <th className="border-b border-slate-200 px-3 py-1.5 font-medium">Status</th>
+                                      <th className="border-b border-slate-200 px-3 py-1.5 font-medium">Date</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody>
+                                    {followUps.map((fu) => {
+                                      const open = fu.status !== "Completed" && fu.status !== "Cancelled";
+                                      return (
+                                        <tr
+                                          key={fu.id}
+                                          onClick={() => setOpenEntry(fu)}
+                                          className={`cursor-pointer hover:bg-blue-50 ${open ? "" : "text-slate-400"}`}
+                                        >
+                                          <td className="border-b border-slate-100 px-3 py-1.5 text-brand-blue">
+                                            {fu.description?.trim() || fu.title}
+                                          </td>
+                                          <td className="border-b border-slate-100 px-3 py-1.5">{fu.type}</td>
+                                          <td className="border-b border-slate-100 px-3 py-1.5">
+                                            {fu.status}
+                                            {open && (fu.type === "Action" || fu.type === "To-Do" || fu.type === "Devops") && (
+                                              <span className="ml-1 rounded bg-amber-200 px-1 text-[9px] font-semibold text-amber-800">open</span>
+                                            )}
+                                          </td>
+                                          <td className="border-b border-slate-100 px-3 py-1.5 text-slate-500">{shortDate(fu.date)}</td>
+                                        </tr>
+                                      );
+                                    })}
+                                  </tbody>
+                                </table>
+                              );
+                            })()}
                           </div>
                           <label className="ml-4 flex shrink-0 items-center gap-1 text-xs text-slate-500">
                             <input type="checkbox" disabled checked={mn.status === "Completed"} />
@@ -345,6 +389,11 @@ export default function BrowseClient({
           onClose={() => setOpenThreadRoot(null)}
         />
       )}
+
+      {/* Single follow-up detail dialog (opened from a nested table row) */}
+      {openEntry && (
+        <EntryModal entry={openEntry} onClose={() => setOpenEntry(null)} />
+      )}
     </div>
   );
 }
@@ -360,6 +409,38 @@ function typeBadgeClass(type: string): string {
     default:
       return "bg-slate-100 text-slate-600";
   }
+}
+
+function EntryModal({ entry, onClose }: { entry: ThreadEntry; onClose: () => void }) {
+  const open = entry.status !== "Completed" && entry.status !== "Cancelled";
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
+      <div className="w-full max-w-lg rounded-lg bg-white p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
+        <div className="mb-3 flex items-start justify-between">
+          <div>
+            <div className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+              Follow-up minute
+            </div>
+            <h3 className="text-lg font-bold">{entry.title}</h3>
+          </div>
+          <button onClick={onClose} className="text-2xl leading-none text-slate-400 hover:text-slate-600">×</button>
+        </div>
+
+        <div className="whitespace-pre-wrap rounded border border-slate-100 bg-slate-50 px-3 py-2 text-sm text-slate-700">
+          {entry.description || <span className="italic text-slate-400">(no details recorded)</span>}
+        </div>
+
+        <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">
+          <span className={`rounded px-1.5 py-0.5 font-medium ${typeBadgeClass(entry.type)}`}>{entry.type}</span>
+          <span className="rounded bg-slate-100 px-1.5 py-0.5 text-slate-500">{entry.status}</span>
+          {open && (
+            <span className="rounded bg-amber-200 px-1.5 py-0.5 font-semibold text-amber-800">● still open</span>
+          )}
+          <span className="text-slate-400">{entry.meetingTitle} · {fmtDate(entry.date)}</span>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 function ThreadModal({

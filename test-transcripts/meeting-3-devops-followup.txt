@@ -1,0 +1,33 @@
+VCMS Portal Rebuild — Sprint 2 Follow-up Meeting. Attendees: Biraj, Rifat, Samson, Tracey, Anita.
+
+Anita: Thanks everyone. This is our Sprint 2 follow-up on the VCMS Portal Rebuild. Let's check on the open items from last time and sort out a couple of DevOps tickets.
+
+Anita: Samson, where are we with the security report review?
+
+Samson: Still in progress, I'm afraid. I found two medium-severity issues that need remediation, so I can't sign it off yet. I'll keep it open — probably another week of work. Status is still in progress, not done.
+
+Anita: Okay, so the security report review stays in progress. And the automated vulnerability scanning you were going to set up?
+
+Samson: I've started it but it's not finished. It's in progress. I've got the scanner configured but the pipeline integration isn't done yet.
+
+Anita: Right, vulnerability scanning is in progress too. Biraj, the DW3 feed notification automation — you were scoping that last time.
+
+Biraj: Yes, I've finished scoping it. It's ready to become a proper development task now. Can we create a DevOps work item for it? Make it a user story — "DW3 feed notification automation" — and assign it to me. This should be tracked in DevOps going forward.
+
+Anita: Good, let's create a DevOps user story for the DW3 feed notification automation, assigned to Biraj.
+
+Anita: Tracey, the data migration plan — any updates on the field mappings?
+
+Tracey: Done. I finalised the field mappings and the migration plan is complete now. You can mark that one completed.
+
+Anita: Great, migration plan is completed. Now, one more thing — the reporting dashboard. That work is already being tracked in DevOps under work item 5821. Can we link our minute to that existing work item so we can follow its progress from here?
+
+Biraj: Sure, we should link this minute to DevOps work item 5821 for the reporting dashboard.
+
+Anita: Perfect, link the reporting dashboard minute to existing DevOps work item 5821.
+
+Anita: Last item — Rifat, there's a bug in staging where the login page throws a 500 error intermittently. Can we raise that as a DevOps bug?
+
+Rifat: Yes, let's create a DevOps bug for the intermittent 500 error on the staging login page, assign it to me.
+
+Anita: Good. Create a DevOps bug for the staging login 500 error, assigned to Rifat. That's everything, thanks all.
