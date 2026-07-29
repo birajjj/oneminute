@@ -24,9 +24,13 @@ const SEGMENT_MS = 10 * 60 * 1000;
 
 export default function AutoModeClient({
   members,
+  projects,
+  meetings,
   devopsEnabled
 }: {
   members: Member[];
+  projects: { id: string; name: string }[];
+  meetings: { id: string; title: string; date: string; projectId: string }[];
   devopsEnabled: boolean;
 }) {
   const [step, setStep] = useState<Step>("record");
@@ -329,7 +333,7 @@ export default function AutoModeClient({
       )}
 
       {step === "review" && plan && (
-        <PlanReview plan={plan} members={members} devopsEnabled={devopsEnabled} devopsProjects={devopsProjects} onChange={setPlan} onBack={reset} onCommit={commit} />
+        <PlanReview plan={plan} members={members} projects={projects} meetings={meetings} devopsEnabled={devopsEnabled} devopsProjects={devopsProjects} onChange={setPlan} onBack={reset} onCommit={commit} />
       )}
 
       {step === "done" && result && (
@@ -356,6 +360,8 @@ export default function AutoModeClient({
 function PlanReview({
   plan,
   members,
+  projects,
+  meetings,
   devopsEnabled,
   devopsProjects,
   onChange,
@@ -364,6 +370,8 @@ function PlanReview({
 }: {
   plan: AutoPlan;
   members: Member[];
+  projects: { id: string; name: string }[];
+  meetings: { id: string; title: string; date: string; projectId: string }[];
   devopsEnabled: boolean;
   devopsProjects: { id: string; name: string }[];
   onChange: (p: AutoPlan) => void;
@@ -378,28 +386,153 @@ function PlanReview({
     onChange({ ...plan, minutes });
   }
 
+  // ---- Project / meeting overrides (AI decides, user can change) ----
+  function setProject(patch: Partial<AutoPlan["project"]>) {
+    onChange({ ...plan, project: { ...plan.project, ...patch } });
+  }
+  function setMeeting(patch: Partial<AutoPlan["meeting"]>) {
+    onChange({ ...plan, meeting: { ...plan.meeting, ...patch } });
+  }
+  function chooseProjectAction(action: "use_existing" | "create_new") {
+    if (action === "create_new") {
+      // A brand-new project has no prior meetings to follow up.
+      onChange({
+        ...plan,
+        project: { ...plan.project, action },
+        meeting: { ...plan.meeting, action: "new", followUpToMeetingId: null, followUpToMeetingTitle: null }
+      });
+    } else {
+      setProject({ action });
+    }
+  }
+  function selectExistingProject(id: string) {
+    const p = projects.find((x) => x.id === id);
+    // Keep the follow-up only if that meeting belongs to the newly chosen project.
+    const keepFollowUp =
+      !!plan.meeting.followUpToMeetingId &&
+      meetings.some((m) => m.id === plan.meeting.followUpToMeetingId && m.projectId === id);
+    onChange({
+      ...plan,
+      project: {
+        ...plan.project,
+        action: "use_existing",
+        existingProjectId: id || null,
+        existingProjectName: p?.name ?? null
+      },
+      meeting: keepFollowUp
+        ? plan.meeting
+        : { ...plan.meeting, followUpToMeetingId: null, followUpToMeetingTitle: null }
+    });
+  }
+  function selectFollowUpMeeting(id: string) {
+    const m = meetings.find((x) => x.id === id);
+    setMeeting({ followUpToMeetingId: id || null, followUpToMeetingTitle: m?.title ?? null });
+  }
+
+  // Meetings available to follow up = those in the currently selected project.
+  const meetingsInProject =
+    plan.project.action === "use_existing" && plan.project.existingProjectId
+      ? meetings.filter((m) => m.projectId === plan.project.existingProjectId)
+      : [];
+  const canFollowUp = meetingsInProject.length > 0;
+
+  // Commit is only valid once the project target is fully specified.
+  const projectValid =
+    plan.project.action === "use_existing"
+      ? !!plan.project.existingProjectId
+      : !!plan.project.newProjectName?.trim();
+
   return (
     <div className="rounded-lg border border-slate-200 bg-white p-4">
       <div className="mb-3 grid gap-3 sm:grid-cols-2">
+        {/* PROJECT — AI pre-selects; user can override */}
         <div className="rounded border border-slate-200 bg-slate-50 p-3">
           <div className="text-xs font-semibold uppercase text-slate-500">Project</div>
-          <div className="mt-1 text-sm">
-            {plan.project.action === "use_existing"
-              ? `Use existing: ${plan.project.existingProjectName || plan.project.existingProjectId}`
-              : `Create new: ${plan.project.newProjectName}`}
+          <div className="mt-1.5 flex gap-4 text-sm">
+            <label className="flex items-center gap-1">
+              <input
+                type="radio"
+                checked={plan.project.action === "use_existing"}
+                onChange={() => chooseProjectAction("use_existing")}
+              />
+              Existing
+            </label>
+            <label className="flex items-center gap-1">
+              <input
+                type="radio"
+                checked={plan.project.action === "create_new"}
+                onChange={() => chooseProjectAction("create_new")}
+              />
+              New
+            </label>
           </div>
-          {plan.project.reason && <div className="mt-1 text-xs text-slate-500">{plan.project.reason}</div>}
+          {plan.project.action === "use_existing" ? (
+            <select
+              value={plan.project.existingProjectId ?? ""}
+              onChange={(e) => selectExistingProject(e.target.value)}
+              className="mt-1.5 w-full rounded border border-slate-300 p-1 text-sm"
+            >
+              <option value="">— Select a project —</option>
+              {projects.map((p) => (
+                <option key={p.id} value={p.id}>{p.name}</option>
+              ))}
+            </select>
+          ) : (
+            <input
+              value={plan.project.newProjectName ?? ""}
+              onChange={(e) => setProject({ newProjectName: e.target.value })}
+              placeholder="New project name"
+              className="mt-1.5 w-full rounded border border-slate-300 p-1 text-sm"
+            />
+          )}
+          {plan.project.reason && (
+            <div className="mt-1 text-xs text-slate-500">AI: {plan.project.reason}</div>
+          )}
         </div>
+
+        {/* MEETING — new, or a follow-up of an existing meeting in this project */}
         <div className="rounded border border-slate-200 bg-slate-50 p-3">
           <div className="text-xs font-semibold uppercase text-slate-500">Meeting</div>
           <input
             value={plan.meeting.title}
-            onChange={(e) => onChange({ ...plan, meeting: { ...plan.meeting, title: e.target.value } })}
-            className="mt-1 w-full rounded border border-slate-300 p-1 text-sm"
+            onChange={(e) => setMeeting({ title: e.target.value })}
+            placeholder="Meeting title"
+            className="mt-1.5 w-full rounded border border-slate-300 p-1 text-sm"
           />
-          <div className="mt-1 text-xs text-slate-500">
-            {plan.meeting.action === "followup" ? "Follow-up meeting" : "New meeting"} · {plan.meeting.meetingDate}
+          <div className="mt-1.5 flex gap-4 text-sm">
+            <label className="flex items-center gap-1">
+              <input
+                type="radio"
+                checked={plan.meeting.action === "new"}
+                onChange={() => setMeeting({ action: "new", followUpToMeetingId: null, followUpToMeetingTitle: null })}
+              />
+              New meeting
+            </label>
+            <label className={`flex items-center gap-1 ${canFollowUp ? "" : "text-slate-400"}`}>
+              <input
+                type="radio"
+                checked={plan.meeting.action === "followup"}
+                disabled={!canFollowUp}
+                onChange={() => setMeeting({ action: "followup" })}
+              />
+              Follow-up of…
+            </label>
           </div>
+          {plan.meeting.action === "followup" && (
+            <select
+              value={plan.meeting.followUpToMeetingId ?? ""}
+              onChange={(e) => selectFollowUpMeeting(e.target.value)}
+              className="mt-1.5 w-full rounded border border-slate-300 p-1 text-sm"
+            >
+              <option value="">— All prior meetings —</option>
+              {meetingsInProject.map((m) => (
+                <option key={m.id} value={m.id}>
+                  {m.title} · {new Date(m.date).toLocaleDateString("en-AU")}
+                </option>
+              ))}
+            </select>
+          )}
+          <div className="mt-1 text-xs text-slate-500">{plan.meeting.meetingDate}</div>
         </div>
       </div>
 
@@ -551,7 +684,7 @@ function PlanReview({
         <button onClick={onBack} disabled={committing} className="rounded border border-slate-300 px-4 py-2 text-sm">← Start Over</button>
         <button
           onClick={async () => { setCommitting(true); await onCommit(); setCommitting(false); }}
-          disabled={committing || approvedCount === 0 || !plan.meeting.title}
+          disabled={committing || approvedCount === 0 || !plan.meeting.title || !projectValid}
           className="ml-auto rounded bg-gradient-to-r from-brand-pink to-brand-purple px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
         >
           {committing ? "Committing…" : `✓ Approve & Commit (${approvedCount})`}

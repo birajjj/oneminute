@@ -55,7 +55,7 @@ export default async function AutoPage() {
           Nothing is written until you click Approve &amp; Commit.
         </p>
       </div>
-      <AutoModeClient members={members} devopsEnabled={devopsConfigured()} />
+      <AutoModeClient members={members} projects={projects} meetings={shellMeetings} devopsEnabled={devopsConfigured()} />
     </AppShell>
   );
 }
