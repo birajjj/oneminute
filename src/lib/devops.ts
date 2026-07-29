@@ -5,19 +5,24 @@
 // Env:
 //   DEVOPS_API_URL     e.g. https://tfs.3tt.com.au/tfs/3ttProjects/
 //   DEVOPS_PAT         a Personal Access Token (Work Items R/W, Project read)
-//   DEVOPS_API_VERSION optional, defaults to 6.0
+//   DEVOPS_USER        the PAT account's username, e.g. "biraj". On-prem TFS
+//                      requires "username:PAT" Basic auth; Azure DevOps Services
+//                      accepts an empty username, so leave this blank there.
+//   DEVOPS_API_VERSION optional, defaults to 5.0 (proven against on-prem TFS)
 
 const API_URL = process.env.DEVOPS_API_URL ?? "";
 const PAT = process.env.DEVOPS_PAT ?? "";
-const API_VERSION = process.env.DEVOPS_API_VERSION ?? "6.0";
+const USER = process.env.DEVOPS_USER ?? "";
+const API_VERSION = process.env.DEVOPS_API_VERSION ?? "5.0";
 
 export function devopsConfigured(): boolean {
   return !!API_URL && !!PAT;
 }
 
 function authHeader(): string {
-  // Basic auth with an empty username and the PAT as password.
-  const token = Buffer.from(`:${PAT}`).toString("base64");
+  // Basic auth: base64("username:PAT"). On-prem TFS requires the username
+  // (e.g. "biraj" via DEVOPS_USER); Azure DevOps Services accepts an empty one.
+  const token = Buffer.from(`${USER}:${PAT}`).toString("base64");
   return `Basic ${token}`;
 }
 
