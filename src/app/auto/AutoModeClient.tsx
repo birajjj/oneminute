@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { AutoPlan } from "@/lib/ai/auto-plan";
 
 type Step = "record" | "analyzing" | "review" | "done";
@@ -34,6 +34,22 @@ export default function AutoModeClient({
   const [plan, setPlan] = useState<AutoPlan | null>(null);
   const [result, setResult] = useState<{ minutesSaved: number; projectCreated: boolean } | null>(null);
   const [error, setError] = useState("");
+
+  // Real DevOps projects for the "Create work item" dropdown. Loaded lazily so a
+  // slow or unreachable TFS never blocks the page; empty => free-text fallback.
+  const [devopsProjects, setDevopsProjects] = useState<{ id: string; name: string }[]>([]);
+
+  useEffect(() => {
+    if (!devopsEnabled) return;
+    let cancelled = false;
+    fetch("/api/devops/projects")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (!cancelled && data?.projects) setDevopsProjects(data.projects);
+      })
+      .catch(() => { /* leave empty -> the review falls back to a text box */ });
+    return () => { cancelled = true; };
+  }, [devopsEnabled]);
 
   // recording state
   const [isRecording, setIsRecording] = useState(false);
@@ -313,7 +329,7 @@ export default function AutoModeClient({
       )}
 
       {step === "review" && plan && (
-        <PlanReview plan={plan} members={members} devopsEnabled={devopsEnabled} onChange={setPlan} onBack={reset} onCommit={commit} />
+        <PlanReview plan={plan} members={members} devopsEnabled={devopsEnabled} devopsProjects={devopsProjects} onChange={setPlan} onBack={reset} onCommit={commit} />
       )}
 
       {step === "done" && result && (
@@ -341,6 +357,7 @@ function PlanReview({
   plan,
   members,
   devopsEnabled,
+  devopsProjects,
   onChange,
   onBack,
   onCommit
@@ -348,6 +365,7 @@ function PlanReview({
   plan: AutoPlan;
   members: Member[];
   devopsEnabled: boolean;
+  devopsProjects: { id: string; name: string }[];
   onChange: (p: AutoPlan) => void;
   onBack: () => void;
   onCommit: () => void;
@@ -481,12 +499,29 @@ function PlanReview({
 
                 {m.devopsAction === "create" && (
                   <div className="grid grid-cols-2 gap-1 text-xs">
-                    <input
-                      value={m.devopsProject}
-                      onChange={(e) => updateMinute(i, { devopsProject: e.target.value })}
-                      className="rounded border border-slate-300 p-1"
-                      placeholder="DevOps project (e.g. 3TT.OneMinute)"
-                    />
+                    {devopsProjects.length > 0 ? (
+                      <select
+                        value={m.devopsProject}
+                        onChange={(e) => updateMinute(i, { devopsProject: e.target.value })}
+                        className="rounded border border-slate-300 p-1"
+                      >
+                        <option value="">— Select project —</option>
+                        {/* Keep the AI's suggestion selectable even if it isn't a real project */}
+                        {m.devopsProject && !devopsProjects.some((p) => p.name === m.devopsProject) && (
+                          <option value={m.devopsProject}>{m.devopsProject} (AI)</option>
+                        )}
+                        {devopsProjects.map((p) => (
+                          <option key={p.id} value={p.name}>{p.name}</option>
+                        ))}
+                      </select>
+                    ) : (
+                      <input
+                        value={m.devopsProject}
+                        onChange={(e) => updateMinute(i, { devopsProject: e.target.value })}
+                        className="rounded border border-slate-300 p-1"
+                        placeholder="DevOps project (e.g. 3TT.OneMinute)"
+                      />
+                    )}
                     <select
                       value={m.devopsWorkItemType}
                       onChange={(e) => updateMinute(i, { devopsWorkItemType: e.target.value as never })}
