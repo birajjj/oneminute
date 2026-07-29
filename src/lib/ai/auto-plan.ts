@@ -3,7 +3,7 @@
 // to decide project + meeting + minutes (new vs follow-up) in one call.
 
 import { db } from "@/lib/db";
-import { generateJson } from "./gemini";
+import { generateJson } from "./provider";
 
 export interface PlanMinute {
   type: "new" | "followup";
