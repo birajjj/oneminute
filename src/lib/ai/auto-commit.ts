@@ -5,6 +5,7 @@ import { db } from "@/lib/db";
 import type { AutoPlan, PlanMinute } from "./auto-plan";
 import type { MinuteType, MinuteStatus } from "@prisma/client";
 import { createWorkItem, getWorkItem, devopsConfigured } from "@/lib/devops";
+import { normalizeFlag } from "@/lib/minutes/flags";
 
 export interface CommitResult {
   projectId: string;
@@ -154,6 +155,9 @@ export async function commitAutoPlan(
             description: m.description || null,
             type: MINUTE_TYPE_MAP[m.minuteType] ?? "Note",
             status: STATUS_MAP[m.status] ?? "New",
+            // Governance flag: re-normalize defensively (the plan comes from the
+            // client) so only a valid enum value or null ever reaches the DB.
+            flag: normalizeFlag(m.flag),
             parentMinuteId: rootId,
             // Map the assignee name (AI suggestion or user's dropdown pick) to a
             // roster user. Unknown names save as unassigned.

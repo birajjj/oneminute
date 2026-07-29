@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import type { AutoPlan } from "@/lib/ai/auto-plan";
+import { MINUTE_FLAGS } from "@/lib/minutes/flags";
 
 type Step = "record" | "analyzing" | "review" | "done";
 
@@ -589,6 +590,21 @@ function PlanReview({
               >
                 {STATUS_OPTIONS.map((s) => (
                   <option key={s} value={s}>{s}</option>
+                ))}
+              </select>
+
+              {/* Governance flag — tag decisions / scope / governance points */}
+              <select
+                value={m.flag ?? ""}
+                onChange={(e) =>
+                  updateMinute(i, { flag: e.target.value ? (e.target.value as never) : null })
+                }
+                className="rounded border border-slate-300 p-1"
+                title="Governance flag"
+              >
+                <option value="">— No flag —</option>
+                {MINUTE_FLAGS.map((f) => (
+                  <option key={f} value={f}>🏷 {f}</option>
                 ))}
               </select>
 

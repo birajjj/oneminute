@@ -62,6 +62,7 @@ export default async function BrowsePage() {
         description: mn.description,
         type: TYPE_LABEL[mn.type] ?? mn.type,
         status: STATUS_LABEL[mn.status] ?? mn.status,
+        flag: mn.flag ?? null,
         date: m.meetingDate.toISOString(),
         meetingTitle: m.title,
         isRoot: !mn.parentMinuteId,
@@ -107,6 +108,7 @@ export default async function BrowsePage() {
           description: mn.description,
           type: TYPE_LABEL[mn.type] ?? mn.type,
           status: STATUS_LABEL[mn.status] ?? mn.status,
+          flag: mn.flag ?? null,
           isFollowUp: !!mn.parentMinuteId,
           isPersistent: mn.isPersistent,
           // How many entries are in this minute's thread (1 = standalone so far).

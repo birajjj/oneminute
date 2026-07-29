@@ -1,6 +1,12 @@
 // Central Zod schemas. Every API boundary parses input with these.
 import { z } from "zod";
 
+// Governance classification flag for a minute. Mirrors the Prisma MinuteFlag
+// enum. "" / undefined = unflagged (stored as null).
+export const MINUTE_FLAGS = ["Governance", "Decision", "Scope"] as const;
+export const MinuteFlagSchema = z.enum(MINUTE_FLAGS);
+export type MinuteFlagValue = z.infer<typeof MinuteFlagSchema>;
+
 export const CreateProjectSchema = z.object({
   name: z.string().min(1).max(200)
 });
@@ -20,6 +26,7 @@ export const CreateMinuteSchema = z.object({
   description: z.string().optional(),
   type: z.enum(["Note", "To-Do", "Action", "Devops"]).default("Note"),
   status: z.enum(["New", "Initiated", "In Progress", "Completed", "Cancelled"]).default("New"),
+  flag: MinuteFlagSchema.nullable().optional(),
   parentMinuteId: z.string().uuid().nullable().optional(),
   isPersistent: z.boolean().default(false),
   assignedToUserId: z.string().uuid().nullable().optional(),

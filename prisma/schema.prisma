@@ -136,6 +136,15 @@ enum MinuteStatus {
   Cancelled
 }
 
+// Governance classification flag (from on-prem OneMinute). Lets a minute be
+// tagged as a Governance point, a Decision, or a Scope item so they can be
+// found across meetings. Null = unflagged (an ordinary minute).
+enum MinuteFlag {
+  Governance
+  Decision
+  Scope
+}
+
 model Minute {
   id                String        @id @default(uuid()) @db.Uuid
   orgId             String        @map("org_id") @db.Uuid
@@ -146,6 +155,10 @@ model Minute {
   description       String?
   type              MinuteType    @default(Note)
   status            MinuteStatus  @default(New)
+  // Optional governance classification (Governance | Decision | Scope).
+  // Null means the minute is not flagged. Indexed so "find all decisions /
+  // scope items" queries stay cheap.
+  flag              MinuteFlag?
   tags              String?
 
   // follow-up chain: null means new minute, set means this updates that parent minute
@@ -175,6 +188,7 @@ model Minute {
   @@index([orgId])
   @@index([meetingId])
   @@index([parentMinuteId])
+  @@index([orgId, flag])
   @@map("minutes")
 }
 

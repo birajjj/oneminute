@@ -4,6 +4,7 @@
 
 import { db } from "@/lib/db";
 import { generateJson } from "./provider";
+import { normalizeFlag, type MinuteFlagValue } from "@/lib/minutes/flags";
 
 export interface PlanMinute {
   type: "new" | "followup";
@@ -15,6 +16,9 @@ export interface PlanMinute {
   description: string;
   minuteType: "Note" | "To-Do" | "Action" | "Devops";
   status: string;
+  // Governance classification the AI suggests: "Governance" | "Decision" |
+  // "Scope", or null when the minute isn't a governance item.
+  flag: MinuteFlagValue | null;
   assignedTo: string;
   dueDate: string;
   isDevopsItem: boolean;
@@ -98,6 +102,7 @@ const responseSchema = {
           description: { type: "STRING" },
           minuteType: { type: "STRING" },
           status: { type: "STRING" },
+          flag: { type: "STRING" },
           assignedTo: { type: "STRING" },
           dueDate: { type: "STRING" },
           isDevopsItem: { type: "BOOLEAN" },
@@ -141,6 +146,7 @@ export async function buildAutoPlan(
       ? m.minuteType
       : "Note") as PlanMinute["minuteType"],
     status: m.status || "New",
+    flag: normalizeFlag(m.flag),
     assignedTo: m.assignedTo || "",
     dueDate: m.dueDate || "",
     isDevopsItem: !!m.isDevopsItem,
@@ -271,6 +277,7 @@ function buildPrompt(transcript: string, ctx: Context): string {
   lines.push(`- meeting.meetingDate: YYYY-MM-DD (default ${today}).`);
   lines.push("- assignedTo must exactly match an allowed user or empty string.");
   lines.push("- minuteType one of: Note, To-Do, Action, Devops.");
+  lines.push("- flag: governance classification. Set 'Decision' for a decision that was made, 'Scope' for a change to project scope (in/out of scope), 'Governance' for a governance/compliance/policy point. Use empty string when the minute is none of these (the default).");
   lines.push("- dueDate: YYYY-MM-DD or empty. confidence: high|medium|low.");
   lines.push("- summary: 2-3 sentences.");
   lines.push("");

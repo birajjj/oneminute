@@ -1,6 +1,11 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import {
+  MINUTE_FLAGS,
+  FLAG_BADGE_CLASS,
+  type MinuteFlagValue
+} from "@/lib/minutes/flags";
 
 export interface BrowseMinute {
   id: string;
@@ -10,6 +15,7 @@ export interface BrowseMinute {
   description: string | null;
   type: string;
   status: string;
+  flag: MinuteFlagValue | null;
   isFollowUp: boolean;
   isPersistent: boolean;
   threadCount: number;
@@ -24,6 +30,7 @@ export interface ThreadEntry {
   description: string | null;
   type: string;
   status: string;
+  flag: MinuteFlagValue | null;
   date: string;
   meetingTitle: string;
   isRoot: boolean;
@@ -66,6 +73,40 @@ function shortDate(iso: string): string {
   return `${dd}/${mm}/${yy}`;
 }
 
+// Governance flag filter. "decision_scope" is the common "find the decisions
+// and scope items" view; "any" = any flagged minute.
+type FlagFilter = "all" | "any" | "decision_scope" | MinuteFlagValue;
+
+const FLAG_FILTER_OPTIONS: { value: FlagFilter; label: string }[] = [
+  { value: "all", label: "All minutes" },
+  { value: "any", label: "🏷 Any flag" },
+  { value: "decision_scope", label: "Decisions & Scope" },
+  ...MINUTE_FLAGS.map((f) => ({ value: f as FlagFilter, label: f }))
+];
+
+function minuteMatchesFlag(flag: MinuteFlagValue | null, f: FlagFilter): boolean {
+  switch (f) {
+    case "all":
+      return true;
+    case "any":
+      return flag !== null;
+    case "decision_scope":
+      return flag === "Decision" || flag === "Scope";
+    default:
+      return flag === f;
+  }
+}
+
+// Small badge shown wherever a flagged minute appears.
+function FlagBadge({ flag }: { flag: MinuteFlagValue | null }) {
+  if (!flag) return null;
+  return (
+    <span className={`rounded px-1.5 py-0.5 text-[10px] font-semibold ${FLAG_BADGE_CLASS[flag]}`}>
+      🏷 {flag}
+    </span>
+  );
+}
+
 export default function BrowseClient({
   meetings,
   projects,
@@ -80,6 +121,7 @@ export default function BrowseClient({
   devopsBaseUrl: string;
 }) {
   const [projectFilter, setProjectFilter] = useState<string>("all");
+  const [flagFilter, setFlagFilter] = useState<FlagFilter>("all");
   const [selectedId, setSelectedId] = useState<string | null>(meetings[0]?.id ?? null);
   const [search, setSearch] = useState("");
   const [openThreadRoot, setOpenThreadRoot] = useState<string | null>(null);
@@ -89,6 +131,10 @@ export default function BrowseClient({
     let list = meetings;
     if (projectFilter !== "all") {
       list = list.filter((m) => m.projectId === projectFilter);
+    }
+    if (flagFilter !== "all") {
+      // Only surface meetings that actually contain a matching flagged minute.
+      list = list.filter((m) => m.minutes.some((mn) => minuteMatchesFlag(mn.flag, flagFilter)));
     }
     if (search.trim()) {
       const q = search.toLowerCase();
@@ -100,28 +146,43 @@ export default function BrowseClient({
       );
     }
     return list;
-  }, [meetings, projectFilter, search]);
+  }, [meetings, projectFilter, flagFilter, search]);
+
+  // Total matching minutes across all meetings (for the filter summary line).
+  const flagMatchCount = useMemo(() => {
+    if (flagFilter === "all") return 0;
+    let scope = meetings;
+    if (projectFilter !== "all") scope = scope.filter((m) => m.projectId === projectFilter);
+    return scope.reduce(
+      (n, m) => n + m.minutes.filter((mn) => minuteMatchesFlag(mn.flag, flagFilter)).length,
+      0
+    );
+  }, [meetings, projectFilter, flagFilter]);
 
   const selected = useMemo(
-    () => meetings.find((m) => m.id === selectedId) ?? filteredMeetings[0] ?? null,
-    [meetings, selectedId, filteredMeetings]
+    () => filteredMeetings.find((m) => m.id === selectedId) ?? filteredMeetings[0] ?? null,
+    [selectedId, filteredMeetings]
   );
 
-  // Areas present in the selected meeting (tabs)
+  // Minutes of the selected meeting after applying the flag filter.
+  const selectedMinutes = useMemo(
+    () => (selected ? selected.minutes.filter((m) => minuteMatchesFlag(m.flag, flagFilter)) : []),
+    [selected, flagFilter]
+  );
+
+  // Areas present in the selected meeting (tabs). When a flag filter is active,
+  // only show areas that still have a matching minute.
   const areas = useMemo(() => {
-    if (!selected) return [];
     const set = new Set<string>();
-    selected.minutes.forEach((m) => set.add(m.area || "General"));
-    if (set.size === 0) set.add("General");
+    selectedMinutes.forEach((m) => set.add(m.area || "General"));
+    if (set.size === 0 && flagFilter === "all") set.add("General");
     return Array.from(set);
-  }, [selected]);
+  }, [selectedMinutes, flagFilter]);
 
   const [activeArea, setActiveArea] = useState<string>("General");
   const currentArea = areas.includes(activeArea) ? activeArea : areas[0] ?? "General";
 
-  const areaMinutes = selected
-    ? selected.minutes.filter((m) => (m.area || "General") === currentArea)
-    : [];
+  const areaMinutes = selectedMinutes.filter((m) => (m.area || "General") === currentArea);
 
   return (
     <div className="min-h-screen bg-slate-50">
@@ -135,6 +196,22 @@ export default function BrowseClient({
             placeholder="Search notes…"
             className="w-64 rounded-full border border-slate-300 px-4 py-1.5 text-sm"
           />
+          <select
+            value={flagFilter}
+            onChange={(e) => setFlagFilter(e.target.value as FlagFilter)}
+            title="Filter minutes by governance flag"
+            className={`rounded-full border px-3 py-1.5 text-sm ${
+              flagFilter === "all"
+                ? "border-slate-300 text-slate-600"
+                : "border-brand-purple bg-purple-50 font-medium text-brand-purple"
+            }`}
+          >
+            {FLAG_FILTER_OPTIONS.map((o) => (
+              <option key={o.value} value={o.value}>
+                {o.value === "all" ? o.label : `Flag: ${o.label}`}
+              </option>
+            ))}
+          </select>
           <a
             href="/auto"
             className="rounded bg-gradient-to-r from-brand-pink to-brand-purple px-3 py-1.5 text-sm font-medium text-white"
@@ -190,8 +267,31 @@ export default function BrowseClient({
 
         {/* Main */}
         <main className="flex-1 p-6">
+          {flagFilter !== "all" && (
+            <div className="mb-4 flex items-center justify-between rounded-lg border border-purple-200 bg-purple-50 px-4 py-2 text-sm text-brand-purple">
+              <span>
+                Showing <strong>{flagMatchCount}</strong> minute{flagMatchCount === 1 ? "" : "s"} flagged{" "}
+                <strong>
+                  {flagFilter === "any"
+                    ? "with any flag"
+                    : flagFilter === "decision_scope"
+                    ? "Decision or Scope"
+                    : flagFilter}
+                </strong>
+                {" "}across {filteredMeetings.length} meeting{filteredMeetings.length === 1 ? "" : "s"}.
+              </span>
+              <button
+                onClick={() => setFlagFilter("all")}
+                className="rounded border border-purple-300 px-2 py-0.5 text-xs hover:bg-purple-100"
+              >
+                Clear filter
+              </button>
+            </div>
+          )}
           {!selected ? (
-            <p className="text-slate-500">Select a meeting.</p>
+            <p className="text-slate-500">
+              {flagFilter === "all" ? "Select a meeting." : "No minutes match this flag."}
+            </p>
           ) : (
             <>
               {/* Meeting detail card */}
@@ -279,6 +379,7 @@ export default function BrowseClient({
                               <span className="rounded bg-white px-1.5 py-0.5 text-[11px] text-slate-500">
                                 {mn.status}
                               </span>
+                              <FlagBadge flag={mn.flag} />
                               {isOpenPending && (
                                 <span className="rounded bg-amber-200 px-1.5 py-0.5 text-[10px] font-semibold text-amber-800">
                                   ● pending
@@ -449,6 +550,7 @@ function EntryModal({
         <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">
           <span className={`rounded px-1.5 py-0.5 font-medium ${typeBadgeClass(entry.type)}`}>{entry.type}</span>
           <span className="rounded bg-slate-100 px-1.5 py-0.5 text-slate-500">{entry.status}</span>
+          <FlagBadge flag={entry.flag} />
           {open && (
             <span className="rounded bg-amber-200 px-1.5 py-0.5 font-semibold text-amber-800">● still open</span>
           )}
@@ -510,6 +612,7 @@ function ThreadModal({
                     {e.type}
                   </span>
                   <span className="rounded bg-slate-100 px-1.5 py-0.5 text-slate-500">{e.status}</span>
+                  <FlagBadge flag={e.flag} />
                   {e.isRoot && (
                     <span className="rounded bg-brand-blue px-1.5 py-0.5 text-white">original</span>
                   )}
