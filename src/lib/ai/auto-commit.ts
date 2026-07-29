@@ -92,6 +92,20 @@ export async function commitAutoPlan(
     let minutesSaved = 0;
     for (const m of approved) {
       try {
+        // Option A: every follow-up links to the THREAD ROOT, not the
+        // immediate predecessor. If the AI referenced a minute that is itself
+        // a follow-up, walk up to its root so the whole thread shares one parent.
+        let rootId: string | null = null;
+        if (m.type === "followup" && m.referenceMinuteId) {
+          const referenced = await tx.minute.findUnique({
+            where: { id: m.referenceMinuteId },
+            select: { id: true, parentMinuteId: true }
+          });
+          if (referenced) {
+            rootId = referenced.parentMinuteId ?? referenced.id;
+          }
+        }
+
         await tx.minute.create({
           data: {
             orgId,
@@ -101,10 +115,7 @@ export async function commitAutoPlan(
             description: m.description || null,
             type: MINUTE_TYPE_MAP[m.minuteType] ?? "Note",
             status: STATUS_MAP[m.status] ?? "New",
-            parentMinuteId:
-              m.type === "followup" && m.referenceMinuteId
-                ? m.referenceMinuteId
-                : null,
+            parentMinuteId: rootId,
             // Action-like items persist into follow-up meetings until Completed
             isPersistent: ["To-Do", "Action", "Devops"].includes(m.minuteType),
             dueDate: parseDate(m.dueDate),
@@ -112,6 +123,18 @@ export async function commitAutoPlan(
           }
         });
         minutesSaved += 1;
+
+        // Auto-update the thread root's status when this follow-up implies one.
+        // e.g. statusChange "In Progress -> Completed" closes the pending item.
+        if (rootId && m.statusChange) {
+          const newStatus = statusFromChange(m.statusChange);
+          if (newStatus) {
+            await tx.minute.update({
+              where: { id: rootId },
+              data: { status: newStatus }
+            });
+          }
+        }
       } catch (e) {
         warnings.push(
           `Failed to save "${m.title}": ${e instanceof Error ? e.message : "unknown"}`
@@ -174,4 +197,13 @@ function parseDate(s: string | null | undefined): Date | null {
   if (!s || !s.trim()) return null;
   const d = new Date(s);
   return isNaN(d.getTime()) ? null : d;
+}
+
+// Reads the target status out of an AI statusChange string like
+// "In Progress -> Completed" and maps it to our enum. Returns null if the
+// change doesn't name a status we recognise.
+function statusFromChange(change: string): MinuteStatus | null {
+  const parts = change.split(/->|→|=>/);
+  const target = (parts[parts.length - 1] || "").trim();
+  return STATUS_MAP[target] ?? null;
 }

@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 
 export interface BrowseMinute {
   id: string;
+  rootId: string;
   area: string;
   title: string;
   description: string | null;
@@ -11,8 +12,20 @@ export interface BrowseMinute {
   status: string;
   isFollowUp: boolean;
   isPersistent: boolean;
+  threadCount: number;
   assignedTo: string | null;
   dueDate: string | null;
+}
+
+export interface ThreadEntry {
+  id: string;
+  title: string;
+  description: string | null;
+  type: string;
+  status: string;
+  date: string;
+  meetingTitle: string;
+  isRoot: boolean;
 }
 
 export interface BrowseMeeting {
@@ -54,15 +67,18 @@ function shortDate(iso: string): string {
 export default function BrowseClient({
   meetings,
   projects,
+  threads,
   userName
 }: {
   meetings: BrowseMeeting[];
   projects: BrowseProject[];
+  threads: Record<string, ThreadEntry[]>;
   userName: string;
 }) {
   const [projectFilter, setProjectFilter] = useState<string>("all");
   const [selectedId, setSelectedId] = useState<string | null>(meetings[0]?.id ?? null);
   const [search, setSearch] = useState("");
+  const [openThreadRoot, setOpenThreadRoot] = useState<string | null>(null);
 
   const filteredMeetings = useMemo(() => {
     let list = meetings;
@@ -232,52 +248,148 @@ export default function BrowseClient({
                 <p className="text-slate-500">No minutes available for this area.</p>
               ) : (
                 <div className="space-y-3">
-                  {areaMinutes.map((mn) => (
-                    <div
-                      key={mn.id}
-                      className={`rounded-lg border-l-4 p-4 ${
-                        mn.isFollowUp
-                          ? "border-l-amber-500 bg-amber-50"
-                          : "border-l-brand-blue bg-blue-50"
-                      }`}
-                    >
-                      <div className="flex items-start justify-between">
-                        <div className="flex-1">
-                          <div className="flex flex-wrap items-center gap-2">
-                            <span className="font-semibold text-brand-blue">{mn.title}</span>
-                            <span className="text-xs italic text-slate-500">{mn.type}</span>
-                            <span className="rounded bg-white px-1.5 py-0.5 text-[11px] text-slate-500">
-                              {mn.status}
-                            </span>
-                            {mn.isPersistent && (
-                              <span className="rounded bg-purple-100 px-1.5 py-0.5 text-[10px] text-purple-700">
-                                persists
+                  {areaMinutes.map((mn) => {
+                    const isOpenPending =
+                      mn.isPersistent && mn.status !== "Completed" && mn.status !== "Cancelled";
+                    return (
+                      <div
+                        key={mn.id}
+                        className={`rounded-lg border-l-4 p-4 ${
+                          mn.isFollowUp
+                            ? "border-l-amber-500 bg-amber-50"
+                            : "border-l-brand-blue bg-blue-50"
+                        }`}
+                      >
+                        <div className="flex items-start justify-between">
+                          <div className="flex-1">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <button
+                                onClick={() => setOpenThreadRoot(mn.rootId)}
+                                className="font-semibold text-brand-blue hover:underline"
+                                title="View full history of this item"
+                              >
+                                {mn.title}
+                              </button>
+                              <span className="text-xs italic text-slate-500">{mn.type}</span>
+                              <span className="rounded bg-white px-1.5 py-0.5 text-[11px] text-slate-500">
+                                {mn.status}
                               </span>
-                            )}
-                            {mn.dueDate && (
-                              <span className="text-[11px] text-slate-400">
-                                Due {shortDate(mn.dueDate)}
-                              </span>
+                              {isOpenPending && (
+                                <span className="rounded bg-amber-200 px-1.5 py-0.5 text-[10px] font-semibold text-amber-800">
+                                  ● pending
+                                </span>
+                              )}
+                              {mn.threadCount > 1 && (
+                                <button
+                                  onClick={() => setOpenThreadRoot(mn.rootId)}
+                                  className="rounded bg-indigo-100 px-1.5 py-0.5 text-[10px] font-medium text-indigo-700 hover:bg-indigo-200"
+                                >
+                                  🔗 {mn.threadCount} in thread
+                                </button>
+                              )}
+                              {mn.dueDate && (
+                                <span className="text-[11px] text-slate-400">
+                                  Due {shortDate(mn.dueDate)}
+                                </span>
+                              )}
+                            </div>
+                            {mn.description && (
+                              <div className="mt-2 rounded border border-white bg-white/60 px-3 py-2 text-sm text-slate-700">
+                                {mn.description}
+                              </div>
                             )}
                           </div>
-                          {mn.description && (
-                            <div className="mt-2 rounded border border-white bg-white/60 px-3 py-2 text-sm text-slate-700">
-                              {mn.description}
-                            </div>
-                          )}
+                          <label className="ml-4 flex shrink-0 items-center gap-1 text-xs text-slate-500">
+                            <input type="checkbox" disabled checked={mn.status === "Completed"} />
+                            Mark As Complete
+                          </label>
                         </div>
-                        <label className="ml-4 flex shrink-0 items-center gap-1 text-xs text-slate-500">
-                          <input type="checkbox" disabled checked={mn.status === "Completed"} />
-                          Mark As Complete
-                        </label>
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </>
           )}
         </main>
+      </div>
+
+      {/* Thread history modal */}
+      {openThreadRoot && (
+        <ThreadModal
+          entries={threads[openThreadRoot] ?? []}
+          onClose={() => setOpenThreadRoot(null)}
+        />
+      )}
+    </div>
+  );
+}
+
+function typeBadgeClass(type: string): string {
+  switch (type) {
+    case "Action":
+      return "bg-blue-100 text-blue-700";
+    case "To-Do":
+      return "bg-emerald-100 text-emerald-700";
+    case "Devops":
+      return "bg-orange-100 text-orange-700";
+    default:
+      return "bg-slate-100 text-slate-600";
+  }
+}
+
+function ThreadModal({
+  entries,
+  onClose
+}: {
+  entries: ThreadEntry[];
+  onClose: () => void;
+}) {
+  const rootTitle = entries.find((e) => e.isRoot)?.title ?? entries[entries.length - 1]?.title ?? "Thread";
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+      onClick={onClose}
+    >
+      <div
+        className="max-h-[85vh] w-full max-w-lg overflow-y-auto rounded-lg bg-white p-6 shadow-xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="mb-4 flex items-start justify-between">
+          <div>
+            <div className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+              Thread history ({entries.length})
+            </div>
+            <h3 className="text-lg font-bold">{rootTitle}</h3>
+          </div>
+          <button onClick={onClose} className="text-2xl leading-none text-slate-400 hover:text-slate-600">
+            ×
+          </button>
+        </div>
+
+        <div className="space-y-4">
+          {entries.map((e, i) => (
+            <div key={e.id} className={i < entries.length - 1 ? "border-b border-slate-100 pb-4" : ""}>
+              <div className="font-semibold text-slate-800">{e.title}</div>
+              {e.description && (
+                <div className="mt-1 whitespace-pre-wrap text-sm text-slate-600">{e.description}</div>
+              )}
+              <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
+                <span className={`rounded px-1.5 py-0.5 font-medium ${typeBadgeClass(e.type)}`}>
+                  {e.type}
+                </span>
+                <span className="rounded bg-slate-100 px-1.5 py-0.5 text-slate-500">{e.status}</span>
+                {e.isRoot && (
+                  <span className="rounded bg-brand-blue px-1.5 py-0.5 text-white">original</span>
+                )}
+                <span className="text-slate-400">
+                  {e.meetingTitle} · {fmtDate(e.date)}
+                </span>
+              </div>
+            </div>
+          ))}
+        </div>
       </div>
     </div>
   );
