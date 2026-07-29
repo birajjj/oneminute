@@ -226,9 +226,17 @@ export default function BrowseClient({
                   </div>
                 )}
 
-                <button className="mt-4 rounded bg-emerald-600 px-4 py-2 text-sm font-medium text-white opacity-60" disabled title="Coming soon">
-                  📄 Generate Report
-                </button>
+                <div className="mt-4 flex items-center gap-2">
+                  <a
+                    href={`/followup?parent=${selected.id}`}
+                    className="rounded bg-gradient-to-r from-amber-500 to-brand-purple px-4 py-2 text-sm font-medium text-white"
+                  >
+                    ↪ Follow up this meeting
+                  </a>
+                  <button className="rounded bg-emerald-600 px-4 py-2 text-sm font-medium text-white opacity-60" disabled title="Coming soon">
+                    📄 Generate Report
+                  </button>
+                </div>
               </div>
 
               {/* Area tabs */}
