@@ -622,22 +622,25 @@ export default function BrowseClient({
                               </table>
                             )}
                           </div>
-                          <label className="ml-4 flex shrink-0 items-center gap-1 text-xs text-slate-500">
-                            <input
-                              type="checkbox"
-                              checked={displayStatus === "Completed"}
-                              onChange={(e) => {
-                                // On a follow-up item, checking complete records an entry in
-                                // this meeting; otherwise it's a simple status flip.
-                                if (mn.isFollowUp && e.target.checked && selected) {
-                                  addCompletionEntry(editId, selected.id);
-                                } else {
-                                  saveMinute(editId, { status: e.target.checked ? "Completed" : "New" });
-                                }
-                              }}
-                            />
-                            Mark As Complete
-                          </label>
+                          {/* Mark As Complete only on follow-up minutes; new/root
+                              minutes (e.g. in a fresh meeting) use the status dropdown. */}
+                          {mn.isFollowUp && (
+                            <label className="ml-4 flex shrink-0 items-center gap-1 text-xs text-slate-500">
+                              <input
+                                type="checkbox"
+                                checked={displayStatus === "Completed"}
+                                onChange={(e) => {
+                                  // Checking records a completion entry in this meeting; unchecking reopens.
+                                  if (e.target.checked && selected) {
+                                    addCompletionEntry(editId, selected.id);
+                                  } else {
+                                    saveMinute(editId, { status: "New" });
+                                  }
+                                }}
+                              />
+                              Mark As Complete
+                            </label>
+                          )}
                         </div>
                       </div>
                     );
