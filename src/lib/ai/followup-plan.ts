@@ -4,6 +4,10 @@
 // update — plus any brand-new items raised. Uses the shared provider dispatcher
 // (Claude when AI_PROVIDER=anthropic, else Gemini).
 //
+// The AI references items by a short 1-based `ref` number, NOT their UUID —
+// models copy small integers reliably but mangle long UUIDs. We map ref -> id
+// server-side, so the caller still gets real rootMinuteIds.
+//
 // SERVER-ONLY.
 
 import { generateJson } from "./provider";
@@ -34,6 +38,20 @@ export interface FollowUpPlan {
   summary: string;
 }
 
+// Shape the AI returns (ref-based).
+interface RawPlan {
+  updates?: { ref: number; discussed: boolean; note: string; status: string }[];
+  newMinutes?: {
+    area: string;
+    title: string;
+    description: string;
+    minuteType: string;
+    status: string;
+    assignedTo: string;
+  }[];
+  summary?: string;
+}
+
 const responseSchema = {
   type: "OBJECT",
   properties: {
@@ -42,12 +60,12 @@ const responseSchema = {
       items: {
         type: "OBJECT",
         properties: {
-          rootMinuteId: { type: "STRING" },
+          ref: { type: "INTEGER" },
           discussed: { type: "BOOLEAN" },
           note: { type: "STRING" },
           status: { type: "STRING" }
         },
-        required: ["rootMinuteId", "discussed"]
+        required: ["ref", "discussed"]
       }
     },
     newMinutes: {
@@ -76,7 +94,7 @@ export async function buildFollowUpPlan(
   transcript: string
 ): Promise<FollowUpPlan> {
   const prompt = buildPrompt(openItems, users, transcript);
-  const { data } = await generateJson<FollowUpPlan>({
+  const { data } = await generateJson<RawPlan>({
     prompt,
     schema: responseSchema,
     temperature: 0.3
@@ -84,17 +102,21 @@ export async function buildFollowUpPlan(
 
   if (!data) return { updates: [], newMinutes: [], summary: "" };
 
-  const validIds = new Set(openItems.map((i) => i.id));
-  const updates = (data.updates || [])
-    .filter((u) => validIds.has(u.rootMinuteId))
-    .map((u) => ({
-      rootMinuteId: u.rootMinuteId,
+  // Map each ref (1-based) back to the real open-item id.
+  const updates: FollowUpUpdate[] = [];
+  for (const u of data.updates || []) {
+    const idx = Number(u.ref) - 1;
+    const item = openItems[idx];
+    if (!item) continue;
+    updates.push({
+      rootMinuteId: item.id,
       discussed: !!u.discussed,
       note: u.note || "",
       status: normalizeStatus(u.status)
-    }));
+    });
+  }
 
-  const newMinutes = (data.newMinutes || [])
+  const newMinutes: FollowUpNewMinute[] = (data.newMinutes || [])
     .filter((m) => m.title && m.title.trim())
     .map((m) => ({
       area: m.area || "General",
@@ -119,22 +141,23 @@ function buildPrompt(openItems: OpenItem[], users: string[], transcript: string)
   const lines: string[] = [];
   lines.push("You are updating a FOLLOW-UP meeting's minutes.");
   lines.push(
-    "Below are the OPEN action items carried forward from earlier meetings, each with an id."
+    "Below are the OPEN action items carried forward from earlier meetings, each with a ref number."
   );
-  lines.push("Read the transcript and, for EACH open item, decide:");
+  lines.push("Read the transcript, then return an `updates` array with EXACTLY ONE entry per open item.");
+  lines.push("For each item, set:");
+  lines.push("- ref: the item's ref number shown below (1-based). Copy it exactly.");
   lines.push("- discussed: was this specific item discussed in this meeting? (true/false)");
-  lines.push("- note: a ONE-sentence update of what was said about it (empty if not discussed).");
+  lines.push("- note: a ONE-sentence update of what was said about it (empty string if not discussed).");
   lines.push(
     "- status: the item's status after this meeting — one of New, Initiated, In Progress, Completed, Cancelled. Keep the current status if unchanged or not discussed."
   );
-  lines.push("Also capture anything raised for the FIRST time as newMinutes.");
+  lines.push("Also capture anything raised for the FIRST time as `newMinutes`.");
   lines.push("");
   lines.push("### RULES");
-  lines.push("- Only use rootMinuteId values from the list below; never invent ids.");
-  lines.push("- If an item was not mentioned, set discussed=false and keep its current status.");
+  lines.push("- The updates array MUST have one entry for every open item listed below, by ref.");
   lines.push("- Mark status Completed only when the transcript clearly says it is done/finished.");
   lines.push("- newMinutes.minuteType is one of: Note, To-Do, Action, Devops.");
-  lines.push("- assignedTo must exactly match an allowed user, or be empty.");
+  lines.push("- assignedTo must exactly match an allowed user, or be an empty string.");
   lines.push("");
   lines.push(`Allowed users: [${users.join(", ")}]`);
   lines.push("");
@@ -142,12 +165,12 @@ function buildPrompt(openItems: OpenItem[], users: string[], transcript: string)
   if (openItems.length === 0) {
     lines.push("(none)");
   } else {
-    for (const it of openItems) {
+    openItems.forEach((it, i) => {
       const who = it.assignedTo ? `, assignee ${it.assignedTo}` : "";
       lines.push(
-        `- rootMinuteId=${it.id} [${it.status}] ${it.type}: ${it.title} (area ${it.area}${who})`
+        `- ref=${i + 1} [${it.status}] ${it.type}: ${it.title} (area ${it.area}${who})`
       );
-    }
+    });
   }
   lines.push("");
   lines.push("### Transcript");

@@ -505,6 +505,10 @@ export default function FollowUpClient({
                     className="rounded border border-slate-300 p-1"
                   >
                     <option value="">— Unassigned —</option>
+                    {/* Keep the AI's suggestion selectable even if not in the roster */}
+                    {m.assignedTo && !members.some((mem) => mem.displayName === m.assignedTo) && (
+                      <option value={m.assignedTo}>{m.assignedTo} (AI)</option>
+                    )}
                     {members.map((mem) => (
                       <option key={mem.id} value={mem.displayName}>{mem.displayName}</option>
                     ))}
