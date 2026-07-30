@@ -92,7 +92,7 @@ export default function FollowUpClient({
   const [result, setResult] = useState<{ updated: number; created: number; warnings: string[] } | null>(null);
 
   // Optional AI pre-fill: record → transcribe → map to the open items below.
-  const recorder = useSegmentRecorder();
+  const recorder = useSegmentRecorder(`oneminute:followup:${data.parent.id}`);
   const [analyzing, setAnalyzing] = useState(false);
   const [aiFilled, setAiFilled] = useState<Set<string>>(new Set());
 
@@ -221,6 +221,7 @@ export default function FollowUpClient({
       });
       if (!res.ok) throw new Error(await res.text());
       setResult(await res.json());
+      recorder.clearTranscript(); // saved — the draft is done with
     } catch (e) {
       setError(e instanceof Error ? e.message : "save failed");
     } finally {
@@ -297,6 +298,14 @@ export default function FollowUpClient({
             className="rounded bg-brand-purple px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50"
           >
             {analyzing ? "Analyzing…" : "AI pre-fill ↓"}
+          </button>
+          <button
+            onClick={recorder.clearTranscript}
+            disabled={!recorder.transcript.trim() || recorder.isRecording || recorder.isTranscribing || analyzing}
+            className="rounded border border-slate-300 px-3 py-1.5 text-sm text-slate-600 disabled:opacity-40"
+            title="Clear the transcript"
+          >
+            Clear
           </button>
           <label className="ml-2 flex items-center gap-1 text-sm">
             <input type="checkbox" checked={recorder.captureMic} onChange={(e) => recorder.setCaptureMic(e.target.checked)} disabled={recorder.isRecording} /> Mic

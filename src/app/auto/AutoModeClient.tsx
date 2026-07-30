@@ -51,6 +51,7 @@ export default function AutoModeClient({
   const {
     transcript,
     setTranscript,
+    clearTranscript,
     isRecording,
     isTranscribing,
     captureMic,
@@ -62,7 +63,7 @@ export default function AutoModeClient({
     error: recorderError,
     startRecording,
     stopRecording
-  } = useSegmentRecorder();
+  } = useSegmentRecorder("oneminute:auto:transcript");
 
   async function analyze() {
     if (!transcript.trim()) return;
@@ -96,14 +97,16 @@ export default function AutoModeClient({
       const r = await res.json();
       setResult(r);
       setStep("done");
+      clearTranscript(); // committed — the draft is done with
     } catch (e) {
       setError("Commit failed: " + (e instanceof Error ? e.message : "unknown"));
     }
   }
 
+  // Note: reset does NOT clear the transcript, so "Start Over" keeps it for
+  // re-analysis. It's cleared on a successful commit, or via the Clear button.
   function reset() {
     setStep("record");
-    setTranscript("");
     setPlan(null);
     setResult(null);
     setError("");
@@ -135,6 +138,14 @@ export default function AutoModeClient({
               className="rounded bg-brand-purple px-4 py-2 font-medium text-white disabled:opacity-50"
             >
               Analyze with AI →
+            </button>
+            <button
+              onClick={clearTranscript}
+              disabled={!transcript.trim() || isRecording || isTranscribing}
+              className="rounded border border-slate-300 px-3 py-2 text-sm text-slate-600 disabled:opacity-40"
+              title="Clear the transcript"
+            >
+              Clear
             </button>
             <label className="ml-2 flex items-center gap-1 text-sm">
               <input type="checkbox" checked={captureMic} onChange={(e) => setCaptureMic(e.target.checked)} disabled={isRecording} /> Mic

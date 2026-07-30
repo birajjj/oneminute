@@ -4,13 +4,14 @@
 // done transcribing by the time you press Stop. Segmenting is invisible to the
 // user: just Start / Stop. Shared by Auto Mode and the follow-up workspace.
 
-import { useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 const SEGMENT_MS = 10 * 60 * 1000;
 
 export interface SegmentRecorder {
   transcript: string;
   setTranscript: (v: string) => void;
+  clearTranscript: () => void;
   isRecording: boolean;
   isTranscribing: boolean;
   captureMic: boolean;
@@ -24,8 +25,36 @@ export interface SegmentRecorder {
   stopRecording: () => Promise<void>;
 }
 
-export function useSegmentRecorder(): SegmentRecorder {
-  const [transcript, setTranscript] = useState("");
+export function useSegmentRecorder(storageKey?: string): SegmentRecorder {
+  const [transcript, setTranscriptState] = useState("");
+
+  // Persist the transcript so a draft survives analyze/commit errors, "Start
+  // Over", navigation, and refreshes. Cleared only by clearTranscript (which the
+  // caller invokes after a successful save, or the user via a Clear button).
+  const setTranscript = useCallback(
+    (v: string) => {
+      setTranscriptState(v);
+      if (storageKey && typeof window !== "undefined") {
+        try {
+          if (v) window.localStorage.setItem(storageKey, v);
+          else window.localStorage.removeItem(storageKey);
+        } catch { /* storage unavailable */ }
+      }
+    },
+    [storageKey]
+  );
+
+  // Restore any saved draft on mount.
+  useEffect(() => {
+    if (!storageKey || typeof window === "undefined") return;
+    try {
+      const saved = window.localStorage.getItem(storageKey);
+      if (saved) setTranscriptState(saved);
+    } catch { /* ignore */ }
+  }, [storageKey]);
+
+  const clearTranscript = useCallback(() => setTranscript(""), [setTranscript]);
+
   const [isRecording, setIsRecording] = useState(false);
   const [isTranscribing, setIsTranscribing] = useState(false);
   const [captureMic, setCaptureMic] = useState(true);
@@ -185,6 +214,7 @@ export function useSegmentRecorder(): SegmentRecorder {
   return {
     transcript,
     setTranscript,
+    clearTranscript,
     isRecording,
     isTranscribing,
     captureMic,
