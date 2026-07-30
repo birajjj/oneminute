@@ -143,22 +143,21 @@ function buildPrompt(openItems: OpenItem[], users: string[], transcript: string)
   lines.push(
     "Below are the OPEN action items carried forward from earlier meetings, each with a ref number."
   );
-  lines.push("Read the transcript, then return an `updates` array with EXACTLY ONE entry per open item.");
-  lines.push("For each item, set:");
-  lines.push("- ref: the item's ref number shown below (1-based). Copy it exactly.");
-  lines.push("- discussed: was this specific item discussed in this meeting? (true/false)");
-  lines.push("- note: a ONE-sentence update of what was said about it (empty string if not discussed).");
-  lines.push(
-    "- status: the item's status after this meeting — one of New, Initiated, In Progress, Completed, Cancelled. Keep the current status if unchanged or not discussed."
-  );
-  lines.push("Also capture anything raised for the FIRST time as `newMinutes`.");
+  lines.push("Read the transcript and do BOTH tasks below. Both are equally important.");
   lines.push("");
-  lines.push("### RULES");
-  lines.push("- The updates array MUST have one entry for every open item listed below, by ref.");
-  lines.push("- Mark status Completed only when the transcript clearly says it is done/finished.");
-  lines.push("- newMinutes.minuteType is one of: Note, To-Do, Action, Devops.");
-  lines.push("- assignedTo must exactly match an allowed user, or be an empty string.");
+  lines.push("TASK 1 — Update every open item. Return `updates` with EXACTLY ONE entry per open item:");
+  lines.push("- ref: the item's ref number below (1-based). Copy it exactly.");
+  lines.push("- discussed: was this specific item discussed this meeting? (true/false)");
+  lines.push("- note: a ONE-sentence update of what was said (empty string if not discussed).");
+  lines.push("- status: New | Initiated | In Progress | Completed | Cancelled. Keep the current status if unchanged or not discussed; use Completed only when the transcript clearly says it is done.");
   lines.push("");
+  lines.push("TASK 2 — Capture NEW items. Return `newMinutes` with EVERY new to-do, action, decision,");
+  lines.push("or note raised this meeting that is NOT one of the open items above. Whenever a new task is");
+  lines.push("mentioned (e.g. \"let's set up X\", \"we need to do Y\", \"raise a bug for Z\", \"assign someone to W\"),");
+  lines.push("it MUST appear here. Each entry: title, description, minuteType (Note | To-Do | Action | Devops),");
+  lines.push("status, assignedTo. Return an empty array only if genuinely nothing new was raised.");
+  lines.push("");
+  lines.push("Rules: assignedTo must exactly match an allowed user or be an empty string.");
   lines.push(`Allowed users: [${users.join(", ")}]`);
   lines.push("");
   lines.push("### Open items");
