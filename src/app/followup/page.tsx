@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { loadFollowUpData } from "@/lib/followup";
+import { devopsConfigured } from "@/lib/devops";
 import AppShell from "@/components/AppShell";
 import FollowUpClient from "./FollowUpClient";
 
@@ -57,7 +58,7 @@ export default async function FollowUpPage({
 
   return (
     <AppShell meetings={shellMeetings} projects={projects} userName={user.displayName}>
-      <FollowUpClient data={data} members={members} devopsBaseUrl={devopsBaseUrl} />
+      <FollowUpClient data={data} members={members} devopsBaseUrl={devopsBaseUrl} devopsEnabled={devopsConfigured()} />
     </AppShell>
   );
 }

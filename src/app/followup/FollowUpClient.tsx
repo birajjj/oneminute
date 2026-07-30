@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { FollowUpData, OpenItem } from "@/lib/followup";
 import { useSegmentRecorder } from "@/lib/useSegmentRecorder";
 
@@ -14,10 +14,15 @@ interface Member {
 
 interface ItemUpdate {
   noUpdate: boolean;
+  type: string;
   status: string;
   note: string;
   assignedTo: string;
   dueDate: string;
+  devopsAction: string; // none | create | link
+  devopsProject: string;
+  devopsWorkItemType: string; // User Story | Bug
+  devopsWorkItemId: string;
 }
 
 interface NewMinute {
@@ -28,7 +33,15 @@ interface NewMinute {
   status: string;
   assignedTo: string;
   dueDate: string;
+  devopsAction: string;
+  devopsProject: string;
+  devopsWorkItemType: string;
+  devopsWorkItemId: string;
 }
+
+type DevopsPatch = Partial<
+  Pick<ItemUpdate, "devopsAction" | "devopsProject" | "devopsWorkItemType" | "devopsWorkItemId">
+>;
 
 function fmtDate(iso: string): string {
   if (!iso) return "";
@@ -43,11 +56,13 @@ function fmtDate(iso: string): string {
 export default function FollowUpClient({
   data,
   members,
-  devopsBaseUrl
+  devopsBaseUrl,
+  devopsEnabled
 }: {
   data: FollowUpData;
   members: Member[];
   devopsBaseUrl: string;
+  devopsEnabled: boolean;
 }) {
   const [title, setTitle] = useState(`${data.parent.title} — Follow-up`);
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
@@ -57,10 +72,15 @@ export default function FollowUpClient({
     for (const it of data.openItems) {
       init[it.id] = {
         noUpdate: false,
+        type: it.type,
         status: it.status,
         note: "",
         assignedTo: it.assignedTo ?? "",
-        dueDate: it.dueDate ? it.dueDate.slice(0, 10) : ""
+        dueDate: it.dueDate ? it.dueDate.slice(0, 10) : "",
+        devopsAction: "none",
+        devopsProject: "",
+        devopsWorkItemType: "User Story",
+        devopsWorkItemId: ""
       };
     }
     return init;
@@ -76,6 +96,18 @@ export default function FollowUpClient({
   const [analyzing, setAnalyzing] = useState(false);
   const [aiFilled, setAiFilled] = useState<Set<string>>(new Set());
 
+  // Real DevOps projects for the "Create work item" dropdown (lazy, like Auto).
+  const [devopsProjects, setDevopsProjects] = useState<{ id: string; name: string }[]>([]);
+  useEffect(() => {
+    if (!devopsEnabled) return;
+    let cancelled = false;
+    fetch("/api/devops/projects")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => { if (!cancelled && d?.projects) setDevopsProjects(d.projects); })
+      .catch(() => { /* leave empty -> free-text fallback */ });
+    return () => { cancelled = true; };
+  }, [devopsEnabled]);
+
   const byArea = useMemo(() => {
     const map: Record<string, OpenItem[]> = {};
     for (const it of data.openItems) (map[it.area] ??= []).push(it);
@@ -88,7 +120,10 @@ export default function FollowUpClient({
   function addNewMinute(area: string) {
     setNewMinutes((prev) => [
       ...prev,
-      { area, title: "", description: "", type: "Note", status: "New", assignedTo: "", dueDate: "" }
+      {
+        area, title: "", description: "", type: "Note", status: "New", assignedTo: "", dueDate: "",
+        devopsAction: "none", devopsProject: "", devopsWorkItemType: "User Story", devopsWorkItemId: ""
+      }
     ]);
   }
   function setNewMinute(i: number, patch: Partial<NewMinute>) {
@@ -120,19 +155,29 @@ export default function FollowUpClient({
   // Maps the AI's per-item updates onto the worklist and appends new minutes.
   // Only touches items the AI marked as discussed; the human still reviews all.
   function applyPlan(plan: {
-    updates?: { rootMinuteId: string; discussed: boolean; note: string; status: string }[];
-    newMinutes?: { area: string; title: string; description: string; minuteType: string; status: string; assignedTo: string }[];
+    updates?: { rootMinuteId: string; discussed: boolean; note: string; status: string; devopsAction: string; devopsWorkItemType: string; devopsWorkItemId: string }[];
+    newMinutes?: { area: string; title: string; description: string; minuteType: string; status: string; assignedTo: string; devopsAction: string; devopsWorkItemType: string; devopsWorkItemId: string }[];
   }) {
     const filled = new Set<string>();
     setUpdates((prev) => {
       const next = { ...prev };
       for (const u of plan.updates ?? []) {
         if (!next[u.rootMinuteId] || !u.discussed) continue;
+        const wantsDevops = u.devopsAction === "create" || u.devopsAction === "link";
         next[u.rootMinuteId] = {
           ...next[u.rootMinuteId],
           noUpdate: false,
           note: u.note || next[u.rootMinuteId].note,
-          status: STATUS_OPTIONS.includes(u.status) ? u.status : next[u.rootMinuteId].status
+          status: STATUS_OPTIONS.includes(u.status) ? u.status : next[u.rootMinuteId].status,
+          // A DevOps suggestion arms the controls (type -> Devops) for review.
+          ...(wantsDevops
+            ? {
+                type: "Devops",
+                devopsAction: u.devopsAction,
+                devopsWorkItemType: u.devopsWorkItemType === "Bug" ? "Bug" : "User Story",
+                devopsWorkItemId: u.devopsWorkItemId || ""
+              }
+            : {})
         };
         filled.add(u.rootMinuteId);
       }
@@ -140,15 +185,22 @@ export default function FollowUpClient({
     });
     setAiFilled(filled);
 
-    const mapped: NewMinute[] = (plan.newMinutes ?? []).map((m) => ({
-      area: m.area || data.areas[0] || "General",
-      title: m.title || "",
-      description: m.description || "",
-      type: TYPE_OPTIONS.includes(m.minuteType) ? m.minuteType : "Note",
-      status: STATUS_OPTIONS.includes(m.status) ? m.status : "New",
-      assignedTo: m.assignedTo || "",
-      dueDate: ""
-    }));
+    const mapped: NewMinute[] = (plan.newMinutes ?? []).map((m) => {
+      const wantsDevops = m.devopsAction === "create" || m.devopsAction === "link";
+      return {
+        area: m.area || data.areas[0] || "General",
+        title: m.title || "",
+        description: m.description || "",
+        type: wantsDevops ? "Devops" : TYPE_OPTIONS.includes(m.minuteType) ? m.minuteType : "Note",
+        status: STATUS_OPTIONS.includes(m.status) ? m.status : "New",
+        assignedTo: m.assignedTo || "",
+        dueDate: "",
+        devopsAction: wantsDevops ? m.devopsAction : "none",
+        devopsProject: "",
+        devopsWorkItemType: m.devopsWorkItemType === "Bug" ? "Bug" : "User Story",
+        devopsWorkItemId: m.devopsWorkItemId || ""
+      };
+    });
     if (mapped.length) setNewMinutes((prev) => [...prev, ...mapped]);
   }
 
@@ -389,7 +441,21 @@ export default function FollowUpClient({
                               placeholder="What happened with this item?"
                               className="mt-2 w-full rounded border border-slate-300 p-2 text-sm"
                             />
-                            <div className="mt-1 grid grid-cols-3 gap-1 text-xs">
+                            <div className="mt-1 grid grid-cols-2 gap-1 text-xs sm:grid-cols-4">
+                              <select
+                                value={u.type}
+                                onChange={(e) =>
+                                  setUpdate(it.id, {
+                                    type: e.target.value,
+                                    ...(e.target.value !== "Devops" ? { devopsAction: "none" } : {})
+                                  })
+                                }
+                                className="rounded border border-slate-300 p-1"
+                              >
+                                {TYPE_OPTIONS.map((t) => (
+                                  <option key={t} value={t}>{t}</option>
+                                ))}
+                              </select>
                               <select
                                 value={u.status}
                                 onChange={(e) => setUpdate(it.id, { status: e.target.value })}
@@ -416,6 +482,17 @@ export default function FollowUpClient({
                                 className="rounded border border-slate-300 p-1"
                               />
                             </div>
+                            {u.type === "Devops" && (
+                              <DevopsControls
+                                action={u.devopsAction}
+                                project={u.devopsProject}
+                                workItemType={u.devopsWorkItemType}
+                                workItemId={u.devopsWorkItemId}
+                                devopsEnabled={devopsEnabled}
+                                devopsProjects={devopsProjects}
+                                onChange={(patch) => setUpdate(it.id, patch)}
+                              />
+                            )}
                           </>
                         )}
                       </div>
@@ -483,7 +560,12 @@ export default function FollowUpClient({
                   />
                   <select
                     value={m.type}
-                    onChange={(e) => setNewMinute(i, { type: e.target.value })}
+                    onChange={(e) =>
+                      setNewMinute(i, {
+                        type: e.target.value,
+                        ...(e.target.value !== "Devops" ? { devopsAction: "none" } : {})
+                      })
+                    }
                     className="rounded border border-slate-300 p-1"
                   >
                     {TYPE_OPTIONS.map((t) => (
@@ -520,6 +602,17 @@ export default function FollowUpClient({
                     className="rounded border border-slate-300 p-1"
                   />
                 </div>
+                {m.type === "Devops" && (
+                  <DevopsControls
+                    action={m.devopsAction}
+                    project={m.devopsProject}
+                    workItemType={m.devopsWorkItemType}
+                    workItemId={m.devopsWorkItemId}
+                    devopsEnabled={devopsEnabled}
+                    devopsProjects={devopsProjects}
+                    onChange={(patch) => setNewMinute(i, patch)}
+                  />
+                )}
               </div>
             ))}
           </div>
@@ -539,6 +632,87 @@ export default function FollowUpClient({
           {saving ? "Saving…" : "✓ Save follow-up meeting"}
         </button>
       </div>
+    </div>
+  );
+}
+
+// DevOps Create/Link controls, shared by item updates and new minutes. Shown
+// when the entry's type is Devops. Creation runs on Save (never before).
+function DevopsControls({
+  action,
+  project,
+  workItemType,
+  workItemId,
+  devopsEnabled,
+  devopsProjects,
+  onChange
+}: {
+  action: string;
+  project: string;
+  workItemType: string;
+  workItemId: string;
+  devopsEnabled: boolean;
+  devopsProjects: { id: string; name: string }[];
+  onChange: (patch: DevopsPatch) => void;
+}) {
+  return (
+    <div className="mt-2 rounded border border-orange-200 bg-orange-50 p-2">
+      <div className="mb-1 flex flex-wrap items-center gap-3 text-xs">
+        <span className="font-semibold text-orange-700">DevOps</span>
+        {(["none", "create", "link"] as const).map((act) => (
+          <label key={act} className="flex items-center gap-1">
+            <input type="radio" checked={action === act} onChange={() => onChange({ devopsAction: act })} />
+            {act === "none" ? "No work item" : act === "create" ? "Create" : "Link existing"}
+          </label>
+        ))}
+        {!devopsEnabled && action !== "none" && (
+          <span className="text-orange-600">⚠ DevOps not connected yet — will be skipped</span>
+        )}
+      </div>
+
+      {action === "create" && (
+        <div className="grid grid-cols-2 gap-1 text-xs">
+          {devopsProjects.length > 0 ? (
+            <select
+              value={project}
+              onChange={(e) => onChange({ devopsProject: e.target.value })}
+              className="rounded border border-slate-300 p-1"
+            >
+              <option value="">— Select project —</option>
+              {project && !devopsProjects.some((p) => p.name === project) && (
+                <option value={project}>{project} (AI)</option>
+              )}
+              {devopsProjects.map((p) => (
+                <option key={p.id} value={p.name}>{p.name}</option>
+              ))}
+            </select>
+          ) : (
+            <input
+              value={project}
+              onChange={(e) => onChange({ devopsProject: e.target.value })}
+              className="rounded border border-slate-300 p-1"
+              placeholder="DevOps project (e.g. 3TT.OneMinute)"
+            />
+          )}
+          <select
+            value={workItemType}
+            onChange={(e) => onChange({ devopsWorkItemType: e.target.value })}
+            className="rounded border border-slate-300 p-1"
+          >
+            <option value="User Story">User Story</option>
+            <option value="Bug">Bug</option>
+          </select>
+        </div>
+      )}
+
+      {action === "link" && (
+        <input
+          value={workItemId}
+          onChange={(e) => onChange({ devopsWorkItemId: e.target.value })}
+          className="w-40 rounded border border-slate-300 p-1 text-xs"
+          placeholder="Work Item ID"
+        />
+      )}
     </div>
   );
 }

@@ -145,3 +145,40 @@ export async function createWorkItem(input: CreateWorkItemInput): Promise<number
   const data = (await res.json()) as { id: number };
   return data.id;
 }
+
+export interface DevopsRequest {
+  action: "create" | "link";
+  workItemId?: string; // for link
+  project?: string; // for create
+  workItemType?: "User Story" | "Bug"; // for create
+  title: string;
+  description?: string | null;
+  assignedTo?: string | null;
+  state?: string | null;
+}
+
+/** Create a new work item or verify an existing one to link. Returns id + project. */
+export async function createOrLinkWorkItem(
+  req: DevopsRequest
+): Promise<{ id: number; project: string | null }> {
+  if (!devopsConfigured()) throw new Error("DevOps not configured");
+
+  if (req.action === "link") {
+    const id = parseInt(req.workItemId ?? "", 10);
+    if (isNaN(id)) throw new Error("invalid work item id");
+    const wi = await getWorkItem(id); // verifies it exists
+    return { id: wi.id, project: wi.project };
+  }
+
+  const project = (req.project ?? "").trim();
+  if (!project) throw new Error("no DevOps project specified");
+  const id = await createWorkItem({
+    project,
+    type: req.workItemType ?? "User Story",
+    title: req.title.trim(),
+    description: req.description ?? null,
+    assignedTo: req.assignedTo ?? null,
+    state: req.state ?? null
+  });
+  return { id, project };
+}

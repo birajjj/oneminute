@@ -16,14 +16,20 @@ import type { OpenItem } from "@/lib/followup";
 const TYPE_VALUES = ["Note", "To-Do", "Action", "Devops"] as const;
 const STATUS_VALUES = ["New", "Initiated", "In Progress", "Completed", "Cancelled"] as const;
 
-export interface FollowUpUpdate {
+export interface DevopsSuggestion {
+  devopsAction: string; // "none" | "create" | "link"
+  devopsWorkItemType: string; // "User Story" | "Bug"
+  devopsWorkItemId: string; // for link
+}
+
+export interface FollowUpUpdate extends DevopsSuggestion {
   rootMinuteId: string;
   discussed: boolean;
   note: string;
   status: string; // label
 }
 
-export interface FollowUpNewMinute {
+export interface FollowUpNewMinute extends DevopsSuggestion {
   area: string;
   title: string;
   description: string;
@@ -39,18 +45,29 @@ export interface FollowUpPlan {
 }
 
 // Shape the AI returns (ref-based).
+interface RawDevops {
+  devopsAction?: string;
+  devopsWorkItemType?: string;
+  devopsWorkItemId?: string;
+}
 interface RawPlan {
-  updates?: { ref: number; discussed: boolean; note: string; status: string }[];
-  newMinutes?: {
+  updates?: ({ ref: number; discussed: boolean; note: string; status: string } & RawDevops)[];
+  newMinutes?: ({
     area: string;
     title: string;
     description: string;
     minuteType: string;
     status: string;
     assignedTo: string;
-  }[];
+  } & RawDevops)[];
   summary?: string;
 }
+
+const devopsSchemaProps = {
+  devopsAction: { type: "STRING" }, // none | create | link
+  devopsWorkItemType: { type: "STRING" }, // User Story | Bug
+  devopsWorkItemId: { type: "STRING" } // for link
+};
 
 const responseSchema = {
   type: "OBJECT",
@@ -63,7 +80,8 @@ const responseSchema = {
           ref: { type: "INTEGER" },
           discussed: { type: "BOOLEAN" },
           note: { type: "STRING" },
-          status: { type: "STRING" }
+          status: { type: "STRING" },
+          ...devopsSchemaProps
         },
         required: ["ref", "discussed"]
       }
@@ -78,7 +96,8 @@ const responseSchema = {
           description: { type: "STRING" },
           minuteType: { type: "STRING" },
           status: { type: "STRING" },
-          assignedTo: { type: "STRING" }
+          assignedTo: { type: "STRING" },
+          ...devopsSchemaProps
         },
         required: ["title"]
       }
@@ -112,7 +131,10 @@ export async function buildFollowUpPlan(
       rootMinuteId: item.id,
       discussed: !!u.discussed,
       note: u.note || "",
-      status: normalizeStatus(u.status)
+      status: normalizeStatus(u.status),
+      devopsAction: normalizeDevopsAction(u.devopsAction),
+      devopsWorkItemType: normalizeWorkItemType(u.devopsWorkItemType),
+      devopsWorkItemId: u.devopsWorkItemId || ""
     });
   }
 
@@ -124,7 +146,10 @@ export async function buildFollowUpPlan(
       description: m.description || "",
       minuteType: normalizeType(m.minuteType),
       status: normalizeStatus(m.status) || "New",
-      assignedTo: m.assignedTo || ""
+      assignedTo: m.assignedTo || "",
+      devopsAction: normalizeDevopsAction(m.devopsAction),
+      devopsWorkItemType: normalizeWorkItemType(m.devopsWorkItemType),
+      devopsWorkItemId: m.devopsWorkItemId || ""
     }));
 
   return { updates, newMinutes, summary: data.summary || "" };
@@ -135,6 +160,12 @@ function normalizeStatus(s: string | undefined): string {
 }
 function normalizeType(t: string | undefined): string {
   return t && (TYPE_VALUES as readonly string[]).includes(t) ? t : "Note";
+}
+function normalizeDevopsAction(s: string | undefined): string {
+  return s === "create" || s === "link" ? s : "none";
+}
+function normalizeWorkItemType(s: string | undefined): string {
+  return s === "Bug" ? "Bug" : "User Story";
 }
 
 function buildPrompt(openItems: OpenItem[], users: string[], transcript: string): string {
@@ -156,6 +187,13 @@ function buildPrompt(openItems: OpenItem[], users: string[], transcript: string)
   lines.push("mentioned (e.g. \"let's set up X\", \"we need to do Y\", \"raise a bug for Z\", \"assign someone to W\"),");
   lines.push("it MUST appear here. Each entry: title, description, minuteType (Note | To-Do | Action | Devops),");
   lines.push("status, assignedTo. Return an empty array only if genuinely nothing new was raised.");
+  lines.push("");
+  lines.push("DEVOPS (optional — on any update OR new item). If the meeting says to create a DevOps");
+  lines.push("work item / user story / bug, or to link/track an existing work item, set on that entry:");
+  lines.push("- devopsAction: \"create\", \"link\", or \"none\" (default \"none\").");
+  lines.push("- devopsWorkItemType: \"Bug\" for a defect/bug, otherwise \"User Story\" (for create).");
+  lines.push("- devopsWorkItemId: the existing work item number, e.g. \"5821\" (for link only).");
+  lines.push("Do NOT choose a DevOps project — the user selects that.");
   lines.push("");
   lines.push("Rules: assignedTo must exactly match an allowed user or be an empty string.");
   lines.push(`Allowed users: [${users.join(", ")}]`);

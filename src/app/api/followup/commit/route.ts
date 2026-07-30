@@ -14,10 +14,15 @@ const BodySchema = z.object({
     z.object({
       rootMinuteId: z.string(),
       noUpdate: z.boolean(),
+      type: z.string(),
       status: z.string(),
       note: z.string(),
       assignedTo: z.string(),
-      dueDate: z.string()
+      dueDate: z.string(),
+      devopsAction: z.string(),
+      devopsProject: z.string(),
+      devopsWorkItemType: z.string(),
+      devopsWorkItemId: z.string()
     })
   ),
   newMinutes: z.array(
@@ -28,7 +33,11 @@ const BodySchema = z.object({
       type: z.string(),
       status: z.string(),
       assignedTo: z.string(),
-      dueDate: z.string()
+      dueDate: z.string(),
+      devopsAction: z.string(),
+      devopsProject: z.string(),
+      devopsWorkItemType: z.string(),
+      devopsWorkItemId: z.string()
     })
   )
 });

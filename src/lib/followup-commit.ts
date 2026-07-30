@@ -7,6 +7,7 @@
 
 import { db } from "@/lib/db";
 import type { MinuteType, MinuteStatus } from "@prisma/client";
+import { createOrLinkWorkItem, devopsConfigured } from "@/lib/devops";
 
 const TYPE_MAP: Record<string, MinuteType> = {
   Note: "Note",
@@ -26,10 +27,16 @@ const STATUS_MAP: Record<string, MinuteStatus> = {
 export interface FollowUpUpdateInput {
   rootMinuteId: string;
   noUpdate: boolean;
+  type: string; // label — the update entry's type (Note/To-Do/Action/Devops)
   status: string; // label, e.g. "In Progress"
   note: string;
   assignedTo: string;
   dueDate: string;
+  // DevOps (only when the user armed it)
+  devopsAction: string; // "none" | "create" | "link"
+  devopsProject: string;
+  devopsWorkItemType: string; // "User Story" | "Bug"
+  devopsWorkItemId: string;
 }
 
 export interface FollowUpNewMinuteInput {
@@ -40,6 +47,10 @@ export interface FollowUpNewMinuteInput {
   status: string; // label
   assignedTo: string;
   dueDate: string;
+  devopsAction: string;
+  devopsProject: string;
+  devopsWorkItemType: string;
+  devopsWorkItemId: string;
 }
 
 export interface FollowUpInput {
@@ -120,12 +131,37 @@ export async function commitFollowUp(
         const mappedStatus = STATUS_MAP[u.status];
         const statusChanged = !!mappedStatus && mappedStatus !== root.status;
         const hasNote = !!u.note && !!u.note.trim();
+        const wantsDevops = u.devopsAction === "create" || u.devopsAction === "link";
         // Nothing meaningful to record — treat as an implicit "no update".
-        if (!hasNote && !statusChanged) continue;
+        if (!hasNote && !statusChanged && !wantsDevops) continue;
 
         const newStatus = mappedStatus ?? root.status;
         const area = root.area || "General";
         areaSet.add(area);
+
+        // The update entry's type — the user may make it a DevOps/Action/To-Do
+        // entry; default to the item's own type.
+        const updateType = TYPE_MAP[u.type] ?? root.type;
+
+        // Optionally create/link a DevOps work item for this update.
+        let devopsItemId: number | null = null;
+        let devopsArea: string | null = null;
+        if (wantsDevops) {
+          try {
+            const dv = await commitDevops({
+              action: u.devopsAction,
+              workItemId: u.devopsWorkItemId,
+              project: u.devopsProject,
+              workItemType: u.devopsWorkItemType,
+              title: root.title,
+              description: u.note
+            });
+            devopsItemId = dv.id;
+            devopsArea = dv.project;
+          } catch (dex) {
+            warnings.push(`DevOps for "${root.title}": ${dex instanceof Error ? dex.message : "failed"}`);
+          }
+        }
 
         // The update itself: a follow-up minute linked to the thread root.
         await tx.minute.create({
@@ -135,12 +171,14 @@ export async function commitFollowUp(
             area,
             title: root.title,
             description: u.note?.trim() || null,
-            type: root.type,
+            type: updateType,
             status: newStatus,
             parentMinuteId: root.id,
             isPersistent: false,
             assignedToUserId: resolveUser(u.assignedTo),
-            dueDate: parseDate(u.dueDate)
+            dueDate: parseDate(u.dueDate),
+            devopsItemId,
+            devopsArea
           }
         });
 
@@ -162,6 +200,26 @@ export async function commitFollowUp(
         if (!m.title.trim()) continue;
         const area = (m.area || "General").trim();
         areaSet.add(area);
+
+        let devopsItemId: number | null = null;
+        let devopsArea: string | null = null;
+        if (m.devopsAction === "create" || m.devopsAction === "link") {
+          try {
+            const dv = await commitDevops({
+              action: m.devopsAction,
+              workItemId: m.devopsWorkItemId,
+              project: m.devopsProject,
+              workItemType: m.devopsWorkItemType,
+              title: m.title,
+              description: m.description
+            });
+            devopsItemId = dv.id;
+            devopsArea = dv.project;
+          } catch (dex) {
+            warnings.push(`DevOps for "${m.title}": ${dex instanceof Error ? dex.message : "failed"}`);
+          }
+        }
+
         await tx.minute.create({
           data: {
             orgId,
@@ -174,7 +232,9 @@ export async function commitFollowUp(
             parentMinuteId: null,
             isPersistent: ["To-Do", "Action", "Devops"].includes(m.type),
             assignedToUserId: resolveUser(m.assignedTo),
-            dueDate: parseDate(m.dueDate)
+            dueDate: parseDate(m.dueDate),
+            devopsItemId,
+            devopsArea
           }
         });
         created++;
@@ -203,6 +263,28 @@ export async function commitFollowUp(
     },
     { maxWait: 15000, timeout: 60000 }
   );
+}
+
+// Wraps the shared DevOps create/link helper with the string -> union coercion
+// the follow-up inputs need. Throws if DevOps isn't configured (caller warns).
+async function commitDevops(input: {
+  action: string;
+  workItemId: string;
+  project: string;
+  workItemType: string;
+  title: string;
+  description: string;
+}): Promise<{ id: number; project: string | null }> {
+  if (!devopsConfigured()) throw new Error("DevOps not configured");
+  return createOrLinkWorkItem({
+    action: input.action === "link" ? "link" : "create",
+    workItemId: input.workItemId,
+    project: input.project,
+    workItemType: input.workItemType === "Bug" ? "Bug" : "User Story",
+    title: input.title,
+    description: input.description?.trim() || null,
+    state: null
+  });
 }
 
 // The client sends a date-only string; combine it with the current time so
