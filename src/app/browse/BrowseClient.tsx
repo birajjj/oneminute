@@ -135,6 +135,25 @@ export default function BrowseClient({
     }
   }
 
+  // Marking a follow-up item complete records a completion entry in the meeting
+  // being viewed (and advances the item's status), rather than a silent flip.
+  async function addCompletionEntry(rootId: string, meetingId: string) {
+    setSaveError("");
+    setEdits((e) => ({ ...e, [rootId]: { ...e[rootId], status: "Completed" } })); // optimistic
+    try {
+      const res = await fetch(`/api/minutes/${rootId}/entry`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ meetingId, status: "Completed", note: "Marked complete." })
+      });
+      if (!res.ok) throw new Error(await res.text());
+      router.refresh(); // surface the new entry
+    } catch (err) {
+      setEdits((cur) => ({ ...cur, [rootId]: {} }));
+      setSaveError("Couldn't mark complete: " + (err instanceof Error ? err.message : "error"));
+    }
+  }
+
   function startEditMinute(id: string, title: string, description: string) {
     setEditingId(id);
     setDraft({ title, description, origTitle: title, origDescription: description });
@@ -607,7 +626,15 @@ export default function BrowseClient({
                             <input
                               type="checkbox"
                               checked={displayStatus === "Completed"}
-                              onChange={(e) => saveMinute(editId, { status: e.target.checked ? "Completed" : "New" })}
+                              onChange={(e) => {
+                                // On a follow-up item, checking complete records an entry in
+                                // this meeting; otherwise it's a simple status flip.
+                                if (mn.isFollowUp && e.target.checked && selected) {
+                                  addCompletionEntry(editId, selected.id);
+                                } else {
+                                  saveMinute(editId, { status: e.target.checked ? "Completed" : "New" });
+                                }
+                              }}
                             />
                             Mark As Complete
                           </label>

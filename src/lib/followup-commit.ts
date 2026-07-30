@@ -109,8 +109,6 @@ export async function commitFollowUp(
       // ---- Updates to carried-forward open items ----
       let updated = 0;
       for (const u of input.updates) {
-        if (u.noUpdate) continue;
-
         const root = await tx.minute.findUnique({
           where: { id: u.rootMinuteId },
           select: {
@@ -124,7 +122,28 @@ export async function commitFollowUp(
         });
         // Guard: only update items that belong to this follow-up's project.
         if (!root || root.meeting.projectId !== parent.projectId) {
-          warnings.push("Skipped an update to an item outside this project.");
+          if (!u.noUpdate) warnings.push("Skipped an update to an item outside this project.");
+          continue;
+        }
+
+        // "No action this meeting" — record a marker note; item stays open/unchanged.
+        if (u.noUpdate) {
+          const area = root.area || "General";
+          areaSet.add(area);
+          await tx.minute.create({
+            data: {
+              orgId,
+              meetingId: meeting.id,
+              area,
+              title: root.title,
+              description: "No action this meeting.",
+              type: "Note",
+              status: root.status,
+              parentMinuteId: root.id,
+              isPersistent: false
+            }
+          });
+          updated++;
           continue;
         }
 

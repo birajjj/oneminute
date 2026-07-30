@@ -432,14 +432,25 @@ export default function FollowUpClient({
 
                       {/* Update controls */}
                       <div className="mt-2 rounded border border-amber-200 bg-white p-2">
-                        <label className="flex items-center gap-1 text-xs text-slate-600">
-                          <input
-                            type="checkbox"
-                            checked={u.noUpdate}
-                            onChange={(e) => setUpdate(it.id, { noUpdate: e.target.checked })}
-                          />
-                          No update this meeting (carry forward unchanged)
-                        </label>
+                        <div className="flex flex-wrap items-center gap-3 text-xs">
+                          <label className="flex items-center gap-1 text-slate-600">
+                            <input
+                              type="checkbox"
+                              checked={u.noUpdate}
+                              onChange={(e) => setUpdate(it.id, { noUpdate: e.target.checked })}
+                            />
+                            No action this meeting
+                          </label>
+                          {!u.noUpdate && (
+                            <button
+                              type="button"
+                              onClick={() => setUpdate(it.id, { status: "Completed", note: u.note || "Marked complete." })}
+                              className="rounded border border-emerald-300 px-2 py-0.5 font-medium text-emerald-700 hover:bg-emerald-50"
+                            >
+                              ✓ Mark complete
+                            </button>
+                          )}
+                        </div>
 
                         {!u.noUpdate && (
                           <>
