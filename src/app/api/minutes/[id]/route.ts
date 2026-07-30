@@ -15,10 +15,12 @@ const STATUS_MAP: Record<string, MinuteStatus> = {
 };
 
 // Inline edits from Browse. status is a label ("In Progress"); assignedTo is a
-// display name ("" = unassign). Both optional — send only what changed.
+// display name ("" = unassign); description is the minute text. All optional —
+// send only what changed.
 const BodySchema = z.object({
   status: z.string().optional(),
-  assignedTo: z.string().optional()
+  assignedTo: z.string().optional(),
+  description: z.string().optional()
 });
 
 export async function PATCH(
@@ -41,7 +43,15 @@ export async function PATCH(
     });
     if (!minute) return NextResponse.json({ error: "not found" }, { status: 404 });
 
-    const data: { status?: MinuteStatus; assignedToUserId?: string | null } = {};
+    const data: {
+      status?: MinuteStatus;
+      assignedToUserId?: string | null;
+      description?: string | null;
+    } = {};
+
+    if (parsed.data.description !== undefined) {
+      data.description = parsed.data.description.trim() || null;
+    }
 
     if (parsed.data.status !== undefined) {
       const mapped = STATUS_MAP[parsed.data.status];

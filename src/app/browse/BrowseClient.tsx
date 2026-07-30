@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 
 export interface BrowseMinute {
   id: string;
@@ -89,6 +90,7 @@ export default function BrowseClient({
   const [search, setSearch] = useState("");
   const [openThreadRoot, setOpenThreadRoot] = useState<string | null>(null);
   const [openEntry, setOpenEntry] = useState<ThreadEntry | null>(null);
+  const router = useRouter();
 
   // Optimistic inline edits, keyed by the ROOT minute id (an item's live status
   // / assignee lives on its thread root). saveMinute updates immediately and
@@ -462,9 +464,15 @@ export default function BrowseClient({
         />
       )}
 
-      {/* Single follow-up detail dialog (opened from a nested table row) */}
+      {/* Single follow-up detail dialog — editable */}
       {openEntry && (
-        <EntryModal entry={openEntry} devopsBaseUrl={devopsBaseUrl} onClose={() => setOpenEntry(null)} />
+        <EntryModal
+          entry={openEntry}
+          devopsBaseUrl={devopsBaseUrl}
+          members={members}
+          onSaved={() => router.refresh()}
+          onClose={() => setOpenEntry(null)}
+        />
       )}
 
       {saveError && (
@@ -509,41 +517,118 @@ function typeBadgeClass(type: string): string {
   }
 }
 
+// Editable detail dialog for a follow-up minute (opened from a nested row). Lets
+// you edit that entry's text, status, and assignee, then Save. On save the page
+// refreshes so the nested rows reflect the change.
 function EntryModal({
   entry,
   devopsBaseUrl,
+  members,
+  onSaved,
   onClose
 }: {
   entry: ThreadEntry;
   devopsBaseUrl: string;
+  members: { id: string; displayName: string }[];
+  onSaved: () => void;
   onClose: () => void;
 }) {
-  const open = entry.status !== "Completed" && entry.status !== "Cancelled";
+  const [description, setDescription] = useState(entry.description ?? "");
+  const [status, setStatus] = useState(entry.status);
+  const [assignedTo, setAssignedTo] = useState(entry.assignedTo ?? "");
+  const [saving, setSaving] = useState(false);
+  const [err, setErr] = useState("");
+
+  const dirty =
+    description !== (entry.description ?? "") ||
+    status !== entry.status ||
+    assignedTo !== (entry.assignedTo ?? "");
+
+  async function save() {
+    setSaving(true);
+    setErr("");
+    try {
+      const res = await fetch(`/api/minutes/${entry.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ description, status, assignedTo })
+      });
+      if (!res.ok) throw new Error(await res.text());
+      onSaved();
+      onClose();
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "save failed");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  const assigneeNames = members.map((m) => m.displayName);
+  const extraAssignee = assignedTo && !assigneeNames.includes(assignedTo) ? [assignedTo] : [];
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
       <div className="w-full max-w-lg rounded-lg bg-white p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
         <div className="mb-3 flex items-start justify-between">
           <div>
             <div className="text-xs font-semibold uppercase tracking-wide text-slate-400">
-              Follow-up minute
+              Edit follow-up minute
             </div>
             <h3 className="text-lg font-bold">{entry.title}</h3>
           </div>
           <button onClick={onClose} className="text-2xl leading-none text-slate-400 hover:text-slate-600">×</button>
         </div>
 
-        <div className="whitespace-pre-wrap rounded border border-slate-100 bg-slate-50 px-3 py-2 text-sm text-slate-700">
-          {entry.description || <span className="italic text-slate-400">(no details recorded)</span>}
+        <textarea
+          value={description}
+          onChange={(e) => setDescription(e.target.value)}
+          rows={4}
+          placeholder="Details…"
+          className="w-full rounded border border-slate-300 p-2 text-sm text-slate-700"
+        />
+
+        <div className="mt-2 grid grid-cols-2 gap-2 text-xs">
+          <label className="flex flex-col gap-1">
+            <span className="text-slate-500">Status</span>
+            <select value={status} onChange={(e) => setStatus(e.target.value)} className="rounded border border-slate-300 p-1">
+              {STATUS_OPTIONS.map((s) => (
+                <option key={s} value={s}>{s}</option>
+              ))}
+            </select>
+          </label>
+          <label className="flex flex-col gap-1">
+            <span className="text-slate-500">Assignee</span>
+            <select value={assignedTo} onChange={(e) => setAssignedTo(e.target.value)} className="rounded border border-slate-300 p-1">
+              <option value="">— Unassigned —</option>
+              {extraAssignee.map((n) => (
+                <option key={n} value={n}>{n}</option>
+              ))}
+              {members.map((m) => (
+                <option key={m.id} value={m.displayName}>{m.displayName}</option>
+              ))}
+            </select>
+          </label>
         </div>
 
         <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">
           <span className={`rounded px-1.5 py-0.5 font-medium ${typeBadgeClass(entry.type)}`}>{entry.type}</span>
-          <span className="rounded bg-slate-100 px-1.5 py-0.5 text-slate-500">{entry.status}</span>
-          {open && (
-            <span className="rounded bg-amber-200 px-1.5 py-0.5 font-semibold text-amber-800">● still open</span>
-          )}
           {entry.devopsItemId && <DevopsBadge id={entry.devopsItemId} baseUrl={devopsBaseUrl} />}
           <span className="text-slate-400">{entry.meetingTitle} · {fmtDate(entry.date)}</span>
+        </div>
+
+        {err && <div className="mt-2 rounded bg-red-50 p-2 text-xs text-red-700">{err}</div>}
+
+        <div className="mt-4 flex items-center gap-2 border-t border-slate-200 pt-3">
+          <button onClick={onClose} disabled={saving} className="rounded border border-slate-300 px-3 py-1.5 text-sm">
+            Cancel
+          </button>
+          <button
+            onClick={save}
+            disabled={saving || !dirty}
+            className="ml-auto rounded bg-brand-blue px-4 py-1.5 text-sm font-medium text-white disabled:opacity-50"
+          >
+            {saving ? "Saving…" : "Save"}
+          </button>
         </div>
       </div>
     </div>
