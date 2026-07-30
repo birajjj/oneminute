@@ -392,6 +392,13 @@ function PlanReview({
             </select>
           )}
           <div className="mt-1 text-xs text-slate-500">{plan.meeting.meetingDate}</div>
+          {plan.meeting.action === "followup" && (
+            <div className="mt-1.5 rounded bg-amber-50 px-2 py-1 text-[11px] leading-snug text-amber-800">
+              This links the meeting as a follow-up and saves the items below as <b>new</b> minutes.
+              To update a past meeting&apos;s open action items one-by-one, use{" "}
+              <a href="/browse" className="font-medium underline">“Follow up this meeting”</a> in Browse.
+            </div>
+          )}
         </div>
       </div>
 
