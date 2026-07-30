@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { requireUser } from "@/lib/auth";
 import { db } from "@/lib/db";
-import type { MinuteStatus, MinuteType } from "@prisma/client";
+import type { MinuteStatus } from "@prisma/client";
 
 export const runtime = "nodejs";
 
@@ -14,19 +14,10 @@ const STATUS_MAP: Record<string, MinuteStatus> = {
   Cancelled: "Cancelled"
 };
 
-const TYPE_MAP: Record<string, MinuteType> = {
-  Note: "Note",
-  "To-Do": "Todo",
-  Action: "Action",
-  Devops: "Devops"
-};
-
-// Inline edits from Browse. status/type are labels ("In Progress", "To-Do");
-// assignedTo is a display name ("" = unassign). All optional — send only what
-// changed.
+// Inline edits from Browse. status is a label ("In Progress"); assignedTo is a
+// display name ("" = unassign). Both optional — send only what changed.
 const BodySchema = z.object({
   status: z.string().optional(),
-  type: z.string().optional(),
   assignedTo: z.string().optional()
 });
 
@@ -50,25 +41,12 @@ export async function PATCH(
     });
     if (!minute) return NextResponse.json({ error: "not found" }, { status: 404 });
 
-    const data: {
-      status?: MinuteStatus;
-      type?: MinuteType;
-      isPersistent?: boolean;
-      assignedToUserId?: string | null;
-    } = {};
+    const data: { status?: MinuteStatus; assignedToUserId?: string | null } = {};
 
     if (parsed.data.status !== undefined) {
       const mapped = STATUS_MAP[parsed.data.status];
       if (!mapped) return NextResponse.json({ error: "invalid status" }, { status: 400 });
       data.status = mapped;
-    }
-
-    if (parsed.data.type !== undefined) {
-      const mapped = TYPE_MAP[parsed.data.type];
-      if (!mapped) return NextResponse.json({ error: "invalid type" }, { status: 400 });
-      data.type = mapped;
-      // Keep persistence in sync: To-Do/Action/Devops carry forward, Note doesn't.
-      data.isPersistent = ["To-Do", "Action", "Devops"].includes(parsed.data.type);
     }
 
     if (parsed.data.assignedTo !== undefined) {

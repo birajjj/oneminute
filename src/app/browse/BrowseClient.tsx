@@ -32,7 +32,6 @@ export interface ThreadEntry {
 }
 
 const STATUS_OPTIONS = ["New", "Initiated", "In Progress", "Completed", "Cancelled"];
-const TYPE_OPTIONS = ["Note", "To-Do", "Action", "Devops"];
 
 export interface BrowseMeeting {
   id: string;
@@ -94,20 +93,16 @@ export default function BrowseClient({
   // Optimistic inline edits, keyed by the ROOT minute id (an item's live status
   // / assignee lives on its thread root). saveMinute updates immediately and
   // reverts on failure.
-  const [edits, setEdits] = useState<Record<string, { status?: string; type?: string; assignedTo?: string | null }>>({});
+  const [edits, setEdits] = useState<Record<string, { status?: string; assignedTo?: string | null }>>({});
   const [saveError, setSaveError] = useState("");
 
-  async function saveMinute(
-    id: string,
-    patch: { status?: string; type?: string; assignedTo?: string | null }
-  ) {
+  async function saveMinute(id: string, patch: { status?: string; assignedTo?: string | null }) {
     const prev = edits[id];
     setSaveError("");
     setEdits((e) => ({ ...e, [id]: { ...e[id], ...patch } }));
     try {
       const body: Record<string, string> = {};
       if (patch.status !== undefined) body.status = patch.status;
-      if (patch.type !== undefined) body.type = patch.type;
       if (patch.assignedTo !== undefined) body.assignedTo = patch.assignedTo ?? "";
       const res = await fetch(`/api/minutes/${id}`, {
         method: "PATCH",
@@ -318,14 +313,10 @@ export default function BrowseClient({
                     // status/assignee lives), with an optimistic override applied.
                     const editId = mn.rootId;
                     const eff = edits[editId] ?? {};
-                    const headerType = (mn.isFollowUp && rootEntry?.type) || mn.type;
                     const baseAssignee = mn.isFollowUp ? rootEntry?.assignedTo ?? null : mn.assignedTo;
                     const displayStatus = eff.status ?? headerStatus;
-                    const displayType = eff.type ?? headerType;
                     const displayAssignee =
                       eff.assignedTo === undefined ? baseAssignee ?? "" : eff.assignedTo ?? "";
-                    // Note isn't tracked; To-Do/Action/Devops carry forward and can be "pending".
-                    const displayPersistent = ["To-Do", "Action", "Devops"].includes(displayType);
 
                     // Nested rows: a root shows its full cross-meeting history; a
                     // follow-up minute shows just this meeting's update.
@@ -334,7 +325,7 @@ export default function BrowseClient({
                       : (threads[mn.rootId] ?? []).filter((e) => !e.isRoot);
 
                     const isOpenPending =
-                      displayPersistent && displayStatus !== "Completed" && displayStatus !== "Cancelled";
+                      mn.isPersistent && displayStatus !== "Completed" && displayStatus !== "Cancelled";
                     return (
                       <div
                         key={mn.id}
@@ -354,16 +345,7 @@ export default function BrowseClient({
                               >
                                 {headerTitle}
                               </button>
-                              <select
-                                value={displayType}
-                                onChange={(e) => saveMinute(editId, { type: e.target.value })}
-                                className="rounded border border-slate-300 bg-white px-1 py-0.5 text-[11px] italic text-slate-500"
-                                title="Change type"
-                              >
-                                {TYPE_OPTIONS.map((t) => (
-                                  <option key={t} value={t}>{t}</option>
-                                ))}
-                              </select>
+                              <span className="text-xs italic text-slate-500">{mn.type}</span>
                               <select
                                 value={displayStatus}
                                 onChange={(e) => saveMinute(editId, { status: e.target.value })}
