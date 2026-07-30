@@ -35,6 +35,12 @@ export default async function BrowsePage() {
     select: { id: true, name: true }
   });
 
+  const members = await db.user.findMany({
+    where: { orgId: user.orgId, isRoster: true },
+    orderBy: { displayName: "asc" },
+    select: { id: true, displayName: true }
+  });
+
   const meetings = await db.meeting.findMany({
     where: { orgId: user.orgId },
     orderBy: { meetingDate: "desc" },
@@ -65,7 +71,8 @@ export default async function BrowsePage() {
         date: m.meetingDate.toISOString(),
         meetingTitle: m.title,
         isRoot: !mn.parentMinuteId,
-        devopsItemId: mn.devopsItemId ?? null
+        devopsItemId: mn.devopsItemId ?? null,
+        assignedTo: mn.assignedTo?.displayName ?? null
       });
     }
   }
@@ -132,6 +139,7 @@ export default async function BrowsePage() {
       meetings={shaped}
       projects={shapedProjects}
       threads={threads}
+      members={members}
       userName={user.displayName}
       devopsBaseUrl={devopsBaseUrl}
     />

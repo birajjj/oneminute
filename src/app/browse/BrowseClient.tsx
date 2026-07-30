@@ -28,7 +28,10 @@ export interface ThreadEntry {
   meetingTitle: string;
   isRoot: boolean;
   devopsItemId: number | null;
+  assignedTo: string | null;
 }
+
+const STATUS_OPTIONS = ["New", "Initiated", "In Progress", "Completed", "Cancelled"];
 
 export interface BrowseMeeting {
   id: string;
@@ -70,12 +73,14 @@ export default function BrowseClient({
   meetings,
   projects,
   threads,
+  members,
   userName,
   devopsBaseUrl
 }: {
   meetings: BrowseMeeting[];
   projects: BrowseProject[];
   threads: Record<string, ThreadEntry[]>;
+  members: { id: string; displayName: string }[];
   userName: string;
   devopsBaseUrl: string;
 }) {
@@ -84,6 +89,32 @@ export default function BrowseClient({
   const [search, setSearch] = useState("");
   const [openThreadRoot, setOpenThreadRoot] = useState<string | null>(null);
   const [openEntry, setOpenEntry] = useState<ThreadEntry | null>(null);
+
+  // Optimistic inline edits, keyed by the ROOT minute id (an item's live status
+  // / assignee lives on its thread root). saveMinute updates immediately and
+  // reverts on failure.
+  const [edits, setEdits] = useState<Record<string, { status?: string; assignedTo?: string | null }>>({});
+  const [saveError, setSaveError] = useState("");
+
+  async function saveMinute(id: string, patch: { status?: string; assignedTo?: string | null }) {
+    const prev = edits[id];
+    setSaveError("");
+    setEdits((e) => ({ ...e, [id]: { ...e[id], ...patch } }));
+    try {
+      const body: Record<string, string> = {};
+      if (patch.status !== undefined) body.status = patch.status;
+      if (patch.assignedTo !== undefined) body.assignedTo = patch.assignedTo ?? "";
+      const res = await fetch(`/api/minutes/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body)
+      });
+      if (!res.ok) throw new Error(await res.text());
+    } catch (err) {
+      setEdits((cur) => ({ ...cur, [id]: prev ?? {} })); // revert
+      setSaveError("Couldn't save change: " + (err instanceof Error ? err.message : "error"));
+    }
+  }
 
   const filteredMeetings = useMemo(() => {
     let list = meetings;
@@ -278,6 +309,15 @@ export default function BrowseClient({
                     const contextDescription = mn.isFollowUp ? rootEntry?.description ?? null : mn.description;
                     const devopsId = mn.isFollowUp ? rootEntry?.devopsItemId ?? null : mn.devopsItemId;
 
+                    // Inline edits target the thread ROOT (where an item's live
+                    // status/assignee lives), with an optimistic override applied.
+                    const editId = mn.rootId;
+                    const eff = edits[editId] ?? {};
+                    const baseAssignee = mn.isFollowUp ? rootEntry?.assignedTo ?? null : mn.assignedTo;
+                    const displayStatus = eff.status ?? headerStatus;
+                    const displayAssignee =
+                      eff.assignedTo === undefined ? baseAssignee ?? "" : eff.assignedTo ?? "";
+
                     // Nested rows: a root shows its full cross-meeting history; a
                     // follow-up minute shows just this meeting's update.
                     const nestedRows: ThreadEntry[] = mn.isFollowUp
@@ -285,7 +325,7 @@ export default function BrowseClient({
                       : (threads[mn.rootId] ?? []).filter((e) => !e.isRoot);
 
                     const isOpenPending =
-                      mn.isPersistent && headerStatus !== "Completed" && headerStatus !== "Cancelled";
+                      mn.isPersistent && displayStatus !== "Completed" && displayStatus !== "Cancelled";
                     return (
                       <div
                         key={mn.id}
@@ -306,9 +346,16 @@ export default function BrowseClient({
                                 {headerTitle}
                               </button>
                               <span className="text-xs italic text-slate-500">{mn.type}</span>
-                              <span className="rounded bg-white px-1.5 py-0.5 text-[11px] text-slate-500">
-                                {headerStatus}
-                              </span>
+                              <select
+                                value={displayStatus}
+                                onChange={(e) => saveMinute(editId, { status: e.target.value })}
+                                className="rounded border border-slate-300 bg-white px-1 py-0.5 text-[11px] text-slate-600"
+                                title="Change status"
+                              >
+                                {STATUS_OPTIONS.map((s) => (
+                                  <option key={s} value={s}>{s}</option>
+                                ))}
+                              </select>
                               {isOpenPending && (
                                 <span className="rounded bg-amber-200 px-1.5 py-0.5 text-[10px] font-semibold text-amber-800">
                                   ● pending
@@ -322,11 +369,20 @@ export default function BrowseClient({
                                   🔗 {mn.threadCount} in thread
                                 </button>
                               )}
-                              {mn.assignedTo && (
-                                <span className="rounded bg-slate-200 px-1.5 py-0.5 text-[10px] text-slate-600">
-                                  👤 {mn.assignedTo}
-                                </span>
-                              )}
+                              <select
+                                value={displayAssignee}
+                                onChange={(e) => saveMinute(editId, { assignedTo: e.target.value })}
+                                className="rounded border border-slate-300 bg-slate-50 px-1 py-0.5 text-[10px] text-slate-600"
+                                title="Assign"
+                              >
+                                <option value="">👤 Unassigned</option>
+                                {displayAssignee && !members.some((m) => m.displayName === displayAssignee) && (
+                                  <option value={displayAssignee}>👤 {displayAssignee}</option>
+                                )}
+                                {members.map((m) => (
+                                  <option key={m.id} value={m.displayName}>👤 {m.displayName}</option>
+                                ))}
+                              </select>
                               {devopsId && <DevopsBadge id={devopsId} baseUrl={devopsBaseUrl} />}
                               {mn.dueDate && (
                                 <span className="text-[11px] text-slate-400">
@@ -379,7 +435,11 @@ export default function BrowseClient({
                             )}
                           </div>
                           <label className="ml-4 flex shrink-0 items-center gap-1 text-xs text-slate-500">
-                            <input type="checkbox" disabled checked={headerStatus === "Completed"} />
+                            <input
+                              type="checkbox"
+                              checked={displayStatus === "Completed"}
+                              onChange={(e) => saveMinute(editId, { status: e.target.checked ? "Completed" : "New" })}
+                            />
                             Mark As Complete
                           </label>
                         </div>
@@ -405,6 +465,13 @@ export default function BrowseClient({
       {/* Single follow-up detail dialog (opened from a nested table row) */}
       {openEntry && (
         <EntryModal entry={openEntry} devopsBaseUrl={devopsBaseUrl} onClose={() => setOpenEntry(null)} />
+      )}
+
+      {saveError && (
+        <div className="fixed bottom-4 right-4 z-50 flex items-center gap-3 rounded bg-red-600 px-4 py-2 text-sm text-white shadow-lg">
+          <span>{saveError}</span>
+          <button onClick={() => setSaveError("")} className="font-bold leading-none">×</button>
+        </div>
       )}
     </div>
   );
