@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import type { FollowUpData, OpenItem } from "@/lib/followup";
+import { useSegmentRecorder } from "@/lib/useSegmentRecorder";
 
 const TYPE_OPTIONS = ["Note", "To-Do", "Action", "Devops"];
 const STATUS_OPTIONS = ["New", "Initiated", "In Progress", "Completed", "Cancelled"];
@@ -70,6 +71,11 @@ export default function FollowUpClient({
   const [error, setError] = useState("");
   const [result, setResult] = useState<{ updated: number; created: number; warnings: string[] } | null>(null);
 
+  // Optional AI pre-fill: record → transcribe → map to the open items below.
+  const recorder = useSegmentRecorder();
+  const [analyzing, setAnalyzing] = useState(false);
+  const [aiFilled, setAiFilled] = useState<Set<string>>(new Set());
+
   const byArea = useMemo(() => {
     const map: Record<string, OpenItem[]> = {};
     for (const it of data.openItems) (map[it.area] ??= []).push(it);
@@ -90,6 +96,60 @@ export default function FollowUpClient({
   }
   function removeNewMinute(i: number) {
     setNewMinutes((prev) => prev.filter((_, idx) => idx !== i));
+  }
+
+  async function aiPreFill() {
+    if (!recorder.transcript.trim()) return;
+    setAnalyzing(true);
+    setError("");
+    try {
+      const res = await fetch("/api/followup/analyze", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ parentMeetingId: data.parent.id, transcript: recorder.transcript })
+      });
+      if (!res.ok) throw new Error(await res.text());
+      applyPlan(await res.json());
+    } catch (e) {
+      setError("AI pre-fill failed: " + (e instanceof Error ? e.message : "unknown"));
+    } finally {
+      setAnalyzing(false);
+    }
+  }
+
+  // Maps the AI's per-item updates onto the worklist and appends new minutes.
+  // Only touches items the AI marked as discussed; the human still reviews all.
+  function applyPlan(plan: {
+    updates?: { rootMinuteId: string; discussed: boolean; note: string; status: string }[];
+    newMinutes?: { area: string; title: string; description: string; minuteType: string; status: string; assignedTo: string }[];
+  }) {
+    const filled = new Set<string>();
+    setUpdates((prev) => {
+      const next = { ...prev };
+      for (const u of plan.updates ?? []) {
+        if (!next[u.rootMinuteId] || !u.discussed) continue;
+        next[u.rootMinuteId] = {
+          ...next[u.rootMinuteId],
+          noUpdate: false,
+          note: u.note || next[u.rootMinuteId].note,
+          status: STATUS_OPTIONS.includes(u.status) ? u.status : next[u.rootMinuteId].status
+        };
+        filled.add(u.rootMinuteId);
+      }
+      return next;
+    });
+    setAiFilled(filled);
+
+    const mapped: NewMinute[] = (plan.newMinutes ?? []).map((m) => ({
+      area: m.area || data.areas[0] || "General",
+      title: m.title || "",
+      description: m.description || "",
+      type: TYPE_OPTIONS.includes(m.minuteType) ? m.minuteType : "Note",
+      status: STATUS_OPTIONS.includes(m.status) ? m.status : "New",
+      assignedTo: m.assignedTo || "",
+      dueDate: ""
+    }));
+    if (mapped.length) setNewMinutes((prev) => [...prev, ...mapped]);
   }
 
   async function save() {
@@ -162,6 +222,63 @@ export default function FollowUpClient({
         </p>
       </div>
 
+      {/* Optional: record the meeting and let AI pre-fill each item's update */}
+      <div className="rounded-lg border-2 border-dashed border-brand-purple/40 bg-white p-4">
+        <div className="mb-2 flex flex-wrap items-center gap-2">
+          <span className="text-sm font-semibold text-brand-purple">Optional — record &amp; AI pre-fill</span>
+          {!recorder.isRecording ? (
+            <button
+              onClick={recorder.startRecording}
+              disabled={recorder.isTranscribing || analyzing}
+              className="rounded bg-emerald-500 px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50"
+            >
+              Start Recording
+            </button>
+          ) : (
+            <button onClick={recorder.stopRecording} className="rounded bg-red-500 px-3 py-1.5 text-sm font-medium text-white">
+              Stop
+            </button>
+          )}
+          <button
+            onClick={aiPreFill}
+            disabled={!recorder.transcript.trim() || recorder.isRecording || recorder.isTranscribing || analyzing}
+            className="rounded bg-brand-purple px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50"
+          >
+            {analyzing ? "Analyzing…" : "AI pre-fill ↓"}
+          </button>
+          <label className="ml-2 flex items-center gap-1 text-sm">
+            <input type="checkbox" checked={recorder.captureMic} onChange={(e) => recorder.setCaptureMic(e.target.checked)} disabled={recorder.isRecording} /> Mic
+          </label>
+          <label className="flex items-center gap-1 text-sm">
+            <input type="checkbox" checked={recorder.captureTab} onChange={(e) => recorder.setCaptureTab(e.target.checked)} disabled={recorder.isRecording} /> Tab audio
+          </label>
+          {recorder.isRecording && (
+            <span className="flex items-center gap-1.5 text-sm text-red-600">
+              <span className="h-2 w-2 animate-pulse rounded-full bg-red-500" />
+              Recording
+              {recorder.segDone < recorder.segTotal && (
+                <span className="text-blue-600">· transcribing {recorder.segDone}/{recorder.segTotal}</span>
+              )}
+            </span>
+          )}
+          {!recorder.isRecording && recorder.isTranscribing && (
+            <span className="text-sm text-blue-600">Transcribing {recorder.segDone}/{recorder.segTotal}…</span>
+          )}
+        </div>
+        <p className="mb-2 text-xs text-slate-500">
+          Online meeting? Pick <b>“Entire Screen”</b> and turn on <b>“Also share system audio”</b> to capture other
+          participants. In a browser tab? Use <b>“Chrome Tab”</b>. In-person? Untick <b>Tab audio</b> (mic only).
+        </p>
+        <textarea
+          value={recorder.transcript}
+          onChange={(e) => recorder.setTranscript(e.target.value)}
+          readOnly={recorder.isRecording || recorder.isTranscribing}
+          placeholder="Record the meeting (or paste a transcript), then AI pre-fill fills each item's update below. You still review everything."
+          className="h-32 w-full resize-y rounded border border-slate-300 p-2 text-sm"
+        />
+        {recorder.error && <div className="mt-1 text-xs text-red-600">{recorder.error}</div>}
+      </div>
+
       {/* Meeting title + date */}
       <div className="grid gap-3 rounded-lg border border-slate-200 bg-white p-4 sm:grid-cols-2">
         <label className="text-sm">
@@ -209,6 +326,9 @@ export default function FollowUpClient({
                       {/* Original item summary */}
                       <div className="flex flex-wrap items-center gap-2">
                         <span className="font-semibold">{it.title}</span>
+                        {aiFilled.has(it.id) && (
+                          <span className="rounded bg-brand-purple px-1.5 py-0.5 text-[10px] font-medium text-white">AI</span>
+                        )}
                         <span className="text-xs italic text-slate-500">{it.type}</span>
                         <span className="rounded bg-white px-1.5 py-0.5 text-[11px] text-slate-500">{it.status}</span>
                         {it.assignedTo && (
