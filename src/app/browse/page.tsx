@@ -25,9 +25,15 @@ const STATUS_LABEL: Record<string, string> = {
   Cancelled: "Cancelled"
 };
 
-export default async function BrowsePage() {
+export default async function BrowsePage({
+  searchParams
+}: {
+  searchParams: Promise<{ meeting?: string }>;
+}) {
   const user = await getCurrentUser();
   if (!user) redirect("/login?next=/browse");
+
+  const { meeting: initialMeetingId } = await searchParams;
 
   const projects = await db.project.findMany({
     where: { orgId: user.orgId },
@@ -142,6 +148,7 @@ export default async function BrowsePage() {
       members={members}
       userName={user.displayName}
       devopsBaseUrl={devopsBaseUrl}
+      initialMeetingId={initialMeetingId ?? null}
     />
   );
 }

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import type { AutoPlan } from "@/lib/ai/auto-plan";
 import { useSegmentRecorder } from "@/lib/useSegmentRecorder";
 
@@ -26,9 +27,12 @@ export default function AutoModeClient({
   meetings: { id: string; title: string; date: string; projectId: string }[];
   devopsEnabled: boolean;
 }) {
+  const router = useRouter();
   const [step, setStep] = useState<Step>("record");
   const [plan, setPlan] = useState<AutoPlan | null>(null);
-  const [result, setResult] = useState<{ minutesSaved: number; projectCreated: boolean } | null>(null);
+  const [result, setResult] = useState<
+    { minutesSaved: number; projectCreated: boolean; meetingId?: string; warnings?: string[] } | null
+  >(null);
   const [error, setError] = useState("");
 
   // Real DevOps projects for the "Create work item" dropdown. Loaded lazily so a
@@ -95,9 +99,15 @@ export default function AutoModeClient({
       });
       if (!res.ok) throw new Error(await res.text());
       const r = await res.json();
-      setResult(r);
-      setStep("done");
       clearTranscript(); // committed — the draft is done with
+      // Warnings (e.g. a DevOps item that failed) matter — pause on them.
+      // Otherwise jump straight to Browse with the new meeting selected.
+      if (Array.isArray(r.warnings) && r.warnings.length > 0) {
+        setResult(r);
+        setStep("done");
+      } else {
+        router.push(`/browse?meeting=${r.meetingId}`);
+      }
     } catch (e) {
       setError("Commit failed: " + (e instanceof Error ? e.message : "unknown"));
     }
@@ -194,16 +204,23 @@ export default function AutoModeClient({
       )}
 
       {step === "done" && result && (
-        <div className="flex items-center gap-3 rounded-lg border border-emerald-200 bg-emerald-50 p-6">
-          <div className="flex h-10 w-10 items-center justify-center rounded-full bg-emerald-500 text-lg font-bold text-white">✓</div>
-          <div className="flex-1">
-            <div className="font-semibold">
-              Saved {result.minutesSaved} minute(s)
-              {result.projectCreated && <span className="ml-2 rounded bg-brand-purple px-1.5 py-0.5 text-xs text-white">new project</span>}
+        <div className="rounded-lg border border-amber-200 bg-amber-50 p-6">
+          <div className="flex items-start gap-3">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-emerald-500 text-lg font-bold text-white">✓</div>
+            <div className="flex-1">
+              <div className="font-semibold">
+                Saved {result.minutesSaved} minute(s)
+                {result.projectCreated && <span className="ml-2 rounded bg-brand-purple px-1.5 py-0.5 text-xs text-white">new project</span>}
+              </div>
+              {result.warnings && result.warnings.length > 0 && (
+                <ul className="mt-1 list-disc pl-5 text-xs text-amber-700">
+                  {result.warnings.map((w, i) => <li key={i}>{w}</li>)}
+                </ul>
+              )}
             </div>
+            <a href={`/browse?meeting=${result.meetingId ?? ""}`} className="rounded border border-emerald-300 px-4 py-2 font-medium text-emerald-700">View in Browse</a>
+            <button onClick={reset} className="rounded bg-brand-blue px-4 py-2 font-medium text-white">Capture another</button>
           </div>
-          <a href="/browse" className="rounded border border-emerald-300 px-4 py-2 font-medium text-emerald-700">View in Browse</a>
-          <button onClick={reset} className="rounded bg-brand-blue px-4 py-2 font-medium text-white">Capture another</button>
         </div>
       )}
 

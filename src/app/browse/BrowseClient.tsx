@@ -76,7 +76,8 @@ export default function BrowseClient({
   threads,
   members,
   userName,
-  devopsBaseUrl
+  devopsBaseUrl,
+  initialMeetingId
 }: {
   meetings: BrowseMeeting[];
   projects: BrowseProject[];
@@ -84,9 +85,12 @@ export default function BrowseClient({
   members: { id: string; displayName: string }[];
   userName: string;
   devopsBaseUrl: string;
+  initialMeetingId?: string | null;
 }) {
   const [projectFilter, setProjectFilter] = useState<string>("all");
-  const [selectedId, setSelectedId] = useState<string | null>(meetings[0]?.id ?? null);
+  const [selectedId, setSelectedId] = useState<string | null>(
+    initialMeetingId ?? meetings[0]?.id ?? null
+  );
   const [search, setSearch] = useState("");
   const [openThreadRoot, setOpenThreadRoot] = useState<string | null>(null);
   const [openEntry, setOpenEntry] = useState<ThreadEntry | null>(null);
