@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 
 export interface BrowseMinute {
@@ -90,6 +90,7 @@ export default function BrowseClient({
   const [search, setSearch] = useState("");
   const [openThreadRoot, setOpenThreadRoot] = useState<string | null>(null);
   const [openEntry, setOpenEntry] = useState<ThreadEntry | null>(null);
+  const [openDevopsId, setOpenDevopsId] = useState<number | null>(null);
   const router = useRouter();
 
   // Optimistic inline edits, keyed by the ROOT minute id (an item's live status
@@ -534,7 +535,7 @@ export default function BrowseClient({
                                   <option key={m.id} value={m.displayName}>👤 {m.displayName}</option>
                                 ))}
                               </select>
-                              {devopsId && <DevopsBadge id={devopsId} baseUrl={devopsBaseUrl} />}
+                              {devopsId && <DevopsBadge id={devopsId} baseUrl={devopsBaseUrl} onOpen={setOpenDevopsId} />}
                               {mn.dueDate && (
                                 <span className="text-[11px] text-slate-400">
                                   Due {shortDate(mn.dueDate)}
@@ -622,6 +623,7 @@ export default function BrowseClient({
         <ThreadModal
           entries={threads[openThreadRoot] ?? []}
           devopsBaseUrl={devopsBaseUrl}
+          onOpenDevops={setOpenDevopsId}
           onClose={() => setOpenThreadRoot(null)}
         />
       )}
@@ -632,9 +634,15 @@ export default function BrowseClient({
           entry={openEntry}
           devopsBaseUrl={devopsBaseUrl}
           members={members}
+          onOpenDevops={setOpenDevopsId}
           onSaved={() => router.refresh()}
           onClose={() => setOpenEntry(null)}
         />
+      )}
+
+      {/* DevOps work-item detail popup */}
+      {openDevopsId !== null && (
+        <DevopsDetailModal id={openDevopsId} baseUrl={devopsBaseUrl} onClose={() => setOpenDevopsId(null)} />
       )}
 
       {saveError && (
@@ -650,8 +658,23 @@ export default function BrowseClient({
 // Clickable Azure DevOps work-item badge. Shown for both created and linked
 // items (both store the same devopsItemId). Falls back to a non-link chip if we
 // don't know the DevOps base URL.
-function DevopsBadge({ id, baseUrl }: { id: number; baseUrl: string }) {
+function DevopsBadge({
+  id,
+  baseUrl,
+  onOpen
+}: {
+  id: number;
+  baseUrl: string;
+  onOpen?: (id: number) => void;
+}) {
   const cls = "rounded bg-orange-100 px-1.5 py-0.5 text-[11px] font-medium text-orange-700";
+  if (onOpen) {
+    return (
+      <button onClick={() => onOpen(id)} title="View DevOps details" className={`${cls} hover:bg-orange-200`}>
+        🔗 DevOps #{id}
+      </button>
+    );
+  }
   if (!baseUrl) return <span className={cls}>🔗 DevOps #{id}</span>;
   return (
     <a
@@ -663,6 +686,111 @@ function DevopsBadge({ id, baseUrl }: { id: number; baseUrl: string }) {
     >
       🔗 DevOps #{id}
     </a>
+  );
+}
+
+interface WorkItemDetail {
+  id: number;
+  title: string | null;
+  type: string | null;
+  state: string | null;
+  assignedTo: string | null;
+  project: string | null;
+  createdDate: string | null;
+  changedDate: string | null;
+  comments: { text: string; author: string | null; date: string | null }[];
+}
+
+// Fetches and shows a DevOps work item's live details + comments, with a link
+// to open it in DevOps. Fetch failures (e.g. auth/PAT issues) surface inline.
+function DevopsDetailModal({ id, baseUrl, onClose }: { id: number; baseUrl: string; onClose: () => void }) {
+  const [detail, setDetail] = useState<WorkItemDetail | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [err, setErr] = useState("");
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    setErr("");
+    setDetail(null);
+    fetch(`/api/devops/workitem/${id}`)
+      .then(async (r) => {
+        const data = await r.json();
+        if (!r.ok) throw new Error(data.error || String(r.status));
+        return data as WorkItemDetail;
+      })
+      .then((d) => { if (!cancelled) setDetail(d); })
+      .catch((e) => { if (!cancelled) setErr(e instanceof Error ? e.message : "failed to load"); })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, [id]);
+
+  const link = baseUrl ? `${baseUrl}/_workitems/edit/${id}` : null;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
+      <div
+        className="max-h-[85vh] w-full max-w-lg overflow-y-auto rounded-lg bg-white p-6 shadow-xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="mb-3 flex items-start justify-between">
+          <div>
+            <div className="text-xs font-semibold uppercase tracking-wide text-orange-500">DevOps #{id}</div>
+            <h3 className="text-lg font-bold">{detail?.title ?? (loading ? "Loading…" : "Work item")}</h3>
+          </div>
+          <button onClick={onClose} className="text-2xl leading-none text-slate-400 hover:text-slate-600">×</button>
+        </div>
+
+        {loading && <div className="text-sm text-slate-500">Loading DevOps details…</div>}
+        {err && <div className="rounded bg-red-50 p-3 text-sm text-red-700">Couldn&apos;t load: {err}</div>}
+
+        {detail && !loading && (
+          <>
+            <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
+              <div><span className="text-slate-500">Type:</span> {detail.type ?? "—"}</div>
+              <div><span className="text-slate-500">Status:</span> {detail.state ?? "—"}</div>
+              <div><span className="text-slate-500">Assigned to:</span> {detail.assignedTo ?? "Unassigned"}</div>
+              <div><span className="text-slate-500">Project:</span> {detail.project ?? "—"}</div>
+              <div><span className="text-slate-500">Created:</span> {detail.createdDate ? fmtDate(detail.createdDate) : "—"}</div>
+              <div><span className="text-slate-500">Activity:</span> {detail.changedDate ? fmtDate(detail.changedDate) : "—"}</div>
+            </div>
+
+            <div className="mt-4">
+              <div className="mb-1 text-xs font-semibold uppercase text-slate-500">
+                Comments ({detail.comments.length})
+              </div>
+              {detail.comments.length === 0 ? (
+                <div className="text-sm text-slate-400">No comments.</div>
+              ) : (
+                <ul className="space-y-2">
+                  {detail.comments.map((c, i) => (
+                    <li key={i} className="rounded border border-slate-100 bg-slate-50 p-2 text-sm">
+                      <div className="whitespace-pre-wrap text-slate-700">{c.text}</div>
+                      <div className="mt-0.5 text-[11px] text-slate-400">
+                        {c.author ?? "—"}{c.date ? ` · ${fmtDate(c.date)}` : ""}
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          </>
+        )}
+
+        {link && (
+          <div className="mt-4 border-t border-slate-200 pt-3">
+            <a
+              href={link}
+              target="_blank"
+              rel="noreferrer"
+              className="rounded bg-orange-100 px-3 py-1.5 text-sm font-medium text-orange-700 hover:bg-orange-200"
+            >
+              Open in DevOps ↗
+            </a>
+          </div>
+        )}
+      </div>
+    </div>
   );
 }
 
@@ -686,12 +814,14 @@ function EntryModal({
   entry,
   devopsBaseUrl,
   members,
+  onOpenDevops,
   onSaved,
   onClose
 }: {
   entry: ThreadEntry;
   devopsBaseUrl: string;
   members: { id: string; displayName: string }[];
+  onOpenDevops: (id: number) => void;
   onSaved: () => void;
   onClose: () => void;
 }) {
@@ -774,7 +904,7 @@ function EntryModal({
 
         <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">
           <span className={`rounded px-1.5 py-0.5 font-medium ${typeBadgeClass(entry.type)}`}>{entry.type}</span>
-          {entry.devopsItemId && <DevopsBadge id={entry.devopsItemId} baseUrl={devopsBaseUrl} />}
+          {entry.devopsItemId && <DevopsBadge id={entry.devopsItemId} baseUrl={devopsBaseUrl} onOpen={onOpenDevops} />}
           <span className="text-slate-400">{entry.meetingTitle} · {fmtDate(entry.date)}</span>
         </div>
 
@@ -800,10 +930,12 @@ function EntryModal({
 function ThreadModal({
   entries,
   devopsBaseUrl,
+  onOpenDevops,
   onClose
 }: {
   entries: ThreadEntry[];
   devopsBaseUrl: string;
+  onOpenDevops: (id: number) => void;
   onClose: () => void;
 }) {
   const rootTitle = entries.find((e) => e.isRoot)?.title ?? entries[entries.length - 1]?.title ?? "Thread";
@@ -850,7 +982,7 @@ function ThreadModal({
                   {e.isRoot && (
                     <span className="rounded bg-brand-blue px-1.5 py-0.5 text-white">original</span>
                   )}
-                  {e.devopsItemId && <DevopsBadge id={e.devopsItemId} baseUrl={devopsBaseUrl} />}
+                  {e.devopsItemId && <DevopsBadge id={e.devopsItemId} baseUrl={devopsBaseUrl} onOpen={onOpenDevops} />}
                   <span className="text-slate-400">
                     {e.meetingTitle} · {fmtDate(e.date)}
                   </span>

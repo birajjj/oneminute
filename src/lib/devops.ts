@@ -146,6 +146,85 @@ export async function createWorkItem(input: CreateWorkItemInput): Promise<number
   return data.id;
 }
 
+export interface WorkItemComment {
+  text: string;
+  author: string | null;
+  date: string | null;
+}
+
+export interface WorkItemDetail {
+  id: number;
+  title: string | null;
+  type: string | null;
+  state: string | null;
+  assignedTo: string | null;
+  project: string | null;
+  createdDate: string | null;
+  changedDate: string | null;
+  comments: WorkItemComment[];
+}
+
+/** Full work-item detail for the in-app popup: fields + comments (best-effort). */
+export async function getWorkItemDetail(id: number): Promise<WorkItemDetail> {
+  if (!devopsConfigured()) throw new Error("DevOps is not configured");
+
+  const url = `${base()}/_apis/wit/workitems/${id}?api-version=${API_VERSION}`;
+  const res = await fetch(url, { headers: { Authorization: authHeader() } });
+  if (!res.ok) throw new Error(`DevOps getWorkItem ${res.status}: ${await res.text()}`);
+
+  const data = (await res.json()) as { id: number; fields?: Record<string, unknown> };
+  const f = data.fields ?? {};
+
+  const person = (v: unknown): string | null =>
+    v && typeof v === "object" && "displayName" in v
+      ? String((v as { displayName: unknown }).displayName)
+      : v
+        ? String(v)
+        : null;
+
+  return {
+    id: data.id,
+    title: (f["System.Title"] as string) ?? null,
+    type: (f["System.WorkItemType"] as string) ?? null,
+    state: (f["System.State"] as string) ?? null,
+    assignedTo: person(f["System.AssignedTo"]),
+    project: (f["System.TeamProject"] as string) ?? null,
+    createdDate: (f["System.CreatedDate"] as string) ?? null,
+    changedDate: (f["System.ChangedDate"] as string) ?? null,
+    comments: await getWorkItemComments(id)
+  };
+}
+
+// Comments are a preview API and may not exist on older TFS — best-effort, so a
+// failure returns [] rather than breaking the whole detail view.
+async function getWorkItemComments(id: number): Promise<WorkItemComment[]> {
+  try {
+    const url = `${base()}/_apis/wit/workItems/${id}/comments?api-version=${API_VERSION}-preview.3`;
+    const res = await fetch(url, { headers: { Authorization: authHeader() } });
+    if (!res.ok) return [];
+    const data = (await res.json()) as {
+      comments?: Array<{ text?: string; createdBy?: { displayName?: string }; createdDate?: string }>;
+    };
+    return (data.comments ?? []).map((c) => ({
+      text: stripHtml(c.text ?? ""),
+      author: c.createdBy?.displayName ?? null,
+      date: c.createdDate ?? null
+    }));
+  } catch {
+    return [];
+  }
+}
+
+function stripHtml(s: string): string {
+  return s
+    .replace(/<[^>]+>/g, "")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .trim();
+}
+
 export interface DevopsRequest {
   action: "create" | "link";
   workItemId?: string; // for link
