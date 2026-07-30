@@ -262,8 +262,30 @@ export default function BrowseClient({
               ) : (
                 <div className="space-y-3">
                   {areaMinutes.map((mn) => {
+                    // A follow-up minute is shown with its ORIGINAL item as the
+                    // header and the update nested underneath — so a follow-up
+                    // meeting reads the same "item → its update" shape as the
+                    // origin meeting. Root minutes are unchanged.
+                    const rootEntry = mn.isFollowUp
+                      ? (threads[mn.rootId] ?? []).find((e) => e.isRoot) ?? null
+                      : null;
+                    const selfEntry = mn.isFollowUp
+                      ? (threads[mn.rootId] ?? []).find((e) => e.id === mn.id) ?? null
+                      : null;
+
+                    const headerTitle = (mn.isFollowUp && rootEntry?.title) || mn.title;
+                    const headerStatus = (mn.isFollowUp && rootEntry?.status) || mn.status;
+                    const contextDescription = mn.isFollowUp ? rootEntry?.description ?? null : mn.description;
+                    const devopsId = mn.isFollowUp ? rootEntry?.devopsItemId ?? null : mn.devopsItemId;
+
+                    // Nested rows: a root shows its full cross-meeting history; a
+                    // follow-up minute shows just this meeting's update.
+                    const nestedRows: ThreadEntry[] = mn.isFollowUp
+                      ? selfEntry ? [selfEntry] : []
+                      : (threads[mn.rootId] ?? []).filter((e) => !e.isRoot);
+
                     const isOpenPending =
-                      mn.isPersistent && mn.status !== "Completed" && mn.status !== "Cancelled";
+                      mn.isPersistent && headerStatus !== "Completed" && headerStatus !== "Cancelled";
                     return (
                       <div
                         key={mn.id}
@@ -281,11 +303,11 @@ export default function BrowseClient({
                                 className="font-semibold text-brand-blue hover:underline"
                                 title="View full history of this item"
                               >
-                                {mn.title}
+                                {headerTitle}
                               </button>
                               <span className="text-xs italic text-slate-500">{mn.type}</span>
                               <span className="rounded bg-white px-1.5 py-0.5 text-[11px] text-slate-500">
-                                {mn.status}
+                                {headerStatus}
                               </span>
                               {isOpenPending && (
                                 <span className="rounded bg-amber-200 px-1.5 py-0.5 text-[10px] font-semibold text-amber-800">
@@ -305,66 +327,59 @@ export default function BrowseClient({
                                   👤 {mn.assignedTo}
                                 </span>
                               )}
-                              {mn.devopsItemId && (
-                                <DevopsBadge id={mn.devopsItemId} baseUrl={devopsBaseUrl} />
-                              )}
+                              {devopsId && <DevopsBadge id={devopsId} baseUrl={devopsBaseUrl} />}
                               {mn.dueDate && (
                                 <span className="text-[11px] text-slate-400">
                                   Due {shortDate(mn.dueDate)}
                                 </span>
                               )}
                             </div>
-                            {mn.description && (
+                            {contextDescription && (
                               <div className="mt-2 rounded border border-white bg-white/60 px-3 py-2 text-sm text-slate-700">
-                                {mn.description}
+                                {contextDescription}
                               </div>
                             )}
 
-                            {/* Nested follow-up updates (on-prem style): shown under
-                                the original minute. Click a row to open the detail. */}
-                            {!mn.isFollowUp && (() => {
-                              const followUps = (threads[mn.rootId] ?? []).filter((e) => !e.isRoot);
-                              if (followUps.length === 0) return null;
-                              return (
-                                <table className="mt-2 w-full border-collapse overflow-hidden rounded border border-slate-200 bg-white text-left text-sm">
-                                  <thead>
-                                    <tr className="bg-slate-50 text-xs text-slate-500">
-                                      <th className="border-b border-slate-200 px-3 py-1.5 font-medium">Follow-up</th>
-                                      <th className="border-b border-slate-200 px-3 py-1.5 font-medium">Type</th>
-                                      <th className="border-b border-slate-200 px-3 py-1.5 font-medium">Status</th>
-                                      <th className="border-b border-slate-200 px-3 py-1.5 font-medium">Date</th>
-                                    </tr>
-                                  </thead>
-                                  <tbody>
-                                    {followUps.map((fu) => {
-                                      const open = fu.status !== "Completed" && fu.status !== "Cancelled";
-                                      return (
-                                        <tr
-                                          key={fu.id}
-                                          onClick={() => setOpenEntry(fu)}
-                                          className={`cursor-pointer hover:bg-blue-50 ${open ? "" : "text-slate-400"}`}
-                                        >
-                                          <td className="border-b border-slate-100 px-3 py-1.5 text-brand-blue">
-                                            {fu.description?.trim() || fu.title}
-                                          </td>
-                                          <td className="border-b border-slate-100 px-3 py-1.5">{fu.type}</td>
-                                          <td className="border-b border-slate-100 px-3 py-1.5">
-                                            {fu.status}
-                                            {open && (fu.type === "Action" || fu.type === "To-Do" || fu.type === "Devops") && (
-                                              <span className="ml-1 rounded bg-amber-200 px-1 text-[9px] font-semibold text-amber-800">open</span>
-                                            )}
-                                          </td>
-                                          <td className="border-b border-slate-100 px-3 py-1.5 text-slate-500">{shortDate(fu.date)}</td>
-                                        </tr>
-                                      );
-                                    })}
-                                  </tbody>
-                                </table>
-                              );
-                            })()}
+                            {/* Nested update rows (on-prem style). Click a row for detail. */}
+                            {nestedRows.length > 0 && (
+                              <table className="mt-2 w-full border-collapse overflow-hidden rounded border border-slate-200 bg-white text-left text-sm">
+                                <thead>
+                                  <tr className="bg-slate-50 text-xs text-slate-500">
+                                    <th className="border-b border-slate-200 px-3 py-1.5 font-medium">Follow-up</th>
+                                    <th className="border-b border-slate-200 px-3 py-1.5 font-medium">Type</th>
+                                    <th className="border-b border-slate-200 px-3 py-1.5 font-medium">Status</th>
+                                    <th className="border-b border-slate-200 px-3 py-1.5 font-medium">Date</th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {nestedRows.map((fu) => {
+                                    const open = fu.status !== "Completed" && fu.status !== "Cancelled";
+                                    return (
+                                      <tr
+                                        key={fu.id}
+                                        onClick={() => setOpenEntry(fu)}
+                                        className={`cursor-pointer hover:bg-blue-50 ${open ? "" : "text-slate-400"}`}
+                                      >
+                                        <td className="border-b border-slate-100 px-3 py-1.5 text-brand-blue">
+                                          {fu.description?.trim() || fu.title}
+                                        </td>
+                                        <td className="border-b border-slate-100 px-3 py-1.5">{fu.type}</td>
+                                        <td className="border-b border-slate-100 px-3 py-1.5">
+                                          {fu.status}
+                                          {open && (fu.type === "Action" || fu.type === "To-Do" || fu.type === "Devops") && (
+                                            <span className="ml-1 rounded bg-amber-200 px-1 text-[9px] font-semibold text-amber-800">open</span>
+                                          )}
+                                        </td>
+                                        <td className="border-b border-slate-100 px-3 py-1.5 text-slate-500">{shortDate(fu.date)}</td>
+                                      </tr>
+                                    );
+                                  })}
+                                </tbody>
+                              </table>
+                            )}
                           </div>
                           <label className="ml-4 flex shrink-0 items-center gap-1 text-xs text-slate-500">
-                            <input type="checkbox" disabled checked={mn.status === "Completed"} />
+                            <input type="checkbox" disabled checked={headerStatus === "Completed"} />
                             Mark As Complete
                           </label>
                         </div>
