@@ -20,7 +20,8 @@ const STATUS_MAP: Record<string, MinuteStatus> = {
 const BodySchema = z.object({
   status: z.string().optional(),
   assignedTo: z.string().optional(),
-  description: z.string().optional()
+  description: z.string().optional(),
+  title: z.string().optional()
 });
 
 export async function PATCH(
@@ -47,7 +48,13 @@ export async function PATCH(
       status?: MinuteStatus;
       assignedToUserId?: string | null;
       description?: string | null;
+      title?: string;
     } = {};
+
+    if (parsed.data.title !== undefined) {
+      const t = parsed.data.title.trim();
+      if (t) data.title = t; // never blank out a title
+    }
 
     if (parsed.data.description !== undefined) {
       data.description = parsed.data.description.trim() || null;

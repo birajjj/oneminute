@@ -95,10 +95,20 @@ export default function BrowseClient({
   // Optimistic inline edits, keyed by the ROOT minute id (an item's live status
   // / assignee lives on its thread root). saveMinute updates immediately and
   // reverts on failure.
-  const [edits, setEdits] = useState<Record<string, { status?: string; assignedTo?: string | null }>>({});
+  const [edits, setEdits] = useState<
+    Record<string, { status?: string; assignedTo?: string | null; title?: string; description?: string | null }>
+  >({});
   const [saveError, setSaveError] = useState("");
 
-  async function saveMinute(id: string, patch: { status?: string; assignedTo?: string | null }) {
+  // Click-to-edit for a minute's title + description.
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [draft, setDraft] = useState({ title: "", description: "", origTitle: "", origDescription: "" });
+  const [savedFlash, setSavedFlash] = useState<string | null>(null);
+
+  async function saveMinute(
+    id: string,
+    patch: { status?: string; assignedTo?: string | null; title?: string; description?: string | null }
+  ) {
     const prev = edits[id];
     setSaveError("");
     setEdits((e) => ({ ...e, [id]: { ...e[id], ...patch } }));
@@ -106,6 +116,8 @@ export default function BrowseClient({
       const body: Record<string, string> = {};
       if (patch.status !== undefined) body.status = patch.status;
       if (patch.assignedTo !== undefined) body.assignedTo = patch.assignedTo ?? "";
+      if (patch.title !== undefined) body.title = patch.title;
+      if (patch.description !== undefined) body.description = patch.description ?? "";
       const res = await fetch(`/api/minutes/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
@@ -115,6 +127,65 @@ export default function BrowseClient({
     } catch (err) {
       setEdits((cur) => ({ ...cur, [id]: prev ?? {} })); // revert
       setSaveError("Couldn't save change: " + (err instanceof Error ? err.message : "error"));
+    }
+  }
+
+  function startEditMinute(id: string, title: string, description: string) {
+    setEditingId(id);
+    setDraft({ title, description, origTitle: title, origDescription: description });
+  }
+  function commitEditMinute() {
+    const id = editingId;
+    if (!id) return;
+    setEditingId(null);
+    const changed =
+      draft.title.trim() !== draft.origTitle.trim() || draft.description !== draft.origDescription;
+    if (changed) {
+      saveMinute(id, { title: draft.title.trim() || draft.origTitle, description: draft.description });
+      setSavedFlash(id);
+      window.setTimeout(() => setSavedFlash((f) => (f === id ? null : f)), 1500);
+    }
+  }
+
+  // Click-to-edit for the meeting's own details (title / description / attendees).
+  const [editingMeeting, setEditingMeeting] = useState<string | null>(null);
+  const [mDraft, setMDraft] = useState({
+    title: "", description: "", attendee: "", origTitle: "", origDescription: "", origAttendee: ""
+  });
+  const [mSaved, setMSaved] = useState(false);
+
+  function startEditMeeting(m: BrowseMeeting) {
+    setEditingMeeting(m.id);
+    setMDraft({
+      title: m.title,
+      description: m.description ?? "",
+      attendee: m.attendee ?? "",
+      origTitle: m.title,
+      origDescription: m.description ?? "",
+      origAttendee: m.attendee ?? ""
+    });
+  }
+  async function commitEditMeeting() {
+    const id = editingMeeting;
+    if (!id) return;
+    setEditingMeeting(null);
+    const changed =
+      mDraft.title.trim() !== mDraft.origTitle.trim() ||
+      mDraft.description !== mDraft.origDescription ||
+      mDraft.attendee !== mDraft.origAttendee;
+    if (!changed) return;
+    try {
+      const res = await fetch(`/api/meetings/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title: mDraft.title, description: mDraft.description, attendee: mDraft.attendee })
+      });
+      if (!res.ok) throw new Error(await res.text());
+      setMSaved(true);
+      window.setTimeout(() => setMSaved(false), 1500);
+      router.refresh();
+    } catch (e) {
+      setSaveError("Couldn't save meeting: " + (e instanceof Error ? e.message : "error"));
     }
   }
 
@@ -155,6 +226,7 @@ export default function BrowseClient({
   const areaMinutes = selected
     ? selected.minutes.filter((m) => (m.area || "General") === currentArea)
     : [];
+  const isEditingMeeting = !!selected && editingMeeting === selected.id;
 
   return (
     <div className="min-h-screen bg-slate-50">
@@ -227,9 +299,35 @@ export default function BrowseClient({
             <p className="text-slate-500">Select a meeting.</p>
           ) : (
             <>
-              {/* Meeting detail card */}
-              <div className="mb-6 rounded-lg border border-slate-200 bg-white p-5">
-                <h2 className="text-xl font-semibold">{selected.title}</h2>
+              {/* Meeting detail card — click title/description/attendees to edit */}
+              <div
+                className="mb-6 rounded-lg border border-slate-200 bg-white p-5"
+                onBlur={(e) => {
+                  if (isEditingMeeting && !e.currentTarget.contains(e.relatedTarget as Node)) commitEditMeeting();
+                }}
+                onKeyDown={(e) => {
+                  if (isEditingMeeting && e.key === "Escape") setEditingMeeting(null);
+                }}
+              >
+                <div className="flex items-center gap-2">
+                  {isEditingMeeting ? (
+                    <input
+                      autoFocus
+                      value={mDraft.title}
+                      onChange={(e) => setMDraft((d) => ({ ...d, title: e.target.value }))}
+                      className="w-full rounded border border-brand-blue px-2 py-1 text-xl font-semibold"
+                    />
+                  ) : (
+                    <h2
+                      onClick={() => startEditMeeting(selected)}
+                      className="cursor-text text-xl font-semibold hover:underline"
+                      title="Click to edit"
+                    >
+                      {selected.title}
+                    </h2>
+                  )}
+                  {mSaved && <span className="text-[10px] font-medium text-emerald-600">Saved ✓</span>}
+                </div>
                 <div className="mt-0.5 text-sm text-slate-500">{fmtDate(selected.date)}</div>
 
                 <div className="mt-4 text-sm">
@@ -239,14 +337,40 @@ export default function BrowseClient({
 
                 <div className="mt-3 text-sm">
                   <div className="text-slate-500">Description:</div>
-                  <div className="mt-1 rounded border border-slate-100 bg-slate-50 px-3 py-2 text-slate-700">
-                    {selected.description || <span className="text-slate-400">—</span>}
-                  </div>
+                  {isEditingMeeting ? (
+                    <textarea
+                      value={mDraft.description}
+                      onChange={(e) => setMDraft((d) => ({ ...d, description: e.target.value }))}
+                      rows={3}
+                      className="mt-1 w-full rounded border border-brand-blue p-2 text-slate-700"
+                    />
+                  ) : (
+                    <div
+                      onClick={() => startEditMeeting(selected)}
+                      className="mt-1 cursor-text rounded border border-slate-100 bg-slate-50 px-3 py-2 text-slate-700 hover:border-slate-200"
+                    >
+                      {selected.description || <span className="text-slate-400">—</span>}
+                    </div>
+                  )}
                 </div>
 
                 <div className="mt-3 text-sm">
                   <div className="text-slate-500">Attendees:</div>
-                  <div className="font-medium">{selected.attendee || <span className="text-slate-400">—</span>}</div>
+                  {isEditingMeeting ? (
+                    <input
+                      value={mDraft.attendee}
+                      onChange={(e) => setMDraft((d) => ({ ...d, attendee: e.target.value }))}
+                      className="mt-1 w-full rounded border border-brand-blue px-2 py-1 text-slate-700"
+                    />
+                  ) : (
+                    <div
+                      onClick={() => startEditMeeting(selected)}
+                      className="cursor-text font-medium hover:underline"
+                      title="Click to edit"
+                    >
+                      {selected.attendee || <span className="text-slate-400">—</span>}
+                    </div>
+                  )}
                 </div>
 
                 {selected.followUpFrom && (
@@ -319,6 +443,10 @@ export default function BrowseClient({
                     const displayStatus = eff.status ?? headerStatus;
                     const displayAssignee =
                       eff.assignedTo === undefined ? baseAssignee ?? "" : eff.assignedTo ?? "";
+                    const displayTitle = eff.title ?? headerTitle;
+                    const displayDescription =
+                      eff.description !== undefined ? eff.description : contextDescription;
+                    const isEditing = editingId === editId;
 
                     // Nested rows: a root shows its full cross-meeting history; a
                     // follow-up minute shows just this meeting's update.
@@ -338,15 +466,36 @@ export default function BrowseClient({
                         }`}
                       >
                         <div className="flex items-start justify-between">
-                          <div className="flex-1">
+                          <div
+                            className="flex-1"
+                            onBlur={(e) => {
+                              // Click/tab out of the whole card → save (on-prem feel).
+                              if (isEditing && !e.currentTarget.contains(e.relatedTarget as Node)) commitEditMinute();
+                            }}
+                            onKeyDown={(e) => {
+                              if (isEditing && e.key === "Escape") setEditingId(null);
+                            }}
+                          >
                             <div className="flex flex-wrap items-center gap-2">
-                              <button
-                                onClick={() => setOpenThreadRoot(mn.rootId)}
-                                className="font-semibold text-brand-blue hover:underline"
-                                title="View full history of this item"
-                              >
-                                {headerTitle}
-                              </button>
+                              {isEditing ? (
+                                <input
+                                  autoFocus
+                                  value={draft.title}
+                                  onChange={(e) => setDraft((d) => ({ ...d, title: e.target.value }))}
+                                  className="min-w-[12rem] flex-1 rounded border border-brand-blue px-1 py-0.5 text-sm font-semibold"
+                                />
+                              ) : (
+                                <span
+                                  onClick={() => startEditMinute(editId, displayTitle, displayDescription ?? "")}
+                                  className="cursor-text font-semibold text-brand-blue hover:underline"
+                                  title="Click to edit"
+                                >
+                                  {displayTitle}
+                                </span>
+                              )}
+                              {savedFlash === editId && (
+                                <span className="text-[10px] font-medium text-emerald-600">Saved ✓</span>
+                              )}
                               <span className="text-xs italic text-slate-500">{mn.type}</span>
                               <select
                                 value={displayStatus}
@@ -392,10 +541,23 @@ export default function BrowseClient({
                                 </span>
                               )}
                             </div>
-                            {contextDescription && (
-                              <div className="mt-2 rounded border border-white bg-white/60 px-3 py-2 text-sm text-slate-700">
-                                {contextDescription}
-                              </div>
+                            {isEditing ? (
+                              <textarea
+                                value={draft.description}
+                                onChange={(e) => setDraft((d) => ({ ...d, description: e.target.value }))}
+                                rows={3}
+                                placeholder="Description…"
+                                className="mt-2 w-full rounded border border-brand-blue p-2 text-sm text-slate-700"
+                              />
+                            ) : (
+                              displayDescription && (
+                                <div
+                                  onClick={() => startEditMinute(editId, displayTitle, displayDescription ?? "")}
+                                  className="mt-2 cursor-text rounded border border-white bg-white/60 px-3 py-2 text-sm text-slate-700 hover:border-slate-200"
+                                >
+                                  {displayDescription}
+                                </div>
+                              )
                             )}
 
                             {/* Nested update rows (on-prem style). Click a row for detail. */}
