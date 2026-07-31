@@ -109,7 +109,9 @@ export default function FollowUpClient({
         note: "",
         assignedTo: it.assignedTo ?? "",
         dueDate: it.dueDate ? it.dueDate.slice(0, 10) : "",
-        tags: it.tags ?? [],
+        // Starts empty every meeting: these flag what THIS meeting decided, they
+        // aren't the item's running flags.
+        tags: [],
         devopsAction: "none",
         devopsProject: "",
         devopsWorkItemType: "User Story",
@@ -203,7 +205,7 @@ export default function FollowUpClient({
           noUpdate: false,
           note: u.note || next[u.rootMinuteId].note,
           status: STATUS_OPTIONS.includes(u.status) ? u.status : next[u.rootMinuteId].status,
-          tags: normalizeTags([...next[u.rootMinuteId].tags, ...(u.tags ?? [])]),
+          tags: normalizeTags(u.tags),
           // A DevOps suggestion arms the controls (type -> Devops) for review.
           ...(wantsDevops
             ? {

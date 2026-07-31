@@ -138,9 +138,9 @@ export async function buildFollowUpPlan(
       discussed: !!u.discussed,
       note: u.note || "",
       status: normalizeStatus(u.status),
-      // Union with what the item already carries — a suggestion adds flags, it
-      // never silently strips one someone set by hand.
-      tags: normalizeTags([...item.tags, ...(u.tags ?? [])]),
+      // Only what this meeting warrants — flags are per-update, so prior flags
+      // on the item are not carried in.
+      tags: normalizeTags(u.tags),
       devopsAction: normalizeDevopsAction(u.devopsAction),
       devopsWorkItemType: normalizeWorkItemType(u.devopsWorkItemType),
       devopsWorkItemId: u.devopsWorkItemId || ""

@@ -643,9 +643,9 @@ export default function BrowseClient({
                     const displayTitle = effItem.title ?? headerTitle;
                     const displayDescription =
                       effItem.description !== undefined ? effItem.description : contextDescription;
-                    // Flags belong to the ITEM (like its title/type), not to one update.
-                    const displayTags =
-                      effItem.tags ?? ((mn.isFollowUp && rootEntry?.tags) || mn.tags || []);
+                    // Point-in-time, like status: flags record what THIS meeting
+                    // decided, so they come from (and save to) this entry.
+                    const displayTags = effEntry.tags ?? mn.tags ?? [];
                     const isEditing = editingId === itemId;
 
                     // Nested history: only what existed UP TO the meeting being viewed
@@ -708,7 +708,7 @@ export default function BrowseClient({
                               <span className="text-xs italic text-slate-500">{headerType}</span>
                               <TagChips
                                 value={displayTags}
-                                onChange={(tags) => saveMinute(itemId, { tags })}
+                                onChange={(tags) => saveMinute(entryId, { tags })}
                               />
                               <select
                                 value={displayStatus}
@@ -795,6 +795,11 @@ export default function BrowseClient({
                                       >
                                         <td className="border-b border-slate-100 px-3 py-1.5 text-brand-blue">
                                           {fu.description?.trim() || fu.title}
+                                          {fu.tags.length > 0 && (
+                                            <span className="ml-2 inline-flex gap-1 align-middle">
+                                              <TagBadges tags={fu.tags} />
+                                            </span>
+                                          )}
                                         </td>
                                         <td className="border-b border-slate-100 px-3 py-1.5">{fu.type}</td>
                                         <td className="border-b border-slate-100 px-3 py-1.5">

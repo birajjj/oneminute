@@ -122,7 +122,6 @@ export async function commitFollowUp(
             title: true,
             type: true,
             status: true,
-            tags: true,
             meeting: { select: { projectId: true } }
           }
         });
@@ -132,13 +131,9 @@ export async function commitFollowUp(
           continue;
         }
 
-        // Governance flags live on the ITEM, so a change here rewrites the root's
-        // flags. Independent of whether this meeting records an update entry —
-        // you can flag something you took no action on.
-        const wantedTags = normalizeTags(u.tags);
-        if (wantedTags.join(",") !== [...root.tags].sort().join(",")) {
-          await tx.minute.update({ where: { id: root.id }, data: { tags: wantedTags } });
-        }
+        // Point-in-time: flags record what THIS meeting decided, so they go on
+        // this meeting's entry — never backdated onto the root item.
+        const entryTags = normalizeTags(u.tags);
 
         // "No action this meeting" — record a marker note; item stays open/unchanged.
         if (u.noUpdate) {
@@ -153,6 +148,7 @@ export async function commitFollowUp(
               description: "No action this meeting.",
               type: root.type, // an update keeps the item's type (a To-Do stays a To-Do)
               status: root.status,
+              tags: entryTags,
               parentMinuteId: root.id,
               isPersistent: false
             }
@@ -166,7 +162,8 @@ export async function commitFollowUp(
         const hasNote = !!u.note && !!u.note.trim();
         const wantsDevops = u.devopsAction === "create" || u.devopsAction === "link";
         // Nothing meaningful to record — treat as an implicit "no update".
-        if (!hasNote && !statusChanged && !wantsDevops) continue;
+        // Flags count: flagging an item as a Decision is itself worth recording.
+        if (!hasNote && !statusChanged && !wantsDevops && entryTags.length === 0) continue;
 
         const newStatus = mappedStatus ?? root.status;
         const area = root.area || "General";
@@ -206,6 +203,7 @@ export async function commitFollowUp(
             description: u.note?.trim() || null,
             type: updateType,
             status: newStatus,
+            tags: entryTags,
             parentMinuteId: root.id,
             isPersistent: false,
             assignedToUserId: resolveUser(u.assignedTo),
