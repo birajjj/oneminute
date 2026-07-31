@@ -95,26 +95,46 @@ export async function loadFollowUpData(
     });
   }
 
+  // Derive each item's CURRENT status from its latest entry (root + follow-ups).
+  // Since we no longer overwrite a root's status (point-in-time model), an item
+  // is "open" based on its newest entry, not the root's original status.
+  const entriesByRoot: Record<string, typeof minutes> = {};
+  for (const m of minutes) {
+    const rid = m.parentMinuteId ?? m.id;
+    (entriesByRoot[rid] ??= []).push(m);
+  }
+  const currentStatusOf = (rootId: string): string => {
+    const entries = entriesByRoot[rootId] ?? [];
+    let latest = entries[0];
+    for (const e of entries) {
+      const et = e.meeting.meetingDate.getTime();
+      const lt = latest.meeting.meetingDate.getTime();
+      if (et > lt || (et === lt && e.createdAt > latest.createdAt)) latest = e;
+    }
+    return latest?.status ?? "New";
+  };
+
   const openItems: OpenItem[] = minutes
-    .filter(
-      (m) =>
-        !m.parentMinuteId &&
-        m.isPersistent &&
-        m.status !== "Completed" &&
-        m.status !== "Cancelled"
-    )
-    .map((m) => ({
-      id: m.id,
-      area: m.area || "General",
-      title: m.title,
-      description: m.description,
-      type: TYPE_LABEL[m.type] ?? m.type,
-      status: STATUS_LABEL[m.status] ?? m.status,
-      assignedTo: m.assignedTo?.displayName ?? null,
-      dueDate: m.dueDate ? m.dueDate.toISOString() : null,
-      devopsItemId: m.devopsItemId ?? null,
-      history: historyByRoot[m.id] ?? []
-    }));
+    .filter((m) => {
+      if (m.parentMinuteId || !m.isPersistent) return false;
+      const cur = currentStatusOf(m.id);
+      return cur !== "Completed" && cur !== "Cancelled";
+    })
+    .map((m) => {
+      const cur = currentStatusOf(m.id);
+      return {
+        id: m.id,
+        area: m.area || "General",
+        title: m.title,
+        description: m.description,
+        type: TYPE_LABEL[m.type] ?? m.type,
+        status: STATUS_LABEL[cur] ?? cur, // show CURRENT status, not the root's original
+        assignedTo: m.assignedTo?.displayName ?? null,
+        dueDate: m.dueDate ? m.dueDate.toISOString() : null,
+        devopsItemId: m.devopsItemId ?? null,
+        history: historyByRoot[m.id] ?? []
+      };
+    });
 
   const areas = [...new Set(openItems.map((i) => i.area))].sort();
 

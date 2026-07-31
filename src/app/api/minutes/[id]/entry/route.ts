@@ -70,11 +70,8 @@ export async function POST(
       }
     });
 
-    // Advance the item's live status if the entry set one.
-    if (newStatus && newStatus !== root.status) {
-      await db.minute.update({ where: { id: root.id }, data: { status: newStatus } });
-    }
-
+    // Point-in-time: the entry carries its own status; we don't overwrite the
+    // item's status here (current status is derived from the latest entry).
     return NextResponse.json({ ok: true });
   } catch (err) {
     const msg = err instanceof Error ? err.message : "unknown error";

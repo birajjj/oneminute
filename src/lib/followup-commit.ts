@@ -201,15 +201,18 @@ export async function commitFollowUp(
           }
         });
 
-        // The root carries the item's live status forward.
-        await tx.minute.update({
-          where: { id: root.id },
-          data: {
-            status: newStatus,
-            ...(u.assignedTo ? { assignedToUserId: resolveUser(u.assignedTo) } : {}),
-            ...(u.dueDate ? { dueDate: parseDate(u.dueDate) } : {})
-          }
-        });
+        // Point-in-time: the update is recorded as its own entry; we do NOT
+        // overwrite the item's status (current status is derived from the latest
+        // entry). An update may still re-assign / re-date the item itself.
+        if (u.assignedTo || u.dueDate) {
+          await tx.minute.update({
+            where: { id: root.id },
+            data: {
+              ...(u.assignedTo ? { assignedToUserId: resolveUser(u.assignedTo) } : {}),
+              ...(u.dueDate ? { dueDate: parseDate(u.dueDate) } : {})
+            }
+          });
+        }
         updated++;
       }
 

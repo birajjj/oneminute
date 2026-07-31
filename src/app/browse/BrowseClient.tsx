@@ -135,25 +135,6 @@ export default function BrowseClient({
     }
   }
 
-  // Marking a follow-up item complete records a completion entry in the meeting
-  // being viewed (and advances the item's status), rather than a silent flip.
-  async function addCompletionEntry(rootId: string, meetingId: string) {
-    setSaveError("");
-    setEdits((e) => ({ ...e, [rootId]: { ...e[rootId], status: "Completed" } })); // optimistic
-    try {
-      const res = await fetch(`/api/minutes/${rootId}/entry`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ meetingId, status: "Completed", note: "Marked complete." })
-      });
-      if (!res.ok) throw new Error(await res.text());
-      router.refresh(); // surface the new entry
-    } catch (err) {
-      setEdits((cur) => ({ ...cur, [rootId]: {} }));
-      setSaveError("Couldn't mark complete: " + (err instanceof Error ? err.message : "error"));
-    }
-  }
-
   function startEditMinute(id: string, title: string, description: string) {
     setEditingId(id);
     setDraft({ title, description, origTitle: title, origDescription: description });
@@ -454,29 +435,34 @@ export default function BrowseClient({
                       ? (threads[mn.rootId] ?? []).find((e) => e.id === mn.id) ?? null
                       : null;
 
+                    // Point-in-time: the card shows THIS entry's own recorded status
+                    // /assignee (as of its meeting). Title/description are the item's
+                    // identity (the root). So status/assignee edits target this entry;
+                    // title/description edits target the item (root).
+                    const entryId = mn.id;
+                    const itemId = mn.rootId;
                     const headerTitle = (mn.isFollowUp && rootEntry?.title) || mn.title;
-                    const headerStatus = (mn.isFollowUp && rootEntry?.status) || mn.status;
                     const contextDescription = mn.isFollowUp ? rootEntry?.description ?? null : mn.description;
                     const devopsId = mn.isFollowUp ? rootEntry?.devopsItemId ?? null : mn.devopsItemId;
 
-                    // Inline edits target the thread ROOT (where an item's live
-                    // status/assignee lives), with an optimistic override applied.
-                    const editId = mn.rootId;
-                    const eff = edits[editId] ?? {};
-                    const baseAssignee = mn.isFollowUp ? rootEntry?.assignedTo ?? null : mn.assignedTo;
-                    const displayStatus = eff.status ?? headerStatus;
+                    const effEntry = edits[entryId] ?? {};
+                    const effItem = edits[itemId] ?? {};
+                    const displayStatus = effEntry.status ?? mn.status;
                     const displayAssignee =
-                      eff.assignedTo === undefined ? baseAssignee ?? "" : eff.assignedTo ?? "";
-                    const displayTitle = eff.title ?? headerTitle;
+                      effEntry.assignedTo === undefined ? mn.assignedTo ?? "" : effEntry.assignedTo ?? "";
+                    const displayTitle = effItem.title ?? headerTitle;
                     const displayDescription =
-                      eff.description !== undefined ? eff.description : contextDescription;
-                    const isEditing = editingId === editId;
+                      effItem.description !== undefined ? effItem.description : contextDescription;
+                    const isEditing = editingId === itemId;
 
-                    // Nested rows: a root shows its full cross-meeting history; a
-                    // follow-up minute shows just this meeting's update.
+                    // Nested history: only what existed UP TO the meeting being viewed
+                    // (so an earlier meeting doesn't show later updates). The full
+                    // journey is still in the thread popup.
                     const nestedRows: ThreadEntry[] = mn.isFollowUp
                       ? selfEntry ? [selfEntry] : []
-                      : (threads[mn.rootId] ?? []).filter((e) => !e.isRoot);
+                      : (threads[mn.rootId] ?? []).filter(
+                          (e) => !e.isRoot && (!selected || e.date <= selected.date)
+                        );
 
                     const isOpenPending =
                       mn.isPersistent && displayStatus !== "Completed" && displayStatus !== "Cancelled";
@@ -510,20 +496,20 @@ export default function BrowseClient({
                                 />
                               ) : (
                                 <span
-                                  onClick={() => startEditMinute(editId, displayTitle, displayDescription ?? "")}
+                                  onClick={() => startEditMinute(itemId, displayTitle, displayDescription ?? "")}
                                   className="cursor-text font-semibold text-brand-blue hover:underline"
                                   title="Click to edit"
                                 >
                                   {displayTitle}
                                 </span>
                               )}
-                              {savedFlash === editId && (
+                              {savedFlash === itemId && (
                                 <span className="text-[10px] font-medium text-emerald-600">Saved ✓</span>
                               )}
                               <span className="text-xs italic text-slate-500">{mn.type}</span>
                               <select
                                 value={displayStatus}
-                                onChange={(e) => saveMinute(editId, { status: e.target.value })}
+                                onChange={(e) => saveMinute(entryId, { status: e.target.value })}
                                 className="rounded border border-slate-300 bg-white px-1 py-0.5 text-[11px] text-slate-600"
                                 title="Change status"
                               >
@@ -546,7 +532,7 @@ export default function BrowseClient({
                               )}
                               <select
                                 value={displayAssignee}
-                                onChange={(e) => saveMinute(editId, { assignedTo: e.target.value })}
+                                onChange={(e) => saveMinute(entryId, { assignedTo: e.target.value })}
                                 className="rounded border border-slate-300 bg-slate-50 px-1 py-0.5 text-[10px] text-slate-600"
                                 title="Assign"
                               >
@@ -576,7 +562,7 @@ export default function BrowseClient({
                             ) : (
                               displayDescription && (
                                 <div
-                                  onClick={() => startEditMinute(editId, displayTitle, displayDescription ?? "")}
+                                  onClick={() => startEditMinute(itemId, displayTitle, displayDescription ?? "")}
                                   className="mt-2 cursor-text rounded border border-white bg-white/60 px-3 py-2 text-sm text-slate-700 hover:border-slate-200"
                                 >
                                   {displayDescription}
@@ -629,14 +615,10 @@ export default function BrowseClient({
                               <input
                                 type="checkbox"
                                 checked={displayStatus === "Completed"}
-                                onChange={(e) => {
-                                  // Checking records a completion entry in this meeting; unchecking reopens.
-                                  if (e.target.checked && selected) {
-                                    addCompletionEntry(editId, selected.id);
-                                  } else {
-                                    saveMinute(editId, { status: "New" });
-                                  }
-                                }}
+                                onChange={(e) =>
+                                  // Point-in-time: sets THIS entry's status (no duplicate entry).
+                                  saveMinute(entryId, { status: e.target.checked ? "Completed" : "New" })
+                                }
                               />
                               Mark As Complete
                             </label>

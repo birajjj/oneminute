@@ -168,18 +168,8 @@ export async function commitAutoPlan(
           }
         });
         minutesSaved += 1;
-
-        // Auto-update the thread root's status when this follow-up implies one.
-        // e.g. statusChange "In Progress -> Completed" closes the pending item.
-        if (rootId && m.statusChange) {
-          const newStatus = statusFromChange(m.statusChange);
-          if (newStatus) {
-            await tx.minute.update({
-              where: { id: rootId },
-              data: { status: newStatus }
-            });
-          }
-        }
+        // Point-in-time: the follow-up is recorded as its own entry with its own
+        // status; we do NOT overwrite the root item's status here.
       } catch (e) {
         warnings.push(
           `Failed to save "${m.title}": ${e instanceof Error ? e.message : "unknown"}`
@@ -280,11 +270,3 @@ async function handleDevops(
   return { id, project };
 }
 
-// Reads the target status out of an AI statusChange string like
-// "In Progress -> Completed" and maps it to our enum. Returns null if the
-// change doesn't name a status we recognise.
-function statusFromChange(change: string): MinuteStatus | null {
-  const parts = change.split(/->|→|=>/);
-  const target = (parts[parts.length - 1] || "").trim();
-  return STATUS_MAP[target] ?? null;
-}

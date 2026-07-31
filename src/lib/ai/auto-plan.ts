@@ -206,16 +206,57 @@ async function loadContext(orgId: string): Promise<Context> {
       meetings: {
         orderBy: { meetingDate: "desc" },
         take: 5,
-        include: {
-          minutes: {
-            where: { status: { notIn: ["Completed", "Cancelled"] } },
-            orderBy: { createdAt: "desc" },
-            take: 40
-          }
-        }
+        select: { id: true, title: true, meetingDate: true }
       }
     }
   });
+
+  // All minutes across these projects, so we can derive each item's CURRENT
+  // status from its latest entry (point-in-time model: a root's status is not
+  // overwritten, so "open" must be judged by the newest entry in the thread).
+  const projectIds = projects.map((p) => p.id);
+  const minutes = await db.minute.findMany({
+    where: { orgId, meeting: { projectId: { in: projectIds } } },
+    orderBy: { createdAt: "asc" },
+    select: {
+      id: true,
+      title: true,
+      description: true,
+      status: true,
+      area: true,
+      parentMinuteId: true,
+      meeting: { select: { projectId: true, meetingDate: true } }
+    }
+  });
+
+  const entriesByRoot: Record<string, typeof minutes> = {};
+  for (const m of minutes) {
+    const rid = m.parentMinuteId ?? m.id;
+    (entriesByRoot[rid] ??= []).push(m);
+  }
+  const currentStatusOf = (rootId: string): string => {
+    const entries = entriesByRoot[rootId] ?? [];
+    let latest = entries[0];
+    for (const e of entries) {
+      if (e.meeting.meetingDate.getTime() >= latest.meeting.meetingDate.getTime()) latest = e;
+    }
+    return latest?.status ?? "New";
+  };
+
+  // Open ROOT items per project (an item can only be followed up via its root).
+  const openByProject: Record<string, Context["projects"][number]["openMinutes"]> = {};
+  for (const m of minutes) {
+    if (m.parentMinuteId) continue;
+    const cur = currentStatusOf(m.id);
+    if (cur === "Completed" || cur === "Cancelled") continue;
+    (openByProject[m.meeting.projectId] ??= []).push({
+      id: m.id,
+      title: m.title,
+      description: (m.description || "").slice(0, 200),
+      status: cur,
+      area: m.area
+    });
+  }
 
   const users = await db.user.findMany({
     where: { orgId },
@@ -231,15 +272,7 @@ async function loadContext(orgId: string): Promise<Context> {
         title: m.title,
         date: m.meetingDate.toISOString().slice(0, 10)
       })),
-      openMinutes: p.meetings.flatMap((m) =>
-        m.minutes.map((mn) => ({
-          id: mn.id,
-          title: mn.title,
-          description: (mn.description || "").slice(0, 200),
-          status: mn.status,
-          area: mn.area
-        }))
-      )
+      openMinutes: openByProject[p.id] ?? []
     })),
     users: users.map((u) => u.displayName)
   };
