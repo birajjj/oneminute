@@ -38,43 +38,47 @@ export async function PATCH(
     if (!to) return NextResponse.json({ error: "invalid name" }, { status: 400 });
     if (from === to) return NextResponse.json({ ok: true });
 
-    const projectId = meeting.projectId;
+    // Resolve the project's meetings up front and filter on scalar meetingId —
+    // updateMany/deleteMany don't reliably honour relation filters in Prisma.
+    const projectMeetings = await db.meeting.findMany({
+      where: { orgId: user.orgId, projectId: meeting.projectId },
+      select: { id: true }
+    });
+    const meetingIds = projectMeetings.map((m) => m.id);
+    if (meetingIds.length === 0) return NextResponse.json({ ok: true });
 
     // Re-file every minute in the project that sits under the old name.
-    await db.minute.updateMany({
-      where: { orgId: user.orgId, meeting: { projectId }, area: from },
+    const moved = await db.minute.updateMany({
+      where: { orgId: user.orgId, meetingId: { in: meetingIds }, area: from },
       data: { area: to }
     });
 
     // Rename the tab on each meeting — but where a meeting already has a tab of
     // the target name, drop the old one instead so the two merge cleanly.
-    const meetingsWithTarget = await db.meetingArea.findMany({
-      where: { orgId: user.orgId, meeting: { projectId }, areaName: to },
+    const withTarget = await db.meetingArea.findMany({
+      where: { orgId: user.orgId, meetingId: { in: meetingIds }, areaName: to },
       select: { meetingId: true }
     });
-    const alreadyHasTarget = meetingsWithTarget.map((m) => m.meetingId);
+    const targetIds = new Set(withTarget.map((m) => m.meetingId));
+    const toRename = meetingIds.filter((id) => !targetIds.has(id));
 
-    if (alreadyHasTarget.length > 0) {
+    if (targetIds.size > 0) {
       await db.meetingArea.deleteMany({
         where: {
           orgId: user.orgId,
-          meeting: { projectId },
-          areaName: from,
-          meetingId: { in: alreadyHasTarget }
+          meetingId: { in: [...targetIds] },
+          areaName: from
         }
       });
     }
-    await db.meetingArea.updateMany({
-      where: {
-        orgId: user.orgId,
-        meeting: { projectId },
-        areaName: from,
-        meetingId: { notIn: alreadyHasTarget }
-      },
-      data: { areaName: to }
-    });
+    if (toRename.length > 0) {
+      await db.meetingArea.updateMany({
+        where: { orgId: user.orgId, meetingId: { in: toRename }, areaName: from },
+        data: { areaName: to }
+      });
+    }
 
-    return NextResponse.json({ ok: true });
+    return NextResponse.json({ ok: true, minutesMoved: moved.count });
   } catch (err) {
     const msg = err instanceof Error ? err.message : "unknown error";
     if (msg === "UNAUTHENTICATED") {
