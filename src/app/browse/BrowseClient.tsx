@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import ProjectFilterDropdown from "@/components/ProjectFilterDropdown";
 
 export interface BrowseMinute {
   id: string;
@@ -333,18 +334,12 @@ export default function BrowseClient({
         <aside className="flex w-72 shrink-0 flex-col border-r border-slate-200 bg-white p-4">
           <h2 className="mb-3 text-lg font-bold">Recent Meetings</h2>
 
-          <select
+          <ProjectFilterDropdown
+            projects={projects}
             value={projectFilter}
-            onChange={(e) => setProjectFilter(e.target.value)}
-            className="mb-4 w-full rounded border border-slate-300 px-2 py-1.5 text-sm"
-          >
-            <option value="all">All Projects</option>
-            {projects.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.name}
-              </option>
-            ))}
-          </select>
+            onChange={setProjectFilter}
+            className="mb-4"
+          />
 
           <div className="min-h-0 flex-1 space-y-2 overflow-y-auto pr-1">
             {filteredMeetings.length === 0 && (
