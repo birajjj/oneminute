@@ -355,12 +355,6 @@ export default function BrowseClient({
             placeholder="Search notes…"
             className="w-64 rounded-full border border-slate-300 px-4 py-1.5 text-sm"
           />
-          {/* Flag filter — click a flag to list every minute carrying it, across
-              all meetings. Click again to go back to the meeting view. */}
-          <div className="flex items-center gap-1 border-l border-slate-200 pl-3">
-            <span className="text-xs text-slate-400">Flags:</span>
-            <TagChips value={tagFilter} onChange={setTagFilter} />
-          </div>
           <a
             href="/auto"
             className="rounded bg-gradient-to-r from-brand-pink to-brand-purple px-3 py-1.5 text-sm font-medium text-white"
@@ -383,8 +377,17 @@ export default function BrowseClient({
             projects={projects}
             value={projectFilter}
             onChange={setProjectFilter}
-            className="mb-4"
+            className="mb-3"
           />
+
+          {/* Flag filter — grouped with the project filter. Click a flag to list
+              every minute carrying it across meetings; click again to clear. */}
+          <div className="mb-4">
+            <div className="mb-1 text-[11px] font-medium uppercase tracking-wide text-slate-400">
+              Filter by flag
+            </div>
+            <TagChips value={tagFilter} onChange={setTagFilter} />
+          </div>
 
           <div className="min-h-0 flex-1 space-y-2 overflow-y-auto pr-1">
             {filteredMeetings.length === 0 && (
