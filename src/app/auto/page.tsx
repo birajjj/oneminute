@@ -47,12 +47,12 @@ export default async function AutoPage() {
     <AppShell meetings={shellMeetings} projects={projects} userName={user.displayName}>
       <div className="mb-6">
         <span className="mb-2 inline-block rounded bg-gradient-to-r from-brand-pink to-brand-purple px-2 py-0.5 text-xs font-semibold uppercase tracking-wider text-white">
-          Auto
+          New Meeting
         </span>
-        <h1 className="text-2xl font-bold">Fully-automatic Meeting Capture</h1>
+        <h1 className="text-2xl font-bold">Create a Meeting</h1>
         <p className="text-sm text-slate-600">
-          Record → AI decides project, meeting, and minutes → you review → save.
-          Nothing is written until you click Approve &amp; Commit.
+          Fill in the project, meeting and minutes yourself — or record / paste a transcript and let AI
+          fill the form for you. Nothing is written until you click Approve &amp; Commit.
         </p>
       </div>
       <AutoModeClient members={members} projects={projects} meetings={shellMeetings} devopsEnabled={devopsConfigured()} />

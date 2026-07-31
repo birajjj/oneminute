@@ -5,7 +5,10 @@ import { useRouter } from "next/navigation";
 import type { AutoPlan } from "@/lib/ai/auto-plan";
 import { useSegmentRecorder } from "@/lib/useSegmentRecorder";
 
-type Step = "record" | "analyzing" | "review" | "done";
+// The page is manual-first: you land straight in the editable form and can fill
+// it in by hand. Recording / pasting a transcript is an optional accelerator
+// that FILLS the same form (mirrors the follow-up workspace's "AI pre-fill").
+type Step = "edit" | "analyzing" | "done";
 
 export interface Member {
   id: string;
@@ -15,6 +18,55 @@ export interface Member {
 // Reference data (mirrors on-prem dbo.Type and dbo.Status).
 const TYPE_OPTIONS = ["Note", "To-Do", "Action", "Devops"];
 const STATUS_OPTIONS = ["New", "Initiated", "In Progress", "Completed", "Cancelled"];
+
+function emptyMinute(area = "General"): AutoPlan["minutes"][number] {
+  return {
+    type: "new",
+    referenceMinuteId: null,
+    referenceMinuteTitle: null,
+    statusChange: "",
+    area,
+    title: "",
+    description: "",
+    minuteType: "Note",
+    status: "New",
+    assignedTo: "",
+    dueDate: "",
+    isDevopsItem: false,
+    confidence: "high",
+    approved: true,
+    devopsAction: "none",
+    devopsProject: "",
+    devopsWorkItemType: "User Story",
+    devopsWorkItemId: ""
+  };
+}
+
+function emptyPlan(): AutoPlan {
+  return {
+    project: {
+      action: "create_new",
+      existingProjectId: null,
+      existingProjectName: null,
+      newProjectName: "",
+      reason: "",
+      confidence: ""
+    },
+    meeting: {
+      action: "new",
+      followUpToMeetingId: null,
+      followUpToMeetingTitle: null,
+      title: "",
+      description: "",
+      meetingDate: new Date().toISOString().slice(0, 10),
+      attendees: "",
+      reason: "",
+      confidence: ""
+    },
+    minutes: [],
+    summary: ""
+  };
+}
 
 export default function AutoModeClient({
   members,
@@ -28,12 +80,14 @@ export default function AutoModeClient({
   devopsEnabled: boolean;
 }) {
   const router = useRouter();
-  const [step, setStep] = useState<Step>("record");
-  const [plan, setPlan] = useState<AutoPlan | null>(null);
+  const [step, setStep] = useState<Step>("edit");
+  const [plan, setPlan] = useState<AutoPlan>(emptyPlan());
   const [result, setResult] = useState<
     { minutesSaved: number; projectCreated: boolean; meetingId?: string; warnings?: string[] } | null
   >(null);
   const [error, setError] = useState("");
+  // The AI panel starts collapsed so the manual form is the primary path.
+  const [aiOpen, setAiOpen] = useState(false);
 
   // Real DevOps projects for the "Create work item" dropdown. Loaded lazily so a
   // slow or unreachable TFS never blocks the page; empty => free-text fallback.
@@ -80,16 +134,16 @@ export default function AutoModeClient({
         body: JSON.stringify({ transcript })
       });
       if (!res.ok) throw new Error(await res.text());
+      // The AI FILLS the same form you could have typed yourself.
       setPlan(await res.json());
-      setStep("review");
+      setStep("edit");
     } catch (e) {
       setError("Analyze failed: " + (e instanceof Error ? e.message : "unknown"));
-      setStep("record");
+      setStep("edit");
     }
   }
 
   async function commit() {
-    if (!plan) return;
     setError("");
     try {
       const res = await fetch("/api/auto/commit", {
@@ -116,8 +170,8 @@ export default function AutoModeClient({
   // Note: reset does NOT clear the transcript, so "Start Over" keeps it for
   // re-analysis. It's cleared on a successful commit, or via the Clear button.
   function reset() {
-    setStep("record");
-    setPlan(null);
+    setStep("edit");
+    setPlan(emptyPlan());
     setResult(null);
     setError("");
   }
@@ -126,8 +180,17 @@ export default function AutoModeClient({
 
   return (
     <div className="space-y-4">
-      {step === "record" && (
-        <div className="rounded-lg border-2 border-brand-pink bg-white p-4">
+      {step === "edit" && (
+        <div className="rounded-lg border-2 border-dashed border-brand-pink/50 bg-white p-4">
+          <button
+            onClick={() => setAiOpen((o) => !o)}
+            className="mb-2 flex w-full items-center gap-2 text-left text-sm font-semibold text-brand-purple"
+          >
+            <span>{aiOpen ? "▾" : "▸"}</span>
+            Optional — record or paste a transcript, and let AI fill the form below
+          </button>
+          {aiOpen && (
+          <>
           <div className="mb-3 flex flex-wrap items-center gap-2">
             {!isRecording ? (
               <button
@@ -187,8 +250,10 @@ export default function AutoModeClient({
             onChange={(e) => setTranscript(e.target.value)}
             readOnly={isRecording || isTranscribing}
             placeholder="Record audio, or paste a transcript here directly."
-            className="h-96 w-full resize-y rounded border border-slate-300 p-3 text-sm"
+            className="h-56 w-full resize-y rounded border border-slate-300 p-3 text-sm"
           />
+          </>
+          )}
         </div>
       )}
 
@@ -199,7 +264,7 @@ export default function AutoModeClient({
         </div>
       )}
 
-      {step === "review" && plan && (
+      {step === "edit" && (
         <PlanReview plan={plan} members={members} projects={projects} meetings={meetings} devopsEnabled={devopsEnabled} devopsProjects={devopsProjects} onChange={setPlan} onBack={reset} onCommit={commit} />
       )}
 
@@ -425,9 +490,31 @@ function PlanReview({
         </div>
       )}
 
-      <h3 className="mb-2 text-sm font-semibold">
-        Minutes ({approvedCount} of {plan.minutes.length} to save)
-      </h3>
+      <div className="mb-2 flex items-center justify-between">
+        <h3 className="text-sm font-semibold">
+          Minutes ({approvedCount} of {plan.minutes.length} to save)
+        </h3>
+        <button
+          onClick={() =>
+            onChange({
+              ...plan,
+              // New rows inherit the last row's area so consecutive entries stay
+              // in the same tab.
+              minutes: [...plan.minutes, emptyMinute(plan.minutes.at(-1)?.area || "General")]
+            })
+          }
+          className="rounded bg-brand-blue px-3 py-1 text-sm font-medium text-white"
+        >
+          + Add minute
+        </button>
+      </div>
+
+      {plan.minutes.length === 0 && (
+        <p className="rounded border border-dashed border-slate-300 p-4 text-sm text-slate-500">
+          No minutes yet — click <b>+ Add minute</b> to write them yourself, or use the AI panel above to
+          fill this form from a recording or transcript.
+        </p>
+      )}
 
       <div className="space-y-2">
         {plan.minutes.map((m, i) => (
@@ -443,7 +530,14 @@ function PlanReview({
               <span className={`rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase ${m.type === "followup" ? "bg-amber-200 text-amber-800" : "bg-blue-200 text-blue-800"}`}>
                 {m.type}
               </span>
-              <input value={m.title} onChange={(e) => updateMinute(i, { title: e.target.value })} className="flex-1 rounded border border-slate-300 p-1 text-sm" />
+              <input value={m.title} onChange={(e) => updateMinute(i, { title: e.target.value })} placeholder="Title" className="flex-1 rounded border border-slate-300 p-1 text-sm" />
+              <button
+                onClick={() => onChange({ ...plan, minutes: plan.minutes.filter((_, idx) => idx !== i) })}
+                className="rounded px-2 py-1 text-xs text-red-600 hover:bg-red-50"
+                title="Remove this minute"
+              >
+                ✕
+              </button>
             </div>
             {m.type === "followup" && (
               <div className="mb-1 rounded bg-amber-100 px-2 py-1 text-xs text-amber-800">

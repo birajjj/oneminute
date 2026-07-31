@@ -289,7 +289,7 @@ export default function BrowseClient({
             href="/auto"
             className="rounded bg-gradient-to-r from-brand-pink to-brand-purple px-3 py-1.5 text-sm font-medium text-white"
           >
-            + Capture (Auto)
+            + New Meeting
           </a>
           <span className="text-sm text-slate-500">{userName}</span>
           <form action="/auth/signout" method="post">
