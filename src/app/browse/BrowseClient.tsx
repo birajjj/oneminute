@@ -41,6 +41,14 @@ export interface ThreadEntry {
 
 const STATUS_OPTIONS = ["New", "Initiated", "In Progress", "Completed", "Cancelled"];
 
+// Colour per minute type, for the small type badge on raised sub-minutes.
+const TYPE_BADGE: Record<string, string> = {
+  Note: "bg-slate-100 text-slate-600",
+  "To-Do": "bg-blue-100 text-blue-700",
+  Action: "bg-emerald-100 text-emerald-700",
+  Devops: "bg-orange-100 text-orange-700"
+};
+
 export interface BrowseMeeting {
   id: string;
   title: string;
@@ -838,48 +846,69 @@ export default function BrowseClient({
                             {/* Minutes raised under this item this meeting — their
                                 own trackable minutes, grouped here for provenance. */}
                             {(raisedByRoot[mn.rootId] ?? []).length > 0 && (
-                              <div className="mt-2 rounded border border-blue-100 bg-blue-50/60 p-2">
-                                <div className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-slate-400">
-                                  Raised this meeting
+                              <div className="mt-3">
+                                <div className="mb-1.5 flex items-center gap-2">
+                                  <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+                                    Raised this meeting
+                                  </span>
+                                  <span className="h-px flex-1 bg-slate-200" />
                                 </div>
-                                <div className="space-y-1">
+                                <div className="space-y-2">
                                   {(raisedByRoot[mn.rootId] ?? []).map((sub) => {
                                     const subStatus = edits[sub.id]?.status ?? sub.status;
+                                    const subDone = subStatus === "Completed" || subStatus === "Cancelled";
                                     return (
-                                      <div key={sub.id} className="flex flex-wrap items-center gap-2 text-sm">
-                                        <span className="font-medium text-brand-blue">{sub.title}</span>
-                                        <span className="text-xs italic text-slate-500">{sub.type}</span>
-                                        <select
-                                          value={subStatus}
-                                          onChange={(e) => saveMinute(sub.id, { status: e.target.value })}
-                                          className="rounded border border-slate-300 bg-white px-1 py-0.5 text-[11px] text-slate-600"
-                                        >
-                                          {STATUS_OPTIONS.map((s) => (
-                                            <option key={s} value={s}>{s}</option>
-                                          ))}
-                                        </select>
-                                        <select
-                                          value={edits[sub.id]?.assignedTo ?? sub.assignedTo ?? ""}
-                                          onChange={(e) => saveMinute(sub.id, { assignedTo: e.target.value })}
-                                          className="rounded border border-slate-300 bg-white px-1 py-0.5 text-[11px] text-slate-600"
-                                        >
-                                          <option value="">— Unassigned —</option>
-                                          {members.map((mem) => (
-                                            <option key={mem.id} value={mem.displayName}>{mem.displayName}</option>
-                                          ))}
-                                        </select>
-                                        {sub.devopsItemId && (
-                                          <button
-                                            onClick={() => setOpenDevopsId(sub.devopsItemId)}
-                                            className="rounded bg-orange-100 px-1.5 py-0.5 text-[10px] font-medium text-orange-700"
-                                          >
-                                            🔗 #{sub.devopsItemId}
-                                          </button>
-                                        )}
-                                        <TagBadges tags={edits[sub.id]?.tags ?? sub.tags} />
-                                        {sub.description && (
-                                          <span className="w-full text-xs text-slate-500">{sub.description}</span>
-                                        )}
+                                      <div
+                                        key={sub.id}
+                                        className="rounded-md border border-slate-200 bg-white p-2.5 shadow-sm"
+                                      >
+                                        <div className="flex items-start gap-2">
+                                          <span className={`mt-0.5 shrink-0 rounded px-1.5 py-0.5 text-[10px] font-semibold ${TYPE_BADGE[sub.type] ?? "bg-slate-100 text-slate-600"}`}>
+                                            {sub.type}
+                                          </span>
+                                          <div className="min-w-0 flex-1">
+                                            <div className={`text-sm font-medium ${subDone ? "text-slate-400 line-through" : "text-slate-800"}`}>
+                                              {sub.title}
+                                            </div>
+                                            {sub.description && (
+                                              <p className="mt-0.5 text-xs text-slate-500">{sub.description}</p>
+                                            )}
+                                            <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                                              <TagBadges tags={edits[sub.id]?.tags ?? sub.tags} />
+                                              {sub.devopsItemId && (
+                                                <button
+                                                  onClick={() => setOpenDevopsId(sub.devopsItemId)}
+                                                  className="rounded bg-orange-100 px-1.5 py-0.5 text-[10px] font-medium text-orange-700 hover:bg-orange-200"
+                                                >
+                                                  🔗 DevOps #{sub.devopsItemId}
+                                                </button>
+                                              )}
+                                            </div>
+                                          </div>
+                                          <div className="flex shrink-0 items-center gap-1.5">
+                                            <select
+                                              value={subStatus}
+                                              onChange={(e) => saveMinute(sub.id, { status: e.target.value })}
+                                              className="rounded border border-slate-300 bg-white px-1.5 py-1 text-[11px] text-slate-600"
+                                              title="Status"
+                                            >
+                                              {STATUS_OPTIONS.map((s) => (
+                                                <option key={s} value={s}>{s}</option>
+                                              ))}
+                                            </select>
+                                            <select
+                                              value={edits[sub.id]?.assignedTo ?? sub.assignedTo ?? ""}
+                                              onChange={(e) => saveMinute(sub.id, { assignedTo: e.target.value })}
+                                              className="max-w-[8rem] rounded border border-slate-300 bg-white px-1.5 py-1 text-[11px] text-slate-600"
+                                              title="Assignee"
+                                            >
+                                              <option value="">— Unassigned —</option>
+                                              {members.map((mem) => (
+                                                <option key={mem.id} value={mem.displayName}>{mem.displayName}</option>
+                                              ))}
+                                            </select>
+                                          </div>
+                                        </div>
                                       </div>
                                     );
                                   })}
