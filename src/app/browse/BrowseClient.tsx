@@ -107,6 +107,9 @@ export default function BrowseClient({
     initialMeetingId ?? meetings[0]?.id ?? null
   );
   const [search, setSearch] = useState("");
+  // Flag filter (Decision/Scope/Governance). Both search and flags narrow the
+  // meeting list AND the minutes shown, so it's declared up here with search.
+  const [tagFilter, setTagFilter] = useState<string[]>([]);
   const [openThreadRoot, setOpenThreadRoot] = useState<string | null>(null);
   const [openEntry, setOpenEntry] = useState<ThreadEntry | null>(null);
   const [openDevopsId, setOpenDevopsId] = useState<number | null>(null);
@@ -280,36 +283,71 @@ export default function BrowseClient({
     }
   }
 
+  // ---- Unified search + flag filtering ----
+  // Both narrow the sidebar (which meetings) and the main area (which minutes).
+  const q = search.trim().toLowerCase();
+  const textActive = q.length > 0;
+  const flagActive = tagFilter.length > 0;
+  const filterActive = textActive || flagActive;
+
+  const minuteFlagged = (mn: BrowseMinute) =>
+    (edits[mn.id]?.tags ?? mn.tags ?? []).some((t) => tagFilter.includes(t));
+  const minuteText = (mn: BrowseMinute) =>
+    mn.title.toLowerCase().includes(q) || (mn.description ?? "").toLowerCase().includes(q);
+
   const filteredMeetings = useMemo(() => {
     let list = meetings;
     if (projectFilter !== "all") {
       list = list.filter((m) => m.projectId === projectFilter);
     }
-    if (search.trim()) {
-      const q = search.toLowerCase();
+    if (textActive) {
       list = list.filter(
         (m) =>
           m.title.toLowerCase().includes(q) ||
           m.projectName.toLowerCase().includes(q) ||
-          m.minutes.some((mn) => mn.title.toLowerCase().includes(q))
+          m.minutes.some(minuteText)
       );
     }
+    if (flagActive) {
+      list = list.filter((m) => m.minutes.some(minuteFlagged));
+    }
     return list;
-  }, [meetings, projectFilter, search]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [meetings, projectFilter, q, textActive, flagActive, tagFilter, edits]);
 
-  const selected = useMemo(
-    () => meetings.find((m) => m.id === selectedId) ?? filteredMeetings[0] ?? null,
-    [meetings, selectedId, filteredMeetings]
-  );
+  // Keep the current meeting only if it survived the filter; otherwise show the
+  // first match (so a search that excludes the open meeting doesn't leave it
+  // stuck on screen).
+  const selected = useMemo(() => {
+    const byId = meetings.find((m) => m.id === selectedId) ?? null;
+    if (byId && filteredMeetings.some((m) => m.id === byId.id)) return byId;
+    return filteredMeetings[0] ?? null;
+  }, [meetings, selectedId, filteredMeetings]);
 
-  // Areas present in the selected meeting (tabs)
+  // Does the selected meeting match the text by its own title (not its minutes)?
+  // If so, don't blank its minutes just because none contain the term.
+  const selectedTitleMatched =
+    !!selected && textActive &&
+    (selected.title.toLowerCase().includes(q) || selected.projectName.toLowerCase().includes(q));
+
+  // A minute passes the main-area filter.
+  const minutePasses = (mn: BrowseMinute) => {
+    if (flagActive && !minuteFlagged(mn)) return false;
+    if (textActive && !minuteText(mn) && !selectedTitleMatched) return false;
+    return true;
+  };
+
+  // Areas present in the selected meeting (tabs) — only those with visible minutes.
   const areas = useMemo(() => {
     if (!selected) return [];
     const set = new Set<string>();
-    selected.minutes.forEach((m) => set.add(m.area || "General"));
-    if (set.size === 0) set.add("General");
+    selected.minutes.forEach((m) => {
+      if (!m.raisedFromRootId && minutePasses(m)) set.add(m.area || "General");
+    });
+    if (set.size === 0 && !filterActive) set.add("General");
     return Array.from(set);
-  }, [selected]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selected, filterActive, q, textActive, flagActive, tagFilter, edits, selectedTitleMatched]);
 
   const [activeArea, setActiveArea] = useState<string>("General");
   const currentArea = areas.includes(activeArea) ? activeArea : areas[0] ?? "General";
@@ -327,29 +365,10 @@ export default function BrowseClient({
 
   const areaMinutes = selected
     ? selected.minutes.filter(
-        (m) => (m.area || "General") === currentArea && !m.raisedFromRootId
+        (m) => (m.area || "General") === currentArea && !m.raisedFromRootId && minutePasses(m)
       )
     : [];
   const isEditingMeeting = !!selected && editingMeeting === selected.id;
-
-  // ---- Flag filter: the register of Decisions / Scope / Governance ----
-  // On-prem stored these flags but gave no way to search them. Selecting any
-  // switches out of the per-meeting tab view into a flat, cross-meeting list.
-  const [tagFilter, setTagFilter] = useState<string[]>([]);
-
-  const flaggedMinutes = useMemo(() => {
-    if (tagFilter.length === 0) return [];
-    const rows: { meeting: BrowseMeeting; minute: BrowseMinute }[] = [];
-    for (const m of meetings) {
-      if (projectFilter !== "all" && m.projectId !== projectFilter) continue;
-      for (const mn of m.minutes) {
-        const tags = edits[mn.id]?.tags ?? mn.tags ?? [];
-        // OR across the selected flags — "show me Decisions or Scope".
-        if (tags.some((t) => tagFilter.includes(t))) rows.push({ meeting: m, minute: mn });
-      }
-    }
-    return rows.sort((a, b) => (a.meeting.date < b.meeting.date ? 1 : -1));
-  }, [tagFilter, meetings, projectFilter, edits]);
 
   return (
     <div className="flex h-screen flex-col bg-slate-50">
@@ -357,12 +376,24 @@ export default function BrowseClient({
       <header className="shrink-0 flex items-center justify-between border-b border-slate-200 bg-white px-6 py-3">
         <h1 className="text-xl font-bold">Meeting Minutes</h1>
         <div className="flex items-center gap-3">
-          <input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search notes…"
-            className="w-64 rounded-full border border-slate-300 px-4 py-1.5 text-sm"
-          />
+          <div className="relative">
+            <input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search notes…"
+              className="w-64 rounded-full border border-slate-300 px-4 py-1.5 pr-8 text-sm"
+            />
+            {search && (
+              <button
+                onClick={() => setSearch("")}
+                className="absolute right-2 top-1/2 -translate-y-1/2 rounded-full px-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+                title="Clear search"
+                aria-label="Clear search"
+              >
+                ✕
+              </button>
+            )}
+          </div>
           <a
             href="/auto"
             className="rounded bg-gradient-to-r from-brand-pink to-brand-purple px-3 py-1.5 text-sm font-medium text-white"
@@ -421,60 +452,10 @@ export default function BrowseClient({
 
         {/* Main */}
         <main className="min-h-0 flex-1 overflow-y-auto p-6">
-          {tagFilter.length > 0 ? (
-            /* Flag register — every minute carrying a selected flag, newest first,
-               across every meeting in the current project filter. */
-            <div>
-              <div className="mb-4 flex flex-wrap items-center gap-2">
-                <h2 className="text-lg font-bold">
-                  {tagFilter.join(" / ")} — {flaggedMinutes.length} minute(s)
-                </h2>
-                <button
-                  onClick={() => setTagFilter([])}
-                  className="rounded border border-slate-300 px-2 py-0.5 text-xs text-slate-600"
-                >
-                  Clear filter
-                </button>
-              </div>
-
-              {flaggedMinutes.length === 0 ? (
-                <p className="text-sm text-slate-500">
-                  Nothing flagged {tagFilter.join(" or ")} yet. Click a flag on any minute to set one.
-                </p>
-              ) : (
-                <div className="space-y-2">
-                  {flaggedMinutes.map(({ meeting, minute }) => (
-                    <div
-                      key={minute.id}
-                      className="rounded border-l-4 border-l-violet-400 bg-white p-3 shadow-sm"
-                    >
-                      <div className="flex flex-wrap items-center gap-2">
-                        <button
-                          onClick={() => { setTagFilter([]); setSelectedId(meeting.id); }}
-                          className="font-semibold text-brand-blue hover:underline"
-                          title="Open this meeting"
-                        >
-                          {minute.title}
-                        </button>
-                        <span className="text-xs italic text-slate-500">{minute.type}</span>
-                        <span className="text-[11px] text-slate-500">
-                          {edits[minute.id]?.status ?? minute.status}
-                        </span>
-                        <TagBadges tags={edits[minute.id]?.tags ?? minute.tags} />
-                      </div>
-                      {minute.description && (
-                        <p className="mt-1 text-sm text-slate-700">{minute.description}</p>
-                      )}
-                      <p className="mt-1 text-xs text-slate-400">
-                        {meeting.projectName} · {meeting.title} · {fmtDate(meeting.date)} · {minute.area}
-                      </p>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          ) : !selected ? (
-            <p className="text-slate-500">Select a meeting.</p>
+          {!selected ? (
+            <p className="text-slate-500">
+              {filterActive ? "No meetings match the current filter." : "Select a meeting."}
+            </p>
           ) : (
             <>
               {/* Meeting detail card — click title/description/attendees to edit */}
