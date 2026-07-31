@@ -19,6 +19,7 @@ const BodySchema = z.object({
       note: z.string(),
       assignedTo: z.string(),
       dueDate: z.string(),
+      detailsChanged: z.boolean().optional(),
       devopsAction: z.string(),
       devopsProject: z.string(),
       devopsWorkItemType: z.string(),
