@@ -5,9 +5,11 @@ import { db } from "@/lib/db";
 
 export const runtime = "nodejs";
 
-// Rename an area/tab within a meeting (e.g. when the AI picked a poor name).
-// Renames the MeetingArea row and re-files every minute in that meeting that
-// currently sits under the old name.
+// Rename an area/tab (e.g. when the AI picked a poor name). Renaming applies to
+// the WHOLE PROJECT, not just this meeting: an area is an organising label that
+// recurs across a project's meetings, threads span meetings and must share one
+// area name, and the AI reuses a project's existing area names. Renaming per
+// meeting would fragment a thread across differently-named tabs.
 const BodySchema = z.object({
   from: z.string().min(1),
   to: z.string().min(1)
@@ -27,7 +29,7 @@ export async function PATCH(
     const user = await requireUser();
     const meeting = await db.meeting.findFirst({
       where: { id, orgId: user.orgId },
-      select: { id: true }
+      select: { id: true, projectId: true }
     });
     if (!meeting) return NextResponse.json({ error: "meeting not found" }, { status: 404 });
 
@@ -36,26 +38,41 @@ export async function PATCH(
     if (!to) return NextResponse.json({ error: "invalid name" }, { status: 400 });
     if (from === to) return NextResponse.json({ ok: true });
 
+    const projectId = meeting.projectId;
+
+    // Re-file every minute in the project that sits under the old name.
     await db.minute.updateMany({
-      where: { orgId: user.orgId, meetingId: meeting.id, area: from },
+      where: { orgId: user.orgId, meeting: { projectId }, area: from },
       data: { area: to }
     });
 
-    // Merge into an existing tab of that name if there is one, else rename.
-    const target = await db.meetingArea.findFirst({
-      where: { orgId: user.orgId, meetingId: meeting.id, areaName: to },
-      select: { id: true }
+    // Rename the tab on each meeting — but where a meeting already has a tab of
+    // the target name, drop the old one instead so the two merge cleanly.
+    const meetingsWithTarget = await db.meetingArea.findMany({
+      where: { orgId: user.orgId, meeting: { projectId }, areaName: to },
+      select: { meetingId: true }
     });
-    if (target) {
+    const alreadyHasTarget = meetingsWithTarget.map((m) => m.meetingId);
+
+    if (alreadyHasTarget.length > 0) {
       await db.meetingArea.deleteMany({
-        where: { orgId: user.orgId, meetingId: meeting.id, areaName: from }
-      });
-    } else {
-      await db.meetingArea.updateMany({
-        where: { orgId: user.orgId, meetingId: meeting.id, areaName: from },
-        data: { areaName: to }
+        where: {
+          orgId: user.orgId,
+          meeting: { projectId },
+          areaName: from,
+          meetingId: { in: alreadyHasTarget }
+        }
       });
     }
+    await db.meetingArea.updateMany({
+      where: {
+        orgId: user.orgId,
+        meeting: { projectId },
+        areaName: from,
+        meetingId: { notIn: alreadyHasTarget }
+      },
+      data: { areaName: to }
+    });
 
     return NextResponse.json({ ok: true });
   } catch (err) {

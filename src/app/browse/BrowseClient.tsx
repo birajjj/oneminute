@@ -473,7 +473,7 @@ export default function BrowseClient({
                           if (draggingId) moveMinuteToArea(draggingId, a);
                           setDraggingId(null);
                         }}
-                        title="Click to open · Double-click to rename · Drop a minute here to move it"
+                        title="Click to open · Double-click to rename (applies across the project) · Drop a minute here to move it"
                         className={`rounded px-4 py-1.5 text-sm font-medium transition ${
                           dragOverArea === a
                             ? "bg-emerald-100 text-emerald-700 ring-2 ring-emerald-400"
@@ -487,7 +487,7 @@ export default function BrowseClient({
                     )
                   )}
                   <span className="ml-1 text-[11px] text-slate-400">
-                    Drag a minute onto a tab to move it · double-click a tab to rename
+                    Drag a minute onto a tab to move it · double-click a tab to rename it across the project
                   </span>
                 </div>
               </div>
