@@ -30,7 +30,11 @@ export function TagChips({
             onClick={() => toggle(tag)}
             className={`rounded-full border px-2 py-0.5 text-[11px] font-medium transition ${
               TAG_STYLES[tag]
-            } ${on ? "opacity-100" : "opacity-40 hover:opacity-70"} disabled:cursor-not-allowed`}
+            } ${
+              // Unselected stays legible; a ring + full colour marks what's set,
+              // so the distinction doesn't rely on opacity alone.
+              on ? "opacity-100 ring-1 ring-current" : "opacity-75 hover:opacity-100"
+            } disabled:cursor-not-allowed`}
             title={on ? `Remove ${tag} flag` : `Flag as ${tag}`}
           >
             {tag}
