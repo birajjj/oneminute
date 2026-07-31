@@ -204,6 +204,103 @@ export default function FollowUpClient({
     setNewMinutes((prev) => prev.filter((_, idx) => idx !== i));
   }
 
+  // One new-minute editor card. Rendered inline under its area (so a freshly
+  // added minute appears right where you clicked, not in a section off-screen).
+  function renderNewMinuteEditor(m: NewMinute, i: number) {
+    return (
+      <div key={i} className="rounded border-l-4 border-l-brand-blue bg-blue-50 p-2">
+        <div className="mb-1 flex items-center gap-2">
+          <input
+            value={m.title}
+            onChange={(e) => setNewMinute(i, { title: e.target.value })}
+            placeholder="Title"
+            autoFocus={!m.title}
+            className="flex-1 rounded border border-slate-300 p-1 text-sm"
+          />
+          <button
+            onClick={() => removeNewMinute(i)}
+            className="rounded px-2 py-1 text-xs text-red-600 hover:bg-red-50"
+            title="Remove"
+          >
+            ✕
+          </button>
+        </div>
+        <textarea
+          value={m.description}
+          onChange={(e) => setNewMinute(i, { description: e.target.value })}
+          rows={2}
+          placeholder="Description"
+          className="w-full rounded border border-slate-300 p-1 text-sm"
+        />
+        <div className="mt-1">
+          <TagChips value={m.tags} onChange={(tags) => setNewMinute(i, { tags })} />
+        </div>
+        <div className="mt-1 grid grid-cols-2 gap-1 text-xs sm:grid-cols-5">
+          <input
+            value={m.area}
+            onChange={(e) => setNewMinute(i, { area: e.target.value })}
+            placeholder="Area"
+            className="rounded border border-slate-300 p-1"
+          />
+          <select
+            value={m.type}
+            onChange={(e) =>
+              setNewMinute(i, {
+                type: e.target.value,
+                ...(e.target.value !== "Devops" ? { devopsAction: "none" } : {})
+              })
+            }
+            className="rounded border border-slate-300 p-1"
+          >
+            {TYPE_OPTIONS.map((t) => (
+              <option key={t} value={t}>{t}</option>
+            ))}
+          </select>
+          <select
+            value={m.status}
+            onChange={(e) => setNewMinute(i, { status: e.target.value })}
+            className="rounded border border-slate-300 p-1"
+          >
+            {STATUS_OPTIONS.map((s) => (
+              <option key={s} value={s}>{s}</option>
+            ))}
+          </select>
+          <select
+            value={m.assignedTo}
+            onChange={(e) => setNewMinute(i, { assignedTo: e.target.value })}
+            className="rounded border border-slate-300 p-1"
+          >
+            <option value="">— Unassigned —</option>
+            {/* Keep the AI's suggestion selectable even if not in the roster */}
+            {m.assignedTo && !members.some((mem) => mem.displayName === m.assignedTo) && (
+              <option value={m.assignedTo}>{m.assignedTo} (AI)</option>
+            )}
+            {members.map((mem) => (
+              <option key={mem.id} value={mem.displayName}>{mem.displayName}</option>
+            ))}
+          </select>
+          <input
+            type="date"
+            value={m.dueDate}
+            onChange={(e) => setNewMinute(i, { dueDate: e.target.value })}
+            className="rounded border border-slate-300 p-1"
+          />
+        </div>
+        {m.type === "Devops" && (
+          <DevopsControls
+            action={m.devopsAction}
+            project={m.devopsProject}
+            workItemType={m.devopsWorkItemType}
+            workItemId={m.devopsWorkItemId}
+            devopsEnabled={devopsEnabled}
+            devopsProjects={devopsProjects}
+            onChange={(patch) => setNewMinute(i, patch)}
+          />
+        )}
+      </div>
+    );
+  }
+
   async function aiPreFill() {
     if (!recorder.transcript.trim()) return;
     setAnalyzing(true);
@@ -702,119 +799,39 @@ export default function FollowUpClient({
               >
                 + Add new minute in {area}
               </button>
+              {/* New minutes for this area appear right here, where you clicked. */}
+              {newMinutes.some((m) => m.area === area) && (
+                <div className="mt-2 space-y-2">
+                  {newMinutes.map((m, i) => (m.area === area ? renderNewMinuteEditor(m, i) : null))}
+                </div>
+              )}
             </div>
           ))
         )}
       </div>
 
-      {/* New minutes */}
+      {/* New minutes in a brand-new area (anything not one of the tabs above).
+          Minutes added to an existing area render inline under that area. */}
       <div className="rounded-lg border border-slate-200 bg-white p-4">
         <div className="mb-2 flex items-center justify-between">
-          <h2 className="text-lg font-semibold">New minutes this meeting ({newMinutes.length})</h2>
+          <h2 className="text-lg font-semibold">New minute in a new area</h2>
           <button
-            onClick={() => addNewMinute(data.areas[0] ?? "General")}
+            onClick={() => addNewMinute("")}
             className="rounded bg-brand-blue px-3 py-1 text-sm font-medium text-white"
           >
             + Add minute
           </button>
         </div>
 
-        {newMinutes.length === 0 ? (
-          <p className="text-sm text-slate-400">Nothing new yet — add anything raised for the first time this meeting.</p>
-        ) : (
+        {newMinutes.some((m) => !data.areas.includes(m.area)) ? (
           <div className="space-y-2">
-            {newMinutes.map((m, i) => (
-              <div key={i} className="rounded border-l-4 border-l-brand-blue bg-blue-50 p-2">
-                <div className="mb-1 flex items-center gap-2">
-                  <input
-                    value={m.title}
-                    onChange={(e) => setNewMinute(i, { title: e.target.value })}
-                    placeholder="Title"
-                    className="flex-1 rounded border border-slate-300 p-1 text-sm"
-                  />
-                  <button
-                    onClick={() => removeNewMinute(i)}
-                    className="rounded px-2 py-1 text-xs text-red-600 hover:bg-red-50"
-                    title="Remove"
-                  >
-                    ✕
-                  </button>
-                </div>
-                <textarea
-                  value={m.description}
-                  onChange={(e) => setNewMinute(i, { description: e.target.value })}
-                  rows={2}
-                  placeholder="Description"
-                  className="w-full rounded border border-slate-300 p-1 text-sm"
-                />
-                <div className="mt-1">
-                  <TagChips value={m.tags} onChange={(tags) => setNewMinute(i, { tags })} />
-                </div>
-                <div className="mt-1 grid grid-cols-2 gap-1 text-xs sm:grid-cols-5">
-                  <input
-                    value={m.area}
-                    onChange={(e) => setNewMinute(i, { area: e.target.value })}
-                    placeholder="Area"
-                    className="rounded border border-slate-300 p-1"
-                  />
-                  <select
-                    value={m.type}
-                    onChange={(e) =>
-                      setNewMinute(i, {
-                        type: e.target.value,
-                        ...(e.target.value !== "Devops" ? { devopsAction: "none" } : {})
-                      })
-                    }
-                    className="rounded border border-slate-300 p-1"
-                  >
-                    {TYPE_OPTIONS.map((t) => (
-                      <option key={t} value={t}>{t}</option>
-                    ))}
-                  </select>
-                  <select
-                    value={m.status}
-                    onChange={(e) => setNewMinute(i, { status: e.target.value })}
-                    className="rounded border border-slate-300 p-1"
-                  >
-                    {STATUS_OPTIONS.map((s) => (
-                      <option key={s} value={s}>{s}</option>
-                    ))}
-                  </select>
-                  <select
-                    value={m.assignedTo}
-                    onChange={(e) => setNewMinute(i, { assignedTo: e.target.value })}
-                    className="rounded border border-slate-300 p-1"
-                  >
-                    <option value="">— Unassigned —</option>
-                    {/* Keep the AI's suggestion selectable even if not in the roster */}
-                    {m.assignedTo && !members.some((mem) => mem.displayName === m.assignedTo) && (
-                      <option value={m.assignedTo}>{m.assignedTo} (AI)</option>
-                    )}
-                    {members.map((mem) => (
-                      <option key={mem.id} value={mem.displayName}>{mem.displayName}</option>
-                    ))}
-                  </select>
-                  <input
-                    type="date"
-                    value={m.dueDate}
-                    onChange={(e) => setNewMinute(i, { dueDate: e.target.value })}
-                    className="rounded border border-slate-300 p-1"
-                  />
-                </div>
-                {m.type === "Devops" && (
-                  <DevopsControls
-                    action={m.devopsAction}
-                    project={m.devopsProject}
-                    workItemType={m.devopsWorkItemType}
-                    workItemId={m.devopsWorkItemId}
-                    devopsEnabled={devopsEnabled}
-                    devopsProjects={devopsProjects}
-                    onChange={(patch) => setNewMinute(i, patch)}
-                  />
-                )}
-              </div>
-            ))}
+            {newMinutes.map((m, i) => (!data.areas.includes(m.area) ? renderNewMinuteEditor(m, i) : null))}
           </div>
+        ) : (
+          <p className="text-sm text-slate-400">
+            Use this only for a topic that isn&apos;t one of the tabs above — type its area name in the minute.
+            To add to an existing area, use its <b>+ Add new minute</b> button.
+          </p>
         )}
       </div>
 
