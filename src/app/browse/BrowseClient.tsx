@@ -516,6 +516,9 @@ export default function BrowseClient({
                     const entryId = mn.id;
                     const itemId = mn.rootId;
                     const headerTitle = (mn.isFollowUp && rootEntry?.title) || mn.title;
+                    // Type belongs to the ITEM's identity (like its title) — an update
+                    // to a To-Do is still a To-Do — so take it from the root.
+                    const headerType = (mn.isFollowUp && rootEntry?.type) || mn.type;
                     const contextDescription = mn.isFollowUp ? rootEntry?.description ?? null : mn.description;
                     const devopsId = mn.isFollowUp ? rootEntry?.devopsItemId ?? null : mn.devopsItemId;
 
@@ -586,7 +589,7 @@ export default function BrowseClient({
                               {savedFlash === itemId && (
                                 <span className="text-[10px] font-medium text-emerald-600">Saved ✓</span>
                               )}
-                              <span className="text-xs italic text-slate-500">{mn.type}</span>
+                              <span className="text-xs italic text-slate-500">{headerType}</span>
                               <select
                                 value={displayStatus}
                                 onChange={(e) => saveMinute(entryId, { status: e.target.value })}

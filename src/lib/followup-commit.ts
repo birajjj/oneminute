@@ -137,7 +137,7 @@ export async function commitFollowUp(
               area,
               title: root.title,
               description: "No action this meeting.",
-              type: "Note",
+              type: root.type, // an update keeps the item's type (a To-Do stays a To-Do)
               status: root.status,
               parentMinuteId: root.id,
               isPersistent: false
