@@ -502,7 +502,9 @@ export default function FollowUpClient({
                           <ul className="mt-1 space-y-1 border-l-2 border-slate-200 pl-3">
                             {it.history.map((h, i) => (
                               <li key={i} className="text-slate-600">
-                                <span className="text-slate-400">{fmtDate(h.date)} · {h.meetingTitle} · {h.status}</span>
+                                <span className="text-slate-400">{fmtDate(h.date)} · {h.meetingTitle}</span>
+                                <span className="ml-1 rounded bg-slate-100 px-1 text-[10px] font-medium text-slate-500">{h.type}</span>
+                                <span className="text-slate-400"> · {h.status}</span>
                                 {h.description ? <> — {h.description}</> : null}
                               </li>
                             ))}

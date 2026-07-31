@@ -101,11 +101,25 @@ export async function commitFollowUp(
       const resolveUser = (name: string): string | null =>
         name ? userIdByName.get(name.toLowerCase()) ?? null : null;
 
+      // Number same-titled follow-ups so multiple in a day are distinguishable
+      // (a chain of follow-ups otherwise all read "… - Follow-up <date>"). The
+      // first keeps the plain title; the next collision becomes " #2", then "#3".
+      const baseTitle = (input.meetingTitle || "Follow-up Meeting").trim();
+      let title = baseTitle;
+      for (let n = 2; ; n++) {
+        const clash = await tx.meeting.findFirst({
+          where: { orgId, projectId: parent.projectId, title },
+          select: { id: true }
+        });
+        if (!clash) break;
+        title = `${baseTitle} #${n}`;
+      }
+
       const meeting = await tx.meeting.create({
         data: {
           orgId,
           projectId: parent.projectId,
-          title: (input.meetingTitle || "Follow-up Meeting").trim(),
+          title,
           meetingDate: resolveMeetingDate(input.meetingDate),
           ownerUserId: userId,
           parentMeetingIdRaw: parent.id
@@ -220,7 +234,10 @@ export async function commitFollowUp(
               area,
               title: root.title,
               description: "No action this meeting.",
-              type: root.type, // an update keeps the item's type (a To-Do stays a To-Do)
+              // A "no action" marker is just a status note, not the item itself —
+              // record it as a Note. The item keeps its real type on its root, so
+              // the Browse card header still reads To-Do.
+              type: "Note",
               status: root.status,
               tags: entryTags,
               parentMinuteId: root.id,
@@ -244,9 +261,12 @@ export async function commitFollowUp(
         const area = root.area || "General";
         areaSet.add(area);
 
-        // The update entry's type — the user may make it a DevOps/Action/To-Do
-        // entry; default to the item's own type.
-        const updateType = TYPE_MAP[u.type] ?? root.type;
+        // The update entry's type. Closing an item (Completed/Cancelled) records
+        // a Note — it's a closing status note, not a fresh to-do — matching the
+        // "no action" marker. Otherwise use the user's choice (default: the
+        // item's own type). The item's real type stays on its root regardless.
+        const isClosing = newStatus === "Completed" || newStatus === "Cancelled";
+        const updateType = isClosing ? "Note" : TYPE_MAP[u.type] ?? root.type;
 
         // Optionally create/link a DevOps work item for this update.
         let devopsItemId: number | null = null;

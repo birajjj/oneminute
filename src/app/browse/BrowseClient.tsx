@@ -822,11 +822,6 @@ export default function BrowseClient({
                                       >
                                         <td className="border-b border-slate-100 px-3 py-1.5 text-brand-blue">
                                           {fu.description?.trim() || fu.title}
-                                          {fu.tags.length > 0 && (
-                                            <span className="ml-2 inline-flex gap-1 align-middle">
-                                              <TagBadges tags={fu.tags} />
-                                            </span>
-                                          )}
                                         </td>
                                         <td className="border-b border-slate-100 px-3 py-1.5">{fu.type}</td>
                                         <td className="border-b border-slate-100 px-3 py-1.5">
