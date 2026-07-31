@@ -57,8 +57,8 @@ export default function AppShell({
   }, [meetings, projectFilter, search]);
 
   return (
-    <div className="min-h-screen bg-slate-50">
-      <header className="flex items-center justify-between border-b border-slate-200 bg-white px-6 py-3">
+    <div className="flex h-screen flex-col bg-slate-50">
+      <header className="shrink-0 flex items-center justify-between border-b border-slate-200 bg-white px-6 py-3">
         <h1 className="text-xl font-bold">Meeting Minutes</h1>
         <div className="flex items-center gap-3">
           <input
@@ -80,8 +80,8 @@ export default function AppShell({
         </div>
       </header>
 
-      <div className="flex">
-        <aside className="w-72 shrink-0 border-r border-slate-200 bg-white p-4">
+      <div className="flex min-h-0 flex-1">
+        <aside className="flex w-72 shrink-0 flex-col border-r border-slate-200 bg-white p-4">
           <h2 className="mb-3 text-lg font-bold">Recent Meetings</h2>
 
           <select
@@ -97,7 +97,7 @@ export default function AppShell({
             ))}
           </select>
 
-          <div className="space-y-2">
+          <div className="min-h-0 flex-1 space-y-2 overflow-y-auto pr-1">
             {filtered.length === 0 && <p className="text-sm text-slate-400">No meetings.</p>}
             {filtered.map((m) => (
               <a
@@ -113,7 +113,7 @@ export default function AppShell({
           </div>
         </aside>
 
-        <main className="flex-1 p-6">{children}</main>
+        <main className="min-h-0 flex-1 overflow-y-auto p-6">{children}</main>
       </div>
     </div>
   );
