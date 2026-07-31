@@ -3,6 +3,7 @@ import { z } from "zod";
 import { requireUser } from "@/lib/auth";
 import { db } from "@/lib/db";
 import type { MinuteStatus } from "@prisma/client";
+import { normalizeTags } from "@/lib/tags";
 
 export const runtime = "nodejs";
 
@@ -24,7 +25,9 @@ const BodySchema = z.object({
   title: z.string().optional(),
   // Re-file into another area/tab. Applies to the whole thread so an item's
   // updates don't scatter across tabs.
-  area: z.string().optional()
+  area: z.string().optional(),
+  // Governance flags — the full desired set, not a delta.
+  tags: z.array(z.string()).optional()
 });
 
 export async function PATCH(
@@ -73,7 +76,12 @@ export async function PATCH(
       assignedToUserId?: string | null;
       description?: string | null;
       title?: string;
+      tags?: string[];
     } = {};
+
+    if (parsed.data.tags !== undefined) {
+      data.tags = normalizeTags(parsed.data.tags);
+    }
 
     if (parsed.data.title !== undefined) {
       const t = parsed.data.title.trim();

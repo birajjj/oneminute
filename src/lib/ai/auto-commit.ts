@@ -5,6 +5,7 @@ import { db } from "@/lib/db";
 import type { AutoPlan, PlanMinute } from "./auto-plan";
 import type { MinuteType, MinuteStatus } from "@prisma/client";
 import { createWorkItem, getWorkItem, devopsConfigured } from "@/lib/devops";
+import { normalizeTags } from "@/lib/tags";
 
 export interface CommitResult {
   projectId: string;
@@ -162,6 +163,7 @@ export async function commitAutoPlan(
               : null,
             // Action-like items persist into follow-up meetings until Completed
             isPersistent: ["To-Do", "Action", "Devops"].includes(m.minuteType),
+            tags: normalizeTags(m.tags),
             dueDate: parseDate(m.dueDate),
             devopsItemId,
             devopsArea: devopsProjectName

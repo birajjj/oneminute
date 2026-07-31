@@ -146,7 +146,10 @@ model Minute {
   description       String?
   type              MinuteType    @default(Note)
   status            MinuteStatus  @default(New)
-  tags              String?
+
+  // Governance flags (on-prem: a comma-joined `Tags` string). A real array so a
+  // minute can carry several and they can be filtered on — see lib/tags.ts.
+  tags              String[]      @default([])
 
   // follow-up chain: null means new minute, set means this updates that parent minute
   parentMinuteId    String?       @map("parent_minute_id") @db.Uuid

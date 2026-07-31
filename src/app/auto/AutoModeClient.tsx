@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { AutoPlan } from "@/lib/ai/auto-plan";
 import { useSegmentRecorder } from "@/lib/useSegmentRecorder";
+import { TagChips } from "@/components/TagChips";
 
 // The page is manual-first: you land straight in the editable form and can fill
 // it in by hand. Recording / pasting a transcript is an optional accelerator
@@ -33,6 +34,7 @@ function emptyMinute(area = "General"): AutoPlan["minutes"][number] {
     assignedTo: "",
     dueDate: "",
     isDevopsItem: false,
+    tags: [],
     confidence: "high",
     approved: true,
     devopsAction: "none",
@@ -546,6 +548,9 @@ function PlanReview({
               </div>
             )}
             <textarea value={m.description} onChange={(e) => updateMinute(i, { description: e.target.value })} rows={2} className="w-full rounded border border-slate-300 p-1 text-sm" />
+            <div className="mt-1">
+              <TagChips value={m.tags} onChange={(tags) => updateMinute(i, { tags })} />
+            </div>
             <div className="mt-1 grid grid-cols-3 gap-1 text-xs">
               <input value={m.area} onChange={(e) => updateMinute(i, { area: e.target.value })} className="rounded border border-slate-300 p-1" placeholder="Area" />
 

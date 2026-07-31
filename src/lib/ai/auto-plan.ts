@@ -4,6 +4,7 @@
 
 import { db } from "@/lib/db";
 import { generateJson } from "./provider";
+import { normalizeTags } from "@/lib/tags";
 
 export interface PlanMinute {
   type: "new" | "followup";
@@ -18,6 +19,7 @@ export interface PlanMinute {
   assignedTo: string;
   dueDate: string;
   isDevopsItem: boolean;
+  tags: string[]; // governance flags: Decision / Scope / Governance
   confidence: "high" | "medium" | "low";
   approved: boolean;
 
@@ -101,6 +103,7 @@ const responseSchema = {
           assignedTo: { type: "STRING" },
           dueDate: { type: "STRING" },
           isDevopsItem: { type: "BOOLEAN" },
+          tags: { type: "ARRAY", items: { type: "STRING" } },
           confidence: { type: "STRING" }
         },
         required: ["type", "title"]
@@ -144,6 +147,7 @@ export async function buildAutoPlan(
     assignedTo: m.assignedTo || "",
     dueDate: m.dueDate || "",
     isDevopsItem: !!m.isDevopsItem,
+    tags: normalizeTags(m.tags),
     confidence: (["high", "medium", "low"].includes(m.confidence)
       ? m.confidence
       : "medium") as PlanMinute["confidence"],
@@ -316,6 +320,13 @@ function buildPrompt(transcript: string, ctx: Context): string {
   lines.push("- Name areas after the SUBJECT discussed, not the minute type. Never use a person's name.");
   lines.push("- REUSE an existing area name listed under the selected project whenever it fits — copy it exactly. Only invent a new area for a genuinely new topic.");
   lines.push("- Use \"General\" only for items that truly fit no topic. Do NOT put everything in General.");
+  lines.push("");
+  lines.push("### FLAGS (tags)");
+  lines.push("Set `tags` on a minute to any of these that apply, otherwise an empty array:");
+  lines.push("- \"Decision\": the team decided, agreed, chose or settled something.");
+  lines.push("- \"Scope\": changes what is in or out of scope (added, dropped, deferred, descoped, pushed to a later phase).");
+  lines.push("- \"Governance\": process, sign-off, approval, compliance, risk, budget or escalation.");
+  lines.push("Use only those exact three words. Most minutes have NO flags — flag only what genuinely qualifies.");
   lines.push("");
   lines.push("### RULES");
   lines.push("- project.action 'use_existing' (set existingProjectId) when it clearly matches a listed project, else 'create_new' with newProjectName.");

@@ -8,6 +8,7 @@
 import { db } from "@/lib/db";
 import type { MinuteType, MinuteStatus } from "@prisma/client";
 import { createOrLinkWorkItem, devopsConfigured } from "@/lib/devops";
+import { normalizeTags } from "@/lib/tags";
 
 const TYPE_MAP: Record<string, MinuteType> = {
   Note: "Note",
@@ -47,6 +48,7 @@ export interface FollowUpNewMinuteInput {
   status: string; // label
   assignedTo: string;
   dueDate: string;
+  tags: string[]; // governance flags
   devopsAction: string;
   devopsProject: string;
   devopsWorkItemType: string;
@@ -253,6 +255,7 @@ export async function commitFollowUp(
             status: STATUS_MAP[m.status] ?? "New",
             parentMinuteId: null,
             isPersistent: ["To-Do", "Action", "Devops"].includes(m.type),
+            tags: normalizeTags(m.tags),
             assignedToUserId: resolveUser(m.assignedTo),
             dueDate: parseDate(m.dueDate),
             devopsItemId,

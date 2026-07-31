@@ -3,6 +3,8 @@
 import { useEffect, useMemo, useState } from "react";
 import type { FollowUpData, OpenItem } from "@/lib/followup";
 import { useSegmentRecorder } from "@/lib/useSegmentRecorder";
+import { TagChips } from "@/components/TagChips";
+import { normalizeTags } from "@/lib/tags";
 
 const TYPE_OPTIONS = ["Note", "To-Do", "Action", "Devops"];
 const STATUS_OPTIONS = ["New", "Initiated", "In Progress", "Completed", "Cancelled"];
@@ -33,6 +35,7 @@ interface NewMinute {
   status: string;
   assignedTo: string;
   dueDate: string;
+  tags: string[]; // governance flags
   devopsAction: string;
   devopsProject: string;
   devopsWorkItemType: string;
@@ -150,6 +153,7 @@ export default function FollowUpClient({
       ...prev,
       {
         area, title: "", description: "", type: "Note", status: "New", assignedTo: "", dueDate: "",
+        tags: [],
         devopsAction: "none", devopsProject: "", devopsWorkItemType: "User Story", devopsWorkItemId: ""
       }
     ]);
@@ -184,7 +188,7 @@ export default function FollowUpClient({
   // Only touches items the AI marked as discussed; the human still reviews all.
   function applyPlan(plan: {
     updates?: { rootMinuteId: string; discussed: boolean; note: string; status: string; devopsAction: string; devopsWorkItemType: string; devopsWorkItemId: string }[];
-    newMinutes?: { area: string; title: string; description: string; minuteType: string; status: string; assignedTo: string; devopsAction: string; devopsWorkItemType: string; devopsWorkItemId: string }[];
+    newMinutes?: { area: string; title: string; description: string; minuteType: string; status: string; assignedTo: string; tags?: string[]; devopsAction: string; devopsWorkItemType: string; devopsWorkItemId: string }[];
   }) {
     const filled = new Set<string>();
     setUpdates((prev) => {
@@ -223,6 +227,7 @@ export default function FollowUpClient({
         status: STATUS_OPTIONS.includes(m.status) ? m.status : "New",
         assignedTo: m.assignedTo || "",
         dueDate: "",
+        tags: normalizeTags(m.tags),
         devopsAction: wantsDevops ? m.devopsAction : "none",
         devopsProject: "",
         devopsWorkItemType: m.devopsWorkItemType === "Bug" ? "Bug" : "User Story",
@@ -599,6 +604,9 @@ export default function FollowUpClient({
                   placeholder="Description"
                   className="w-full rounded border border-slate-300 p-1 text-sm"
                 />
+                <div className="mt-1">
+                  <TagChips value={m.tags} onChange={(tags) => setNewMinute(i, { tags })} />
+                </div>
                 <div className="mt-1 grid grid-cols-2 gap-1 text-xs sm:grid-cols-5">
                   <input
                     value={m.area}

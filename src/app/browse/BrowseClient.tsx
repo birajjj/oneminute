@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import ProjectFilterDropdown from "@/components/ProjectFilterDropdown";
+import { TagChips, TagBadges } from "@/components/TagChips";
 
 export interface BrowseMinute {
   id: string;
@@ -18,6 +19,7 @@ export interface BrowseMinute {
   assignedTo: string | null;
   dueDate: string | null;
   devopsItemId: number | null;
+  tags: string[];
 }
 
 export interface ThreadEntry {
@@ -31,6 +33,7 @@ export interface ThreadEntry {
   isRoot: boolean;
   devopsItemId: number | null;
   assignedTo: string | null;
+  tags: string[];
 }
 
 const STATUS_OPTIONS = ["New", "Initiated", "In Progress", "Completed", "Cancelled"];
@@ -102,7 +105,7 @@ export default function BrowseClient({
   // / assignee lives on its thread root). saveMinute updates immediately and
   // reverts on failure.
   const [edits, setEdits] = useState<
-    Record<string, { status?: string; assignedTo?: string | null; title?: string; description?: string | null }>
+    Record<string, { status?: string; assignedTo?: string | null; title?: string; description?: string | null; tags?: string[] }>
   >({});
   const [saveError, setSaveError] = useState("");
 
@@ -113,17 +116,18 @@ export default function BrowseClient({
 
   async function saveMinute(
     id: string,
-    patch: { status?: string; assignedTo?: string | null; title?: string; description?: string | null }
+    patch: { status?: string; assignedTo?: string | null; title?: string; description?: string | null; tags?: string[] }
   ) {
     const prev = edits[id];
     setSaveError("");
     setEdits((e) => ({ ...e, [id]: { ...e[id], ...patch } }));
     try {
-      const body: Record<string, string> = {};
+      const body: Record<string, string | string[]> = {};
       if (patch.status !== undefined) body.status = patch.status;
       if (patch.assignedTo !== undefined) body.assignedTo = patch.assignedTo ?? "";
       if (patch.title !== undefined) body.title = patch.title;
       if (patch.description !== undefined) body.description = patch.description ?? "";
+      if (patch.tags !== undefined) body.tags = patch.tags;
       const res = await fetch(`/api/minutes/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
@@ -304,6 +308,25 @@ export default function BrowseClient({
     : [];
   const isEditingMeeting = !!selected && editingMeeting === selected.id;
 
+  // ---- Flag filter: the register of Decisions / Scope / Governance ----
+  // On-prem stored these flags but gave no way to search them. Selecting any
+  // switches out of the per-meeting tab view into a flat, cross-meeting list.
+  const [tagFilter, setTagFilter] = useState<string[]>([]);
+
+  const flaggedMinutes = useMemo(() => {
+    if (tagFilter.length === 0) return [];
+    const rows: { meeting: BrowseMeeting; minute: BrowseMinute }[] = [];
+    for (const m of meetings) {
+      if (projectFilter !== "all" && m.projectId !== projectFilter) continue;
+      for (const mn of m.minutes) {
+        const tags = edits[mn.id]?.tags ?? mn.tags ?? [];
+        // OR across the selected flags — "show me Decisions or Scope".
+        if (tags.some((t) => tagFilter.includes(t))) rows.push({ meeting: m, minute: mn });
+      }
+    }
+    return rows.sort((a, b) => (a.meeting.date < b.meeting.date ? 1 : -1));
+  }, [tagFilter, meetings, projectFilter, edits]);
+
   return (
     <div className="flex h-screen flex-col bg-slate-50">
       {/* Header */}
@@ -316,6 +339,12 @@ export default function BrowseClient({
             placeholder="Search notes…"
             className="w-64 rounded-full border border-slate-300 px-4 py-1.5 text-sm"
           />
+          {/* Flag filter — click a flag to list every minute carrying it, across
+              all meetings. Click again to go back to the meeting view. */}
+          <div className="flex items-center gap-1 border-l border-slate-200 pl-3">
+            <span className="text-xs text-slate-400">Flags:</span>
+            <TagChips value={tagFilter} onChange={setTagFilter} />
+          </div>
           <a
             href="/auto"
             className="rounded bg-gradient-to-r from-brand-pink to-brand-purple px-3 py-1.5 text-sm font-medium text-white"
@@ -365,7 +394,59 @@ export default function BrowseClient({
 
         {/* Main */}
         <main className="min-h-0 flex-1 overflow-y-auto p-6">
-          {!selected ? (
+          {tagFilter.length > 0 ? (
+            /* Flag register — every minute carrying a selected flag, newest first,
+               across every meeting in the current project filter. */
+            <div>
+              <div className="mb-4 flex flex-wrap items-center gap-2">
+                <h2 className="text-lg font-bold">
+                  {tagFilter.join(" / ")} — {flaggedMinutes.length} minute(s)
+                </h2>
+                <button
+                  onClick={() => setTagFilter([])}
+                  className="rounded border border-slate-300 px-2 py-0.5 text-xs text-slate-600"
+                >
+                  Clear filter
+                </button>
+              </div>
+
+              {flaggedMinutes.length === 0 ? (
+                <p className="text-sm text-slate-500">
+                  Nothing flagged {tagFilter.join(" or ")} yet. Click a flag on any minute to set one.
+                </p>
+              ) : (
+                <div className="space-y-2">
+                  {flaggedMinutes.map(({ meeting, minute }) => (
+                    <div
+                      key={minute.id}
+                      className="rounded border-l-4 border-l-violet-400 bg-white p-3 shadow-sm"
+                    >
+                      <div className="flex flex-wrap items-center gap-2">
+                        <button
+                          onClick={() => { setTagFilter([]); setSelectedId(meeting.id); }}
+                          className="font-semibold text-brand-blue hover:underline"
+                          title="Open this meeting"
+                        >
+                          {minute.title}
+                        </button>
+                        <span className="text-xs italic text-slate-500">{minute.type}</span>
+                        <span className="text-[11px] text-slate-500">
+                          {edits[minute.id]?.status ?? minute.status}
+                        </span>
+                        <TagBadges tags={edits[minute.id]?.tags ?? minute.tags} />
+                      </div>
+                      {minute.description && (
+                        <p className="mt-1 text-sm text-slate-700">{minute.description}</p>
+                      )}
+                      <p className="mt-1 text-xs text-slate-400">
+                        {meeting.projectName} · {meeting.title} · {fmtDate(meeting.date)} · {minute.area}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          ) : !selected ? (
             <p className="text-slate-500">Select a meeting.</p>
           ) : (
             <>
@@ -562,6 +643,9 @@ export default function BrowseClient({
                     const displayTitle = effItem.title ?? headerTitle;
                     const displayDescription =
                       effItem.description !== undefined ? effItem.description : contextDescription;
+                    // Flags belong to the ITEM (like its title/type), not to one update.
+                    const displayTags =
+                      effItem.tags ?? ((mn.isFollowUp && rootEntry?.tags) || mn.tags || []);
                     const isEditing = editingId === itemId;
 
                     // Nested history: only what existed UP TO the meeting being viewed
@@ -622,6 +706,10 @@ export default function BrowseClient({
                                 <span className="text-[10px] font-medium text-emerald-600">Saved ✓</span>
                               )}
                               <span className="text-xs italic text-slate-500">{headerType}</span>
+                              <TagChips
+                                value={displayTags}
+                                onChange={(tags) => saveMinute(itemId, { tags })}
+                              />
                               <select
                                 value={displayStatus}
                                 onChange={(e) => saveMinute(entryId, { status: e.target.value })}

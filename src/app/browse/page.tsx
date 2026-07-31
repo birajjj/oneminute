@@ -78,7 +78,8 @@ export default async function BrowsePage({
         meetingTitle: m.title,
         isRoot: !mn.parentMinuteId,
         devopsItemId: mn.devopsItemId ?? null,
-        assignedTo: mn.assignedTo?.displayName ?? null
+        assignedTo: mn.assignedTo?.displayName ?? null,
+        tags: mn.tags ?? []
       });
     }
   }
@@ -126,7 +127,8 @@ export default async function BrowsePage({
           threadCount: threads[rootId]?.length ?? 1,
           assignedTo: mn.assignedTo?.displayName ?? null,
           dueDate: mn.dueDate ? mn.dueDate.toISOString() : null,
-          devopsItemId: mn.devopsItemId ?? null
+          devopsItemId: mn.devopsItemId ?? null,
+          tags: mn.tags ?? []
         };
       })
     };

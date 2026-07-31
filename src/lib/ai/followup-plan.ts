@@ -11,6 +11,7 @@
 // SERVER-ONLY.
 
 import { generateJson } from "./provider";
+import { normalizeTags } from "@/lib/tags";
 import type { OpenItem } from "@/lib/followup";
 
 const TYPE_VALUES = ["Note", "To-Do", "Action", "Devops"] as const;
@@ -36,6 +37,7 @@ export interface FollowUpNewMinute extends DevopsSuggestion {
   minuteType: string;
   status: string;
   assignedTo: string;
+  tags: string[];
 }
 
 export interface FollowUpPlan {
@@ -59,6 +61,7 @@ interface RawPlan {
     minuteType: string;
     status: string;
     assignedTo: string;
+    tags?: string[];
   } & RawDevops)[];
   summary?: string;
 }
@@ -97,6 +100,7 @@ const responseSchema = {
           minuteType: { type: "STRING" },
           status: { type: "STRING" },
           assignedTo: { type: "STRING" },
+          tags: { type: "ARRAY", items: { type: "STRING" } },
           ...devopsSchemaProps
         },
         required: ["title"]
@@ -147,6 +151,7 @@ export async function buildFollowUpPlan(
       minuteType: normalizeType(m.minuteType),
       status: normalizeStatus(m.status) || "New",
       assignedTo: m.assignedTo || "",
+      tags: normalizeTags(m.tags),
       devopsAction: normalizeDevopsAction(m.devopsAction),
       devopsWorkItemType: normalizeWorkItemType(m.devopsWorkItemType),
       devopsWorkItemId: m.devopsWorkItemId || ""
@@ -191,6 +196,12 @@ function buildPrompt(openItems: OpenItem[], users: string[], transcript: string)
   lines.push("AREAS (tabs): every new minute needs an `area` — the topic group it belongs to.");
   lines.push("Reuse one of the existing areas listed below whenever it fits (copy it exactly);");
   lines.push("only invent a new area for a genuinely new topic. Avoid defaulting everything to \"General\".");
+  lines.push("");
+  lines.push("FLAGS (optional — on new items). Set `tags` to any that apply, else an empty array:");
+  lines.push("- \"Decision\": the team decided/agreed/chose something.");
+  lines.push("- \"Scope\": changes what is in or out of scope (added, dropped, deferred, descoped).");
+  lines.push("- \"Governance\": process, sign-off, approval, compliance, risk or budget.");
+  lines.push("Use only those exact three words. Most items have none — do not flag everything.");
   lines.push("");
   lines.push("DEVOPS (optional — on any update OR new item). If the meeting says to create a DevOps");
   lines.push("work item / user story / bug, or to link/track an existing work item, set on that entry:");
