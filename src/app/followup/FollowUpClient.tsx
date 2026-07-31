@@ -7,6 +7,9 @@ import { TagChips } from "@/components/TagChips";
 import { normalizeTags } from "@/lib/tags";
 
 const TYPE_OPTIONS = ["Note", "To-Do", "Action", "Devops"];
+// Types allowed for extra minutes raised under an open item (boss: note/todo/
+// devops, not action).
+const SUB_TYPE_OPTIONS = ["Note", "To-Do", "Devops"];
 const STATUS_OPTIONS = ["New", "Initiated", "In Progress", "Completed", "Cancelled"];
 
 interface Member {
@@ -22,6 +25,7 @@ interface ItemUpdate {
   assignedTo: string;
   dueDate: string;
   tags: string[]; // governance flags — saved onto the ITEM, not this update
+  subEntries: NewMinute[]; // extra note/to-do/devops raised under this item
   devopsAction: string; // none | create | link
   devopsProject: string;
   devopsWorkItemType: string; // User Story | Bug
@@ -112,6 +116,7 @@ export default function FollowUpClient({
         // Carried forward from the item's newest entry (same as status/assignee),
         // so you can see what's flagged and adjust it for this meeting.
         tags: it.tags ?? [],
+        subEntries: [],
         devopsAction: "none",
         devopsProject: "",
         devopsWorkItemType: "User Story",
@@ -120,6 +125,36 @@ export default function FollowUpClient({
     }
     return init;
   });
+
+  // Sub-entries: add / edit / remove a note-todo-devops under a given open item.
+  function emptySub(): NewMinute {
+    return {
+      area: "", title: "", description: "", type: "Note", status: "New",
+      assignedTo: "", dueDate: "", tags: [],
+      devopsAction: "none", devopsProject: "", devopsWorkItemType: "User Story", devopsWorkItemId: ""
+    };
+  }
+  function addSub(itemId: string) {
+    setUpdates((prev) => ({
+      ...prev,
+      [itemId]: { ...prev[itemId], subEntries: [...prev[itemId].subEntries, emptySub()] }
+    }));
+  }
+  function setSub(itemId: string, i: number, patch: Partial<NewMinute>) {
+    setUpdates((prev) => ({
+      ...prev,
+      [itemId]: {
+        ...prev[itemId],
+        subEntries: prev[itemId].subEntries.map((s, idx) => (idx === i ? { ...s, ...patch } : s))
+      }
+    }));
+  }
+  function removeSub(itemId: string, i: number) {
+    setUpdates((prev) => ({
+      ...prev,
+      [itemId]: { ...prev[itemId], subEntries: prev[itemId].subEntries.filter((_, idx) => idx !== i) }
+    }));
+  }
 
   const [newMinutes, setNewMinutes] = useState<NewMinute[]>([]);
   const [saving, setSaving] = useState(false);
@@ -560,6 +595,100 @@ export default function FollowUpClient({
                             )}
                           </>
                         )}
+
+                        {/* Extra minutes raised under this item — each becomes its
+                            own trackable minute, grouped under this item. */}
+                        {u.subEntries.length > 0 && (
+                          <div className="mt-3 space-y-2 border-t border-amber-200 pt-2">
+                            <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+                              Raised under this item
+                            </div>
+                            {u.subEntries.map((s, si) => (
+                              <div key={si} className="rounded border-l-4 border-l-brand-blue bg-blue-50 p-2">
+                                <div className="mb-1 flex items-center gap-2">
+                                  <select
+                                    value={s.type}
+                                    onChange={(e) =>
+                                      setSub(it.id, si, {
+                                        type: e.target.value,
+                                        ...(e.target.value !== "Devops" ? { devopsAction: "none" } : {})
+                                      })
+                                    }
+                                    className="rounded border border-slate-300 p-1 text-xs"
+                                  >
+                                    {SUB_TYPE_OPTIONS.map((t) => (
+                                      <option key={t} value={t}>{t}</option>
+                                    ))}
+                                  </select>
+                                  <input
+                                    value={s.title}
+                                    onChange={(e) => setSub(it.id, si, { title: e.target.value })}
+                                    placeholder="Title"
+                                    className="flex-1 rounded border border-slate-300 p-1 text-sm"
+                                  />
+                                  <button
+                                    onClick={() => removeSub(it.id, si)}
+                                    className="rounded px-2 py-1 text-xs text-red-600 hover:bg-red-100"
+                                    title="Remove"
+                                  >
+                                    ✕
+                                  </button>
+                                </div>
+                                <textarea
+                                  value={s.description}
+                                  onChange={(e) => setSub(it.id, si, { description: e.target.value })}
+                                  rows={1}
+                                  placeholder="Description"
+                                  className="w-full rounded border border-slate-300 p-1 text-sm"
+                                />
+                                <div className="mt-1 grid grid-cols-2 gap-1 text-xs sm:grid-cols-3">
+                                  <select
+                                    value={s.status}
+                                    onChange={(e) => setSub(it.id, si, { status: e.target.value })}
+                                    className="rounded border border-slate-300 p-1"
+                                  >
+                                    {STATUS_OPTIONS.map((st) => (
+                                      <option key={st} value={st}>{st}</option>
+                                    ))}
+                                  </select>
+                                  <select
+                                    value={s.assignedTo}
+                                    onChange={(e) => setSub(it.id, si, { assignedTo: e.target.value })}
+                                    className="rounded border border-slate-300 p-1"
+                                  >
+                                    <option value="">— Unassigned —</option>
+                                    {assigneeOptions(s.assignedTo).map((n) => (
+                                      <option key={n} value={n}>{n}</option>
+                                    ))}
+                                  </select>
+                                  <input
+                                    type="date"
+                                    value={s.dueDate}
+                                    onChange={(e) => setSub(it.id, si, { dueDate: e.target.value })}
+                                    className="rounded border border-slate-300 p-1"
+                                  />
+                                </div>
+                                {s.type === "Devops" && (
+                                  <DevopsControls
+                                    action={s.devopsAction}
+                                    project={s.devopsProject}
+                                    workItemType={s.devopsWorkItemType}
+                                    workItemId={s.devopsWorkItemId}
+                                    devopsEnabled={devopsEnabled}
+                                    devopsProjects={devopsProjects}
+                                    onChange={(patch) => setSub(it.id, si, patch)}
+                                  />
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                        <button
+                          onClick={() => addSub(it.id)}
+                          className="mt-2 rounded border border-slate-300 px-2 py-1 text-[11px] text-slate-600 hover:bg-slate-50"
+                        >
+                          + Add note / to-do / devops under this item
+                        </button>
                       </div>
                     </div>
                   );

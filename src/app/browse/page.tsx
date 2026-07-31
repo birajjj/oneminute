@@ -128,7 +128,8 @@ export default async function BrowsePage({
           assignedTo: mn.assignedTo?.displayName ?? null,
           dueDate: mn.dueDate ? mn.dueDate.toISOString() : null,
           devopsItemId: mn.devopsItemId ?? null,
-          tags: mn.tags ?? []
+          tags: mn.tags ?? [],
+          raisedFromRootId: mn.raisedFromRootId ?? null
         };
       })
     };

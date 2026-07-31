@@ -41,6 +41,9 @@ export interface FollowUpUpdateInput {
   devopsProject: string;
   devopsWorkItemType: string; // "User Story" | "Bug"
   devopsWorkItemId: string;
+  // Extra minutes raised under this item this meeting (a note, a to-do, a devops).
+  // Each becomes its own trackable root, linked back to the item for grouping.
+  subEntries: FollowUpNewMinuteInput[];
 }
 
 export interface FollowUpNewMinuteInput {
@@ -111,8 +114,62 @@ export async function commitFollowUp(
 
       const areaSet = new Set<string>();
 
+      // Create a brand-new root minute (its own thread). Used by both the
+      // "New minutes this meeting" list and the per-item sub-entries; the latter
+      // pass raisedFromRootId so Browse can group them under the parent item.
+      async function createRootMinute(
+        m: FollowUpNewMinuteInput,
+        raisedFromRootId: string | null,
+        areaOverride?: string
+      ): Promise<boolean> {
+        if (!m.title.trim()) return false;
+        const area = (areaOverride || m.area || "General").trim();
+        areaSet.add(area);
+
+        let devopsItemId: number | null = null;
+        let devopsArea: string | null = null;
+        if (m.devopsAction === "create" || m.devopsAction === "link") {
+          try {
+            const dv = await commitDevops({
+              action: m.devopsAction,
+              workItemId: m.devopsWorkItemId,
+              project: m.devopsProject,
+              workItemType: m.devopsWorkItemType,
+              title: m.title,
+              description: m.description
+            });
+            devopsItemId = dv.id;
+            devopsArea = dv.project;
+          } catch (dex) {
+            warnings.push(`DevOps for "${m.title}": ${dex instanceof Error ? dex.message : "failed"}`);
+          }
+        }
+
+        await tx.minute.create({
+          data: {
+            orgId,
+            meetingId: meeting.id,
+            area,
+            title: m.title.trim(),
+            description: m.description?.trim() || null,
+            type: TYPE_MAP[m.type] ?? "Note",
+            status: STATUS_MAP[m.status] ?? "New",
+            parentMinuteId: null,
+            raisedFromRootId,
+            isPersistent: ["To-Do", "Action", "Devops"].includes(m.type),
+            tags: normalizeTags(m.tags),
+            assignedToUserId: resolveUser(m.assignedTo),
+            dueDate: parseDate(m.dueDate),
+            devopsItemId,
+            devopsArea
+          }
+        });
+        return true;
+      }
+
       // ---- Updates to carried-forward open items ----
       let updated = 0;
+      let created = 0; // counts brand-new minutes AND sub-entries raised under items
       for (const u of input.updates) {
         const root = await tx.minute.findUnique({
           where: { id: u.rootMinuteId },
@@ -142,6 +199,16 @@ export async function commitFollowUp(
         });
         const tagsChanged = entryTags.join(",") !== normalizeTags(latest?.tags ?? []).join(",");
 
+        // Extra minutes raised under this item this meeting → their own roots,
+        // grouped under the item. Done first (before the no-action short-circuit)
+        // so you can raise a new to-do under an item you took no other action on.
+        const subEntries = (u.subEntries ?? []).filter((s) => s.title.trim());
+        let subCreated = 0;
+        for (const s of subEntries) {
+          if (await createRootMinute(s, root.id, root.area || "General")) subCreated++;
+        }
+        created += subCreated;
+
         // "No action this meeting" — record a marker note; item stays open/unchanged.
         if (u.noUpdate) {
           const area = root.area || "General";
@@ -169,8 +236,9 @@ export async function commitFollowUp(
         const hasNote = !!u.note && !!u.note.trim();
         const wantsDevops = u.devopsAction === "create" || u.devopsAction === "link";
         // Nothing meaningful to record — treat as an implicit "no update".
-        // A flag change counts: flagging something a Decision is worth recording.
-        if (!hasNote && !statusChanged && !wantsDevops && !tagsChanged) continue;
+        // A flag change counts; so does raising sub-items (the item still needs
+        // its own entry this meeting so Browse has a card to group them under).
+        if (!hasNote && !statusChanged && !wantsDevops && !tagsChanged && subCreated === 0) continue;
 
         const newStatus = mappedStatus ?? root.status;
         const area = root.area || "General";
@@ -236,50 +304,8 @@ export async function commitFollowUp(
       }
 
       // ---- Brand-new minutes for this meeting ----
-      let created = 0;
       for (const m of input.newMinutes) {
-        if (!m.title.trim()) continue;
-        const area = (m.area || "General").trim();
-        areaSet.add(area);
-
-        let devopsItemId: number | null = null;
-        let devopsArea: string | null = null;
-        if (m.devopsAction === "create" || m.devopsAction === "link") {
-          try {
-            const dv = await commitDevops({
-              action: m.devopsAction,
-              workItemId: m.devopsWorkItemId,
-              project: m.devopsProject,
-              workItemType: m.devopsWorkItemType,
-              title: m.title,
-              description: m.description
-            });
-            devopsItemId = dv.id;
-            devopsArea = dv.project;
-          } catch (dex) {
-            warnings.push(`DevOps for "${m.title}": ${dex instanceof Error ? dex.message : "failed"}`);
-          }
-        }
-
-        await tx.minute.create({
-          data: {
-            orgId,
-            meetingId: meeting.id,
-            area,
-            title: m.title.trim(),
-            description: m.description?.trim() || null,
-            type: TYPE_MAP[m.type] ?? "Note",
-            status: STATUS_MAP[m.status] ?? "New",
-            parentMinuteId: null,
-            isPersistent: ["To-Do", "Action", "Devops"].includes(m.type),
-            tags: normalizeTags(m.tags),
-            assignedToUserId: resolveUser(m.assignedTo),
-            dueDate: parseDate(m.dueDate),
-            devopsItemId,
-            devopsArea
-          }
-        });
-        created++;
+        if (await createRootMinute(m, null)) created++;
       }
 
       // ---- Areas ----

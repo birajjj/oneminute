@@ -6,6 +6,21 @@ import { commitFollowUp } from "@/lib/followup-commit";
 export const runtime = "nodejs";
 export const maxDuration = 60;
 
+const NewMinuteSchema = z.object({
+  area: z.string(),
+  title: z.string(),
+  description: z.string(),
+  type: z.string(),
+  status: z.string(),
+  assignedTo: z.string(),
+  dueDate: z.string(),
+  tags: z.array(z.string()).default([]),
+  devopsAction: z.string(),
+  devopsProject: z.string(),
+  devopsWorkItemType: z.string(),
+  devopsWorkItemId: z.string()
+});
+
 const BodySchema = z.object({
   parentMeetingId: z.string().min(1),
   meetingTitle: z.string().min(1),
@@ -23,25 +38,11 @@ const BodySchema = z.object({
       devopsAction: z.string(),
       devopsProject: z.string(),
       devopsWorkItemType: z.string(),
-      devopsWorkItemId: z.string()
+      devopsWorkItemId: z.string(),
+      subEntries: z.array(NewMinuteSchema).default([])
     })
   ),
-  newMinutes: z.array(
-    z.object({
-      area: z.string(),
-      title: z.string(),
-      description: z.string(),
-      type: z.string(),
-      status: z.string(),
-      assignedTo: z.string(),
-      dueDate: z.string(),
-      tags: z.array(z.string()).default([]),
-      devopsAction: z.string(),
-      devopsProject: z.string(),
-      devopsWorkItemType: z.string(),
-      devopsWorkItemId: z.string()
-    })
-  )
+  newMinutes: z.array(NewMinuteSchema)
 });
 
 export async function POST(req: NextRequest) {

@@ -154,6 +154,11 @@ model Minute {
   // follow-up chain: null means new minute, set means this updates that parent minute
   parentMinuteId    String?       @map("parent_minute_id") @db.Uuid
 
+  // Provenance: a brand-new minute (its own root/thread) that was raised while
+  // reviewing another open item in a follow-up. It is independently trackable,
+  // but Browse groups it under that item in the meeting it was raised.
+  raisedFromRootId  String?       @map("raised_from_root_id") @db.Uuid
+
   // when true, this minute persists into follow-up meetings until Completed (was `MinuteType='Standalone'`)
   isPersistent      Boolean       @default(false) @map("is_persistent")
 
@@ -173,6 +178,8 @@ model Minute {
   meeting           Meeting       @relation(fields: [meetingId], references: [id], onDelete: Cascade)
   parentMinute      Minute?       @relation("minute_followups", fields: [parentMinuteId], references: [id])
   followUps         Minute[]      @relation("minute_followups")
+  raisedFromRoot    Minute?       @relation("minute_raised_from", fields: [raisedFromRootId], references: [id])
+  raisedItems       Minute[]      @relation("minute_raised_from")
   assignedTo        User?         @relation("minute_assignee", fields: [assignedToUserId], references: [id])
 
   @@index([orgId])

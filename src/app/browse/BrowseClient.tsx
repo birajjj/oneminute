@@ -20,6 +20,9 @@ export interface BrowseMinute {
   dueDate: string | null;
   devopsItemId: number | null;
   tags: string[];
+  // If set, this minute was raised under another item during a follow-up; Browse
+  // groups it beneath that item in the meeting it was raised.
+  raisedFromRootId: string | null;
 }
 
 export interface ThreadEntry {
@@ -303,8 +306,21 @@ export default function BrowseClient({
   const [activeArea, setActiveArea] = useState<string>("General");
   const currentArea = areas.includes(activeArea) ? activeArea : areas[0] ?? "General";
 
+  // Minutes raised under another item this meeting are shown nested beneath that
+  // item's card, not as standalone cards — group them by the item they came from.
+  const raisedByRoot = useMemo(() => {
+    const map: Record<string, BrowseMinute[]> = {};
+    if (!selected) return map;
+    for (const m of selected.minutes) {
+      if (m.raisedFromRootId) (map[m.raisedFromRootId] ??= []).push(m);
+    }
+    return map;
+  }, [selected]);
+
   const areaMinutes = selected
-    ? selected.minutes.filter((m) => (m.area || "General") === currentArea)
+    ? selected.minutes.filter(
+        (m) => (m.area || "General") === currentArea && !m.raisedFromRootId
+      )
     : [];
   const isEditingMeeting = !!selected && editingMeeting === selected.id;
 
@@ -814,6 +830,58 @@ export default function BrowseClient({
                                   })}
                                 </tbody>
                               </table>
+                            )}
+
+                            {/* Minutes raised under this item this meeting — their
+                                own trackable minutes, grouped here for provenance. */}
+                            {(raisedByRoot[mn.rootId] ?? []).length > 0 && (
+                              <div className="mt-2 rounded border border-blue-100 bg-blue-50/60 p-2">
+                                <div className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+                                  Raised this meeting
+                                </div>
+                                <div className="space-y-1">
+                                  {(raisedByRoot[mn.rootId] ?? []).map((sub) => {
+                                    const subStatus = edits[sub.id]?.status ?? sub.status;
+                                    return (
+                                      <div key={sub.id} className="flex flex-wrap items-center gap-2 text-sm">
+                                        <span className="font-medium text-brand-blue">{sub.title}</span>
+                                        <span className="text-xs italic text-slate-500">{sub.type}</span>
+                                        <select
+                                          value={subStatus}
+                                          onChange={(e) => saveMinute(sub.id, { status: e.target.value })}
+                                          className="rounded border border-slate-300 bg-white px-1 py-0.5 text-[11px] text-slate-600"
+                                        >
+                                          {STATUS_OPTIONS.map((s) => (
+                                            <option key={s} value={s}>{s}</option>
+                                          ))}
+                                        </select>
+                                        <select
+                                          value={edits[sub.id]?.assignedTo ?? sub.assignedTo ?? ""}
+                                          onChange={(e) => saveMinute(sub.id, { assignedTo: e.target.value })}
+                                          className="rounded border border-slate-300 bg-white px-1 py-0.5 text-[11px] text-slate-600"
+                                        >
+                                          <option value="">— Unassigned —</option>
+                                          {members.map((mem) => (
+                                            <option key={mem.id} value={mem.displayName}>{mem.displayName}</option>
+                                          ))}
+                                        </select>
+                                        {sub.devopsItemId && (
+                                          <button
+                                            onClick={() => setOpenDevopsId(sub.devopsItemId)}
+                                            className="rounded bg-orange-100 px-1.5 py-0.5 text-[10px] font-medium text-orange-700"
+                                          >
+                                            🔗 #{sub.devopsItemId}
+                                          </button>
+                                        )}
+                                        <TagBadges tags={edits[sub.id]?.tags ?? sub.tags} />
+                                        {sub.description && (
+                                          <span className="w-full text-xs text-slate-500">{sub.description}</span>
+                                        )}
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              </div>
                             )}
                           </div>
                           {/* Click-based alternative to dragging (touch / precise moves) */}
