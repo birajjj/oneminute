@@ -118,6 +118,8 @@ export default function FollowUpClient({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [result, setResult] = useState<{ updated: number; created: number; warnings: string[] } | null>(null);
+  const [editingUpdateId, setEditingUpdateId] = useState<string | null>(null);
+  const [editDraft, setEditDraft] = useState<ItemUpdate | null>(null);
 
   // Optional AI pre-fill: record → transcribe → map to the open items below.
   const recorder = useSegmentRecorder(`oneminute:followup:${data.parent.id}`);
@@ -144,6 +146,22 @@ export default function FollowUpClient({
 
   function setUpdate(id: string, patch: Partial<ItemUpdate>) {
     setUpdates((prev) => ({ ...prev, [id]: { ...prev[id], ...patch } }));
+  }
+  function openUpdateEditor(id: string) {
+    setEditingUpdateId(id);
+    setEditDraft({ ...updates[id] });
+  }
+  function setEditDraftField(patch: Partial<ItemUpdate>) {
+    setEditDraft((prev) => (prev ? { ...prev, ...patch } : prev));
+  }
+  function closeUpdateEditor() {
+    setEditingUpdateId(null);
+    setEditDraft(null);
+  }
+  function saveUpdateEditor() {
+    if (!editingUpdateId || !editDraft) return;
+    setUpdate(editingUpdateId, editDraft);
+    closeUpdateEditor();
   }
   function addNewMinute(area: string) {
     setNewMinutes((prev) => [
@@ -288,6 +306,9 @@ export default function FollowUpClient({
   }
 
   const totalOpen = data.openItems.length;
+  const editingItem = editingUpdateId
+    ? data.openItems.find((it) => it.id === editingUpdateId) ?? null
+    : null;
 
   return (
     <div className="space-y-4">
@@ -415,6 +436,14 @@ export default function FollowUpClient({
                       {/* Original item summary */}
                       <div className="flex flex-wrap items-center gap-2">
                         <span className="font-semibold">{it.title}</span>
+                        <button
+                          type="button"
+                          onClick={() => openUpdateEditor(it.id)}
+                          className="rounded border border-amber-300 bg-white px-2 py-0.5 text-[11px] font-medium text-amber-700 hover:bg-amber-50"
+                          title="Edit follow-up update"
+                        >
+                          Edit
+                        </button>
                         {aiFilled.has(it.id) && (
                           <span className="rounded bg-brand-purple px-1.5 py-0.5 text-[10px] font-medium text-white">AI</span>
                         )}
@@ -492,13 +521,14 @@ export default function FollowUpClient({
                             <div className="mt-1 grid grid-cols-2 gap-1 text-xs sm:grid-cols-4">
                               <select
                                 value={u.type}
+                                disabled
                                 onChange={(e) =>
                                   setUpdate(it.id, {
                                     type: e.target.value,
                                     ...(e.target.value !== "Devops" ? { devopsAction: "none" } : {})
                                   })
                                 }
-                                className="rounded border border-slate-300 p-1"
+                                className="rounded border border-slate-300 bg-slate-100 p-1 text-slate-500"
                               >
                                 {TYPE_OPTIONS.map((t) => (
                                   <option key={t} value={t}>{t}</option>
@@ -666,6 +696,146 @@ export default function FollowUpClient({
           </div>
         )}
       </div>
+
+      {editingItem && editDraft && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="w-full max-w-3xl rounded-lg bg-white shadow-xl">
+            <div className="flex items-center justify-between border-b border-slate-200 px-5 py-3">
+              <h3 className="text-lg font-semibold">Edit follow-up update</h3>
+              <button
+                type="button"
+                onClick={closeUpdateEditor}
+                className="rounded px-2 py-1 text-xl leading-none text-slate-500 hover:bg-slate-100"
+                aria-label="Close"
+              >
+                x
+              </button>
+            </div>
+
+            <div className="space-y-4 p-5">
+              <div>
+                <div className="text-xs font-semibold uppercase text-slate-500">Minute</div>
+                <div className="mt-1 rounded border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-medium">
+                  {editingItem.title}
+                </div>
+              </div>
+
+              <div className="grid gap-3 text-sm sm:grid-cols-2">
+                <label>
+                  <span className="text-xs font-semibold uppercase text-slate-500">Type</span>
+                  <input
+                    value={editDraft.type}
+                    readOnly
+                    className="mt-1 w-full rounded border border-slate-300 bg-slate-100 p-2 text-sm text-slate-500"
+                  />
+                </label>
+                <label className="flex items-end gap-2 pb-2 text-sm text-slate-600">
+                  <input
+                    type="checkbox"
+                    checked={editDraft.noUpdate}
+                    onChange={(e) => setEditDraftField({ noUpdate: e.target.checked })}
+                  />
+                  No action this meeting
+                </label>
+              </div>
+
+              {!editDraft.noUpdate && (
+                <>
+                  <label className="block text-sm">
+                    <span className="text-xs font-semibold uppercase text-slate-500">Update note</span>
+                    <textarea
+                      value={editDraft.note}
+                      onChange={(e) => setEditDraftField({ note: e.target.value })}
+                      rows={6}
+                      placeholder="What happened with this item?"
+                      className="mt-1 w-full resize-y rounded border border-slate-300 p-2 text-sm"
+                    />
+                  </label>
+
+                  <div className="grid gap-3 text-sm sm:grid-cols-3">
+                    <label>
+                      <span className="text-xs font-semibold uppercase text-slate-500">Status</span>
+                      <select
+                        value={editDraft.status}
+                        onChange={(e) => setEditDraftField({ status: e.target.value })}
+                        className="mt-1 w-full rounded border border-slate-300 p-2 text-sm"
+                      >
+                        {STATUS_OPTIONS.map((s) => (
+                          <option key={s} value={s}>{s}</option>
+                        ))}
+                      </select>
+                    </label>
+                    <label>
+                      <span className="text-xs font-semibold uppercase text-slate-500">Assign to</span>
+                      <select
+                        value={editDraft.assignedTo}
+                        onChange={(e) => setEditDraftField({ assignedTo: e.target.value })}
+                        className="mt-1 w-full rounded border border-slate-300 p-2 text-sm"
+                      >
+                        <option value="">-- Unassigned --</option>
+                        {assigneeOptions(editDraft.assignedTo).map((n) => (
+                          <option key={n} value={n}>{n}</option>
+                        ))}
+                      </select>
+                    </label>
+                    <label>
+                      <span className="text-xs font-semibold uppercase text-slate-500">Due date</span>
+                      <input
+                        type="date"
+                        value={editDraft.dueDate}
+                        onChange={(e) => setEditDraftField({ dueDate: e.target.value })}
+                        className="mt-1 w-full rounded border border-slate-300 p-2 text-sm"
+                      />
+                    </label>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setEditDraftField({
+                        status: "Completed",
+                        note: editDraft.note || "Marked complete."
+                      })
+                    }
+                    className="rounded border border-emerald-300 px-3 py-1.5 text-sm font-medium text-emerald-700 hover:bg-emerald-50"
+                  >
+                    Mark complete
+                  </button>
+
+                  {editDraft.type === "Devops" && (
+                    <DevopsControls
+                      action={editDraft.devopsAction}
+                      project={editDraft.devopsProject}
+                      workItemType={editDraft.devopsWorkItemType}
+                      workItemId={editDraft.devopsWorkItemId}
+                      devopsEnabled={devopsEnabled}
+                      devopsProjects={devopsProjects}
+                      onChange={setEditDraftField}
+                    />
+                  )}
+                </>
+              )}
+            </div>
+
+            <div className="flex justify-end gap-2 border-t border-slate-200 px-5 py-3">
+              <button
+                type="button"
+                onClick={closeUpdateEditor}
+                className="rounded border border-slate-300 px-4 py-2 text-sm"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={saveUpdateEditor}
+                className="rounded bg-brand-blue px-4 py-2 text-sm font-medium text-white"
+              >
+                Save
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {error && <div className="rounded bg-red-50 p-3 text-sm text-red-700">{error}</div>}
 
