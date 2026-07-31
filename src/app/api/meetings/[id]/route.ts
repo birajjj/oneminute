@@ -12,6 +12,80 @@ const BodySchema = z.object({
   attendee: z.string().optional()
 });
 
+/**
+ * Delete a meeting (its minutes and areas cascade).
+ *
+ * Refused while anything still depends on it: a meeting's minutes are thread
+ * ROOTS, and Minute.parentMinute is SetNull — so deleting a meeting that has
+ * follow-ups would orphan those later updates into standalone minutes and break
+ * the chain. Follow-up (leaf) meetings delete cleanly, so the rule is: delete
+ * the newest first.
+ */
+export async function DELETE(
+  _req: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const { id } = await params;
+    const user = await requireUser();
+
+    const meeting = await db.meeting.findFirst({
+      where: { id, orgId: user.orgId },
+      select: { id: true, title: true }
+    });
+    if (!meeting) return NextResponse.json({ error: "meeting not found" }, { status: 404 });
+
+    // 1. Meetings that declare this one as their parent.
+    const followUps = await db.meeting.findMany({
+      where: { orgId: user.orgId, parentMeetingIdRaw: id },
+      orderBy: { meetingDate: "asc" },
+      select: { title: true }
+    });
+
+    // 2. Follow-up minutes in OTHER meetings that hang off this meeting's items.
+    const dependentMinutes = await db.minute.count({
+      where: {
+        orgId: user.orgId,
+        meetingId: { not: id },
+        parentMinute: { meetingId: id }
+      }
+    });
+
+    if (followUps.length > 0 || dependentMinutes > 0) {
+      return NextResponse.json(
+        {
+          error: "has_dependents",
+          followUps: followUps.map((f) => f.title),
+          dependentMinutes
+        },
+        { status: 409 }
+      );
+    }
+
+    await db.meeting.delete({ where: { id } });
+
+    await db.auditLog.create({
+      data: {
+        orgId: user.orgId,
+        userId: user.id,
+        action: "delete_meeting",
+        tableName: "meetings",
+        rowId: id,
+        before: { title: meeting.title }
+      }
+    });
+
+    return NextResponse.json({ ok: true });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : "unknown error";
+    if (msg === "UNAUTHENTICATED") {
+      return NextResponse.json({ error: "Not signed in" }, { status: 401 });
+    }
+    console.error("meeting delete error:", msg);
+    return NextResponse.json({ error: msg }, { status: 500 });
+  }
+}
+
 export async function PATCH(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }

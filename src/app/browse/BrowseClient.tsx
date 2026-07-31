@@ -135,6 +135,36 @@ export default function BrowseClient({
     }
   }
 
+  // ---- Delete a meeting (guarded: only once nothing depends on it) ----
+  const [confirmDelete, setConfirmDelete] = useState<BrowseMeeting | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const [blockedBy, setBlockedBy] = useState<{ followUps: string[]; dependentMinutes: number } | null>(null);
+
+  async function deleteMeeting(m: BrowseMeeting) {
+    setDeleting(true);
+    setBlockedBy(null);
+    try {
+      const res = await fetch(`/api/meetings/${m.id}`, { method: "DELETE" });
+      const data = await res.json().catch(() => ({}));
+      if (res.status === 409) {
+        setBlockedBy({
+          followUps: data.followUps ?? [],
+          dependentMinutes: data.dependentMinutes ?? 0
+        });
+        return;
+      }
+      if (!res.ok) throw new Error(data.error || String(res.status));
+      setConfirmDelete(null);
+      if (selectedId === m.id) setSelectedId(null);
+      router.refresh();
+    } catch (err) {
+      setSaveError("Couldn't delete meeting: " + (err instanceof Error ? err.message : "error"));
+      setConfirmDelete(null);
+    } finally {
+      setDeleting(false);
+    }
+  }
+
   // ---- Area/tab: drag-and-drop re-filing + rename ----
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [dragOverArea, setDragOverArea] = useState<string | null>(null);
@@ -372,6 +402,13 @@ export default function BrowseClient({
                     </h2>
                   )}
                   {mSaved && <span className="text-[10px] font-medium text-emerald-600">Saved ✓</span>}
+                  <button
+                    onClick={() => { setBlockedBy(null); setConfirmDelete(selected); }}
+                    className="ml-auto shrink-0 rounded px-2 py-1 text-slate-300 transition hover:bg-red-50 hover:text-red-600"
+                    title="Delete this meeting"
+                  >
+                    🗑
+                  </button>
                 </div>
                 <div className="mt-0.5 text-sm text-slate-500">{fmtDate(selected.date)}</div>
 
@@ -749,6 +786,64 @@ export default function BrowseClient({
           onSaved={() => router.refresh()}
           onClose={() => setOpenEntry(null)}
         />
+      )}
+
+      {/* Delete confirmation — shows exactly what will go, and refuses while
+          later meetings still depend on this one. */}
+      {confirmDelete && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setConfirmDelete(null)}>
+          <div className="w-full max-w-md rounded-lg bg-white p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
+            <h3 className="text-lg font-bold">Delete this meeting?</h3>
+            <p className="mt-2 text-sm text-slate-600">
+              <span className="font-medium">{confirmDelete.title}</span> — {fmtDate(confirmDelete.date)}
+            </p>
+
+            {blockedBy ? (
+              <div className="mt-3 rounded border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+                <p className="font-medium">Can&apos;t delete this one yet.</p>
+                {blockedBy.followUps.length > 0 && (
+                  <>
+                    <p className="mt-1">
+                      It has {blockedBy.followUps.length} follow-up meeting(s) built on top of it:
+                    </p>
+                    <ul className="mt-1 list-disc pl-5">
+                      {blockedBy.followUps.map((t, i) => <li key={i}>{t}</li>)}
+                    </ul>
+                  </>
+                )}
+                {blockedBy.dependentMinutes > 0 && (
+                  <p className="mt-1">
+                    {blockedBy.dependentMinutes} later update(s) hang off this meeting&apos;s minutes.
+                  </p>
+                )}
+                <p className="mt-2">Delete the follow-up meeting(s) first — newest first.</p>
+              </div>
+            ) : (
+              <div className="mt-3 rounded border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+                This permanently deletes the meeting and its{" "}
+                <b>{confirmDelete.minutes.length} minute(s)</b>. This cannot be undone.
+              </div>
+            )}
+
+            <div className="mt-4 flex items-center gap-2 border-t border-slate-200 pt-3">
+              <button
+                onClick={() => setConfirmDelete(null)}
+                className="rounded border border-slate-300 px-4 py-1.5 text-sm"
+              >
+                Cancel
+              </button>
+              {!blockedBy && (
+                <button
+                  onClick={() => deleteMeeting(confirmDelete)}
+                  disabled={deleting}
+                  className="ml-auto rounded bg-red-600 px-4 py-1.5 text-sm font-medium text-white disabled:opacity-50"
+                >
+                  {deleting ? "Deleting…" : "Delete meeting"}
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
       )}
 
       {/* DevOps work-item detail popup */}
