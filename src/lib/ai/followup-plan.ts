@@ -28,6 +28,7 @@ export interface FollowUpUpdate extends DevopsSuggestion {
   discussed: boolean;
   note: string;
   status: string; // label
+  tags: string[]; // flags the AI thinks now apply to the ITEM
 }
 
 export interface FollowUpNewMinute extends DevopsSuggestion {
@@ -53,7 +54,7 @@ interface RawDevops {
   devopsWorkItemId?: string;
 }
 interface RawPlan {
-  updates?: ({ ref: number; discussed: boolean; note: string; status: string } & RawDevops)[];
+  updates?: ({ ref: number; discussed: boolean; note: string; status: string; tags?: string[] } & RawDevops)[];
   newMinutes?: ({
     area: string;
     title: string;
@@ -84,6 +85,7 @@ const responseSchema = {
           discussed: { type: "BOOLEAN" },
           note: { type: "STRING" },
           status: { type: "STRING" },
+          tags: { type: "ARRAY", items: { type: "STRING" } },
           ...devopsSchemaProps
         },
         required: ["ref", "discussed"]
@@ -136,6 +138,9 @@ export async function buildFollowUpPlan(
       discussed: !!u.discussed,
       note: u.note || "",
       status: normalizeStatus(u.status),
+      // Union with what the item already carries — a suggestion adds flags, it
+      // never silently strips one someone set by hand.
+      tags: normalizeTags([...item.tags, ...(u.tags ?? [])]),
       devopsAction: normalizeDevopsAction(u.devopsAction),
       devopsWorkItemType: normalizeWorkItemType(u.devopsWorkItemType),
       devopsWorkItemId: u.devopsWorkItemId || ""
@@ -197,7 +202,7 @@ function buildPrompt(openItems: OpenItem[], users: string[], transcript: string)
   lines.push("Reuse one of the existing areas listed below whenever it fits (copy it exactly);");
   lines.push("only invent a new area for a genuinely new topic. Avoid defaulting everything to \"General\".");
   lines.push("");
-  lines.push("FLAGS (optional — on new items). Set `tags` to any that apply, else an empty array:");
+  lines.push("FLAGS (optional — on updates AND new items). Set `tags` to any that apply, else an empty array:");
   lines.push("- \"Decision\": the team decided/agreed/chose something.");
   lines.push("- \"Scope\": changes what is in or out of scope (added, dropped, deferred, descoped).");
   lines.push("- \"Governance\": process, sign-off, approval, compliance, risk or budget.");

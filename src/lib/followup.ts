@@ -44,6 +44,7 @@ export interface OpenItem {
   assignedTo: string | null;
   dueDate: string | null;
   devopsItemId: number | null;
+  tags: string[]; // governance flags, held on the item itself
   history: OpenItemHistory[];
 }
 
@@ -132,6 +133,7 @@ export async function loadFollowUpData(
         assignedTo: m.assignedTo?.displayName ?? null,
         dueDate: m.dueDate ? m.dueDate.toISOString() : null,
         devopsItemId: m.devopsItemId ?? null,
+        tags: m.tags ?? [],
         history: historyByRoot[m.id] ?? []
       };
     });

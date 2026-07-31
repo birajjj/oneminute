@@ -33,6 +33,9 @@ export interface FollowUpUpdateInput {
   note: string;
   assignedTo: string;
   dueDate: string;
+  // Governance flags. These live on the ITEM, so updating them here rewrites the
+  // root minute's flags rather than tagging this one update.
+  tags: string[];
   // DevOps (only when the user armed it)
   devopsAction: string; // "none" | "create" | "link"
   devopsProject: string;
@@ -119,6 +122,7 @@ export async function commitFollowUp(
             title: true,
             type: true,
             status: true,
+            tags: true,
             meeting: { select: { projectId: true } }
           }
         });
@@ -126,6 +130,14 @@ export async function commitFollowUp(
         if (!root || root.meeting.projectId !== parent.projectId) {
           if (!u.noUpdate) warnings.push("Skipped an update to an item outside this project.");
           continue;
+        }
+
+        // Governance flags live on the ITEM, so a change here rewrites the root's
+        // flags. Independent of whether this meeting records an update entry —
+        // you can flag something you took no action on.
+        const wantedTags = normalizeTags(u.tags);
+        if (wantedTags.join(",") !== [...root.tags].sort().join(",")) {
+          await tx.minute.update({ where: { id: root.id }, data: { tags: wantedTags } });
         }
 
         // "No action this meeting" — record a marker note; item stays open/unchanged.

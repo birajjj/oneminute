@@ -21,6 +21,7 @@ interface ItemUpdate {
   note: string;
   assignedTo: string;
   dueDate: string;
+  tags: string[]; // governance flags — saved onto the ITEM, not this update
   devopsAction: string; // none | create | link
   devopsProject: string;
   devopsWorkItemType: string; // User Story | Bug
@@ -108,6 +109,7 @@ export default function FollowUpClient({
         note: "",
         assignedTo: it.assignedTo ?? "",
         dueDate: it.dueDate ? it.dueDate.slice(0, 10) : "",
+        tags: it.tags ?? [],
         devopsAction: "none",
         devopsProject: "",
         devopsWorkItemType: "User Story",
@@ -187,7 +189,7 @@ export default function FollowUpClient({
   // Maps the AI's per-item updates onto the worklist and appends new minutes.
   // Only touches items the AI marked as discussed; the human still reviews all.
   function applyPlan(plan: {
-    updates?: { rootMinuteId: string; discussed: boolean; note: string; status: string; devopsAction: string; devopsWorkItemType: string; devopsWorkItemId: string }[];
+    updates?: { rootMinuteId: string; discussed: boolean; note: string; status: string; tags?: string[]; devopsAction: string; devopsWorkItemType: string; devopsWorkItemId: string }[];
     newMinutes?: { area: string; title: string; description: string; minuteType: string; status: string; assignedTo: string; tags?: string[]; devopsAction: string; devopsWorkItemType: string; devopsWorkItemId: string }[];
   }) {
     const filled = new Set<string>();
@@ -201,6 +203,7 @@ export default function FollowUpClient({
           noUpdate: false,
           note: u.note || next[u.rootMinuteId].note,
           status: STATUS_OPTIONS.includes(u.status) ? u.status : next[u.rootMinuteId].status,
+          tags: normalizeTags([...next[u.rootMinuteId].tags, ...(u.tags ?? [])]),
           // A DevOps suggestion arms the controls (type -> Devops) for review.
           ...(wantsDevops
             ? {
@@ -445,6 +448,12 @@ export default function FollowUpClient({
                           ))}
                       </div>
                       {it.description && <div className="mt-1 text-sm text-slate-600">{it.description}</div>}
+
+                      {/* Governance flags — set on the ITEM, so they carry across
+                          every meeting the item appears in. */}
+                      <div className="mt-1">
+                        <TagChips value={u.tags} onChange={(tags) => setUpdate(it.id, { tags })} />
+                      </div>
 
                       {/* Prior updates */}
                       {it.history.length > 0 && (
