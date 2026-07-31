@@ -135,6 +135,46 @@ export default function BrowseClient({
     }
   }
 
+  // ---- Area/tab: drag-and-drop re-filing + rename ----
+  const [draggingId, setDraggingId] = useState<string | null>(null);
+  const [dragOverArea, setDragOverArea] = useState<string | null>(null);
+  const [renamingArea, setRenamingArea] = useState<string | null>(null);
+  const [renameDraft, setRenameDraft] = useState("");
+
+  async function moveMinuteToArea(minuteId: string, area: string) {
+    setSaveError("");
+    try {
+      const res = await fetch(`/api/minutes/${minuteId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ area })
+      });
+      if (!res.ok) throw new Error(await res.text());
+      router.refresh();
+    } catch (err) {
+      setSaveError("Couldn't move minute: " + (err instanceof Error ? err.message : "error"));
+    }
+  }
+
+  async function renameArea(from: string, to: string) {
+    setRenamingArea(null);
+    const name = to.trim();
+    if (!name || name === from || !selected) return;
+    setSaveError("");
+    try {
+      const res = await fetch(`/api/meetings/${selected.id}/areas`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ from, to: name })
+      });
+      if (!res.ok) throw new Error(await res.text());
+      if (activeArea === from) setActiveArea(name);
+      router.refresh();
+    } catch (err) {
+      setSaveError("Couldn't rename area: " + (err instanceof Error ? err.message : "error"));
+    }
+  }
+
   function startEditMinute(id: string, title: string, description: string) {
     setEditingId(id);
     setDraft({ title, description, origTitle: title, origDescription: description });
@@ -401,21 +441,55 @@ export default function BrowseClient({
                 </div>
               </div>
 
-              {/* Area tabs */}
-              <div className="mb-4 flex items-center gap-2">
-                {areas.map((a) => (
-                  <button
-                    key={a}
-                    onClick={() => setActiveArea(a)}
-                    className={`rounded px-4 py-1.5 text-sm font-medium ${
-                      currentArea === a
-                        ? "bg-blue-100 text-brand-blue"
-                        : "bg-slate-100 text-slate-600 hover:bg-slate-200"
-                    }`}
-                  >
-                    {a}
-                  </button>
-                ))}
+              {/* Area tabs — sticky so they stay on screen while scrolling a long
+                  list, and act as drop targets for dragging minutes between tabs.
+                  Double-click a tab to rename it. */}
+              <div className="sticky top-0 z-20 -mx-6 mb-4 border-b border-slate-200 bg-slate-50/95 px-6 py-2 backdrop-blur">
+                <div className="flex flex-wrap items-center gap-2">
+                  {areas.map((a) =>
+                    renamingArea === a ? (
+                      <input
+                        key={a}
+                        autoFocus
+                        value={renameDraft}
+                        onChange={(e) => setRenameDraft(e.target.value)}
+                        onBlur={() => renameArea(a, renameDraft)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") renameArea(a, renameDraft);
+                          if (e.key === "Escape") setRenamingArea(null);
+                        }}
+                        className="w-40 rounded border border-brand-blue px-2 py-1 text-sm"
+                      />
+                    ) : (
+                      <button
+                        key={a}
+                        onClick={() => setActiveArea(a)}
+                        onDoubleClick={() => { setRenamingArea(a); setRenameDraft(a); }}
+                        onDragOver={(e) => { e.preventDefault(); setDragOverArea(a); }}
+                        onDragLeave={() => setDragOverArea((c) => (c === a ? null : c))}
+                        onDrop={(e) => {
+                          e.preventDefault();
+                          setDragOverArea(null);
+                          if (draggingId) moveMinuteToArea(draggingId, a);
+                          setDraggingId(null);
+                        }}
+                        title="Click to open · Double-click to rename · Drop a minute here to move it"
+                        className={`rounded px-4 py-1.5 text-sm font-medium transition ${
+                          dragOverArea === a
+                            ? "bg-emerald-100 text-emerald-700 ring-2 ring-emerald-400"
+                            : currentArea === a
+                              ? "bg-blue-100 text-brand-blue"
+                              : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                        }`}
+                      >
+                        {a}
+                      </button>
+                    )
+                  )}
+                  <span className="ml-1 text-[11px] text-slate-400">
+                    Drag a minute onto a tab to move it · double-click a tab to rename
+                  </span>
+                </div>
               </div>
 
               {/* Minutes */}
@@ -469,11 +543,17 @@ export default function BrowseClient({
                     return (
                       <div
                         key={mn.id}
+                        draggable={!isEditing}
+                        onDragStart={(e) => {
+                          setDraggingId(mn.id);
+                          e.dataTransfer.effectAllowed = "move";
+                        }}
+                        onDragEnd={() => { setDraggingId(null); setDragOverArea(null); }}
                         className={`rounded-lg border-l-4 p-4 ${
                           mn.isFollowUp
                             ? "border-l-amber-500 bg-amber-50"
                             : "border-l-brand-blue bg-blue-50"
-                        }`}
+                        } ${draggingId === mn.id ? "opacity-50 ring-2 ring-brand-blue" : ""}`}
                       >
                         <div className="flex items-start justify-between">
                           <div
@@ -608,6 +688,18 @@ export default function BrowseClient({
                               </table>
                             )}
                           </div>
+                          {/* Click-based alternative to dragging (touch / precise moves) */}
+                          <select
+                            value=""
+                            onChange={(e) => { if (e.target.value) moveMinuteToArea(mn.id, e.target.value); }}
+                            className="ml-4 shrink-0 rounded border border-slate-300 bg-white px-1 py-0.5 text-[10px] text-slate-500"
+                            title="Move this minute to another area"
+                          >
+                            <option value="">Move to…</option>
+                            {areas.filter((a) => a !== (mn.area || "General")).map((a) => (
+                              <option key={a} value={a}>{a}</option>
+                            ))}
+                          </select>
                           {/* Mark As Complete only on follow-up minutes; new/root
                               minutes (e.g. in a fresh meeting) use the status dropdown. */}
                           {mn.isFollowUp && (
@@ -659,6 +751,36 @@ export default function BrowseClient({
       {/* DevOps work-item detail popup */}
       {openDevopsId !== null && (
         <DevopsDetailModal id={openDevopsId} baseUrl={devopsBaseUrl} onClose={() => setOpenDevopsId(null)} />
+      )}
+
+      {/* Floating drop targets — visible while dragging no matter how far down the
+          list you are, so you never have to scroll back up to reach the tabs. */}
+      {draggingId && (
+        <div className="fixed inset-x-0 bottom-0 z-50 border-t border-slate-300 bg-white/95 px-6 py-3 shadow-[0_-4px_12px_rgba(0,0,0,0.08)] backdrop-blur">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-sm font-medium text-slate-600">Drop into area:</span>
+            {areas.map((a) => (
+              <button
+                key={a}
+                onDragOver={(e) => { e.preventDefault(); setDragOverArea(a); }}
+                onDragLeave={() => setDragOverArea((c) => (c === a ? null : c))}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  setDragOverArea(null);
+                  if (draggingId) moveMinuteToArea(draggingId, a);
+                  setDraggingId(null);
+                }}
+                className={`rounded border-2 border-dashed px-4 py-2 text-sm font-medium transition ${
+                  dragOverArea === a
+                    ? "border-emerald-500 bg-emerald-100 text-emerald-700"
+                    : "border-slate-300 bg-slate-50 text-slate-600"
+                }`}
+              >
+                {a}
+              </button>
+            ))}
+          </div>
+        </div>
       )}
 
       {saveError && (

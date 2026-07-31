@@ -186,7 +186,11 @@ function buildPrompt(openItems: OpenItem[], users: string[], transcript: string)
   lines.push("or note raised this meeting that is NOT one of the open items above. Whenever a new task is");
   lines.push("mentioned (e.g. \"let's set up X\", \"we need to do Y\", \"raise a bug for Z\", \"assign someone to W\"),");
   lines.push("it MUST appear here. Each entry: title, description, minuteType (Note | To-Do | Action | Devops),");
-  lines.push("status, assignedTo. Return an empty array only if genuinely nothing new was raised.");
+  lines.push("status, assignedTo, and `area`. Return an empty array only if genuinely nothing new was raised.");
+  lines.push("");
+  lines.push("AREAS (tabs): every new minute needs an `area` — the topic group it belongs to.");
+  lines.push("Reuse one of the existing areas listed below whenever it fits (copy it exactly);");
+  lines.push("only invent a new area for a genuinely new topic. Avoid defaulting everything to \"General\".");
   lines.push("");
   lines.push("DEVOPS (optional — on any update OR new item). If the meeting says to create a DevOps");
   lines.push("work item / user story / bug, or to link/track an existing work item, set on that entry:");
@@ -197,6 +201,10 @@ function buildPrompt(openItems: OpenItem[], users: string[], transcript: string)
   lines.push("");
   lines.push("Rules: assignedTo must exactly match an allowed user or be an empty string.");
   lines.push(`Allowed users: [${users.join(", ")}]`);
+  const existingAreas = [...new Set(openItems.map((i) => i.area).filter(Boolean))].sort();
+  if (existingAreas.length) {
+    lines.push(`Existing areas (reuse these): ${existingAreas.map((a) => `"${a}"`).join(", ")}`);
+  }
   lines.push("");
   lines.push("### Open items");
   if (openItems.length === 0) {

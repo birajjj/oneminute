@@ -185,6 +185,8 @@ interface Context {
   projects: Array<{
     id: string;
     name: string;
+    /** Area/tab names already used in this project — reuse these where they fit. */
+    areas: string[];
     recentMeetings: Array<{ id: string; title: string; date: string }>;
     openMinutes: Array<{
       id: string;
@@ -258,6 +260,15 @@ async function loadContext(orgId: string): Promise<Context> {
     });
   }
 
+  // Area/tab names already in use per project, so the AI reuses them instead of
+  // inventing near-duplicates ("Development" vs "Dev Work") across meetings.
+  const areasByProject: Record<string, Set<string>> = {};
+  for (const m of minutes) {
+    const a = (m.area || "").trim();
+    if (!a) continue;
+    (areasByProject[m.meeting.projectId] ??= new Set()).add(a);
+  }
+
   const users = await db.user.findMany({
     where: { orgId },
     select: { displayName: true }
@@ -267,6 +278,7 @@ async function loadContext(orgId: string): Promise<Context> {
     projects: projects.map((p) => ({
       id: p.id,
       name: p.name,
+      areas: [...(areasByProject[p.id] ?? [])].sort(),
       recentMeetings: p.meetings.map((m) => ({
         id: m.id,
         title: m.title,
@@ -298,6 +310,13 @@ function buildPrompt(transcript: string, ctx: Context): string {
   lines.push("When following up, use statusChange like 'In Progress -> Completed' if the transcript implies it.");
   lines.push("New topics, or anything in a brand-new project → type='new'.");
   lines.push("");
+  lines.push("### AREAS (tabs)");
+  lines.push("Every minute MUST have an `area` — the topic group it belongs to. Areas become tabs.");
+  lines.push("- Group the meeting's minutes into 2-6 meaningful areas by subject, e.g. \"Development\", \"Testing / QA\", \"Data Migration\", \"DevOps\", \"Infrastructure\", \"Reporting\".");
+  lines.push("- Name areas after the SUBJECT discussed, not the minute type. Never use a person's name.");
+  lines.push("- REUSE an existing area name listed under the selected project whenever it fits — copy it exactly. Only invent a new area for a genuinely new topic.");
+  lines.push("- Use \"General\" only for items that truly fit no topic. Do NOT put everything in General.");
+  lines.push("");
   lines.push("### RULES");
   lines.push("- project.action 'use_existing' (set existingProjectId) when it clearly matches a listed project, else 'create_new' with newProjectName.");
   lines.push("- meeting.action 'followup' (set followUpToMeetingId) when it continues a specific prior meeting, else 'new'.");
@@ -315,6 +334,9 @@ function buildPrompt(transcript: string, ctx: Context): string {
   } else {
     for (const p of ctx.projects) {
       lines.push(`- projectId=${p.id} name="${p.name}"`);
+      if (p.areas.length) {
+        lines.push(`   existing areas (reuse these): ${p.areas.map((a) => `"${a}"`).join(", ")}`);
+      }
       if (p.recentMeetings.length) {
         lines.push("   recent meetings:");
         for (const m of p.recentMeetings) {

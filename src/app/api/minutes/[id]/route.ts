@@ -21,7 +21,10 @@ const BodySchema = z.object({
   status: z.string().optional(),
   assignedTo: z.string().optional(),
   description: z.string().optional(),
-  title: z.string().optional()
+  title: z.string().optional(),
+  // Re-file into another area/tab. Applies to the whole thread so an item's
+  // updates don't scatter across tabs.
+  area: z.string().optional()
 });
 
 export async function PATCH(
@@ -40,9 +43,30 @@ export async function PATCH(
     // Only edit minutes in the caller's org.
     const minute = await db.minute.findFirst({
       where: { id, orgId: user.orgId },
-      select: { id: true }
+      select: { id: true, parentMinuteId: true, meetingId: true }
     });
     if (!minute) return NextResponse.json({ error: "not found" }, { status: 404 });
+
+    // Moving to another area moves the WHOLE thread (root + every follow-up),
+    // so an item and its updates stay together under one tab.
+    if (parsed.data.area !== undefined) {
+      const area = parsed.data.area.trim() || "General";
+      const rootId = minute.parentMinuteId ?? minute.id;
+      await db.minute.updateMany({
+        where: { orgId: user.orgId, OR: [{ id: rootId }, { parentMinuteId: rootId }] },
+        data: { area }
+      });
+      // Make sure the destination tab exists on this minute's meeting.
+      const exists = await db.meetingArea.findFirst({
+        where: { orgId: user.orgId, meetingId: minute.meetingId, areaName: area },
+        select: { id: true }
+      });
+      if (!exists) {
+        await db.meetingArea.create({
+          data: { orgId: user.orgId, meetingId: minute.meetingId, areaName: area }
+        });
+      }
+    }
 
     const data: {
       status?: MinuteStatus;
@@ -79,11 +103,12 @@ export async function PATCH(
       }
     }
 
-    if (Object.keys(data).length === 0) {
+    // An area-only move is already applied above; other fields update this minute.
+    if (Object.keys(data).length > 0) {
+      await db.minute.update({ where: { id }, data });
+    } else if (parsed.data.area === undefined) {
       return NextResponse.json({ error: "nothing to update" }, { status: 400 });
     }
-
-    await db.minute.update({ where: { id }, data });
     return NextResponse.json({ ok: true });
   } catch (err) {
     const msg = err instanceof Error ? err.message : "unknown error";
