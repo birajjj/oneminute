@@ -254,34 +254,6 @@ export default function FollowUpClient({
     setSaving(true);
     setError("");
     try {
-      const meaningfulUpdates = data.openItems
-        .map((it) => {
-          const u = updates[it.id];
-          const originalDueDate = it.dueDate ? it.dueDate.slice(0, 10) : "";
-          const detailsChanged =
-            u.type !== it.type ||
-            u.assignedTo !== (it.assignedTo ?? "") ||
-            u.dueDate !== originalDueDate;
-
-          return {
-            rootMinuteId: it.id,
-            ...u,
-            detailsChanged
-          };
-        })
-        .filter((u) => {
-          const original = data.openItems.find((it) => it.id === u.rootMinuteId);
-          if (!original) return false;
-          if (u.noUpdate) return true;
-          return (
-            u.detailsChanged ||
-            u.status !== original.status ||
-            !!u.note.trim() ||
-            u.devopsAction === "create" ||
-            u.devopsAction === "link"
-          );
-        });
-
       const res = await fetch("/api/followup/commit", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -289,7 +261,7 @@ export default function FollowUpClient({
           parentMeetingId: data.parent.id,
           meetingTitle: title,
           meetingDate: date,
-          updates: meaningfulUpdates,
+          updates: data.openItems.map((it) => ({ rootMinuteId: it.id, ...updates[it.id] })),
           newMinutes: newMinutes.filter((m) => m.title.trim())
         })
       });
@@ -549,13 +521,14 @@ export default function FollowUpClient({
                             <div className="mt-1 grid grid-cols-2 gap-1 text-xs sm:grid-cols-4">
                               <select
                                 value={u.type}
+                                disabled
                                 onChange={(e) =>
                                   setUpdate(it.id, {
                                     type: e.target.value,
                                     ...(e.target.value !== "Devops" ? { devopsAction: "none" } : {})
                                   })
                                 }
-                                className="rounded border border-slate-300 p-1"
+                                className="rounded border border-slate-300 bg-slate-100 p-1 text-slate-500"
                               >
                                 {TYPE_OPTIONS.map((t) => (
                                   <option key={t} value={t}>{t}</option>
@@ -750,20 +723,11 @@ export default function FollowUpClient({
               <div className="grid gap-3 text-sm sm:grid-cols-2">
                 <label>
                   <span className="text-xs font-semibold uppercase text-slate-500">Type</span>
-                  <select
+                  <input
                     value={editDraft.type}
-                    onChange={(e) =>
-                      setEditDraftField({
-                        type: e.target.value,
-                        ...(e.target.value !== "Devops" ? { devopsAction: "none" } : {})
-                      })
-                    }
-                    className="mt-1 w-full rounded border border-slate-300 p-2 text-sm"
-                  >
-                    {TYPE_OPTIONS.map((t) => (
-                      <option key={t} value={t}>{t}</option>
-                    ))}
-                  </select>
+                    readOnly
+                    className="mt-1 w-full rounded border border-slate-300 bg-slate-100 p-2 text-sm text-slate-500"
+                  />
                 </label>
                 <label className="flex items-end gap-2 pb-2 text-sm text-slate-600">
                   <input
