@@ -53,6 +53,32 @@ function fmtDate(iso: string): string {
   );
 }
 
+function todayDateInput(): string {
+  const d = new Date();
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function buildFollowUpTitle(parentTitle: string, date: string): string {
+  const base = stripFollowUpSuffixes(parentTitle) || parentTitle.trim() || "Follow-up Meeting";
+  return `${base} - Follow-up ${date}`;
+}
+
+function stripFollowUpSuffixes(title: string): string {
+  let current = title.trim();
+  let previous = "";
+  const suffix = /\s+(?:-|\u2013|\u2014)\s*Follow-up(?:\s+\d{4}-\d{2}-\d{2})?(?:\s+#\d+)?\s*$/i;
+
+  while (current && current !== previous) {
+    previous = current;
+    current = current.replace(suffix, "").trim();
+  }
+
+  return current;
+}
+
 export default function FollowUpClient({
   data,
   members,
@@ -64,8 +90,10 @@ export default function FollowUpClient({
   devopsBaseUrl: string;
   devopsEnabled: boolean;
 }) {
-  const [title, setTitle] = useState(`${data.parent.title} — Follow-up`);
-  const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
+  const initialDate = todayDateInput();
+  const parentDisplayTitle = stripFollowUpSuffixes(data.parent.title) || data.parent.title;
+  const [title, setTitle] = useState(() => buildFollowUpTitle(data.parent.title, initialDate));
+  const [date, setDate] = useState(initialDate);
 
   const [updates, setUpdates] = useState<Record<string, ItemUpdate>>(() => {
     const init: Record<string, ItemUpdate> = {};
@@ -270,7 +298,7 @@ export default function FollowUpClient({
         </span>
         <h1 className="text-2xl font-bold">Follow-up Meeting</h1>
         <p className="text-sm text-slate-600">
-          Following up on <span className="font-medium">{data.parent.title}</span> · {data.parent.projectName} ·{" "}
+          Following up on <span className="font-medium">{parentDisplayTitle}</span> · {data.parent.projectName} ·{" "}
           {fmtDate(data.parent.date)}
         </p>
       </div>
