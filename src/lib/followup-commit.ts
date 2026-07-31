@@ -32,6 +32,7 @@ export interface FollowUpUpdateInput {
   note: string;
   assignedTo: string;
   dueDate: string;
+  detailsChanged?: boolean;
   // DevOps (only when the user armed it)
   devopsAction: string; // "none" | "create" | "link"
   devopsProject: string;
@@ -130,6 +131,8 @@ export async function commitFollowUp(
         if (u.noUpdate) {
           const area = root.area || "General";
           areaSet.add(area);
+          const noUpdateType = TYPE_MAP[u.type] ?? root.type;
+          const noUpdateStatus = STATUS_MAP[u.status] ?? root.status;
           await tx.minute.create({
             data: {
               orgId,
@@ -137,10 +140,12 @@ export async function commitFollowUp(
               area,
               title: root.title,
               description: "No action this meeting.",
-              type: root.type, // an update keeps the item's type (a To-Do stays a To-Do)
-              status: root.status,
+              type: noUpdateType,
+              status: noUpdateStatus,
               parentMinuteId: root.id,
-              isPersistent: false
+              isPersistent: false,
+              assignedToUserId: resolveUser(u.assignedTo),
+              dueDate: parseDate(u.dueDate)
             }
           });
           updated++;
@@ -151,8 +156,8 @@ export async function commitFollowUp(
         const statusChanged = !!mappedStatus && mappedStatus !== root.status;
         const hasNote = !!u.note && !!u.note.trim();
         const wantsDevops = u.devopsAction === "create" || u.devopsAction === "link";
-        // Nothing meaningful to record — treat as an implicit "no update".
-        if (!hasNote && !statusChanged && !wantsDevops) continue;
+        // Nothing meaningful to record.
+        if (!hasNote && !statusChanged && !wantsDevops && !u.detailsChanged) continue;
 
         const newStatus = mappedStatus ?? root.status;
         const area = root.area || "General";
@@ -201,18 +206,8 @@ export async function commitFollowUp(
           }
         });
 
-        // Point-in-time: the update is recorded as its own entry; we do NOT
-        // overwrite the item's status (current status is derived from the latest
-        // entry). An update may still re-assign / re-date the item itself.
-        if (u.assignedTo || u.dueDate) {
-          await tx.minute.update({
-            where: { id: root.id },
-            data: {
-              ...(u.assignedTo ? { assignedToUserId: resolveUser(u.assignedTo) } : {}),
-              ...(u.dueDate ? { dueDate: parseDate(u.dueDate) } : {})
-            }
-          });
-        }
+        // Point-in-time: current status/type/assignment/due date are derived
+        // from the latest thread entry, so the root minute is left unchanged.
         updated++;
       }
 

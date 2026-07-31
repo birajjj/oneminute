@@ -208,6 +208,34 @@ export default function FollowUpClient({
     setSaving(true);
     setError("");
     try {
+      const meaningfulUpdates = data.openItems
+        .map((it) => {
+          const u = updates[it.id];
+          const originalDueDate = it.dueDate ? it.dueDate.slice(0, 10) : "";
+          const detailsChanged =
+            u.type !== it.type ||
+            u.assignedTo !== (it.assignedTo ?? "") ||
+            u.dueDate !== originalDueDate;
+
+          return {
+            rootMinuteId: it.id,
+            ...u,
+            detailsChanged
+          };
+        })
+        .filter((u) => {
+          const original = data.openItems.find((it) => it.id === u.rootMinuteId);
+          if (!original) return false;
+          if (u.noUpdate) return true;
+          return (
+            u.detailsChanged ||
+            u.status !== original.status ||
+            !!u.note.trim() ||
+            u.devopsAction === "create" ||
+            u.devopsAction === "link"
+          );
+        });
+
       const res = await fetch("/api/followup/commit", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -215,7 +243,7 @@ export default function FollowUpClient({
           parentMeetingId: data.parent.id,
           meetingTitle: title,
           meetingDate: date,
-          updates: data.openItems.map((it) => ({ rootMinuteId: it.id, ...updates[it.id] })),
+          updates: meaningfulUpdates,
           newMinutes: newMinutes.filter((m) => m.title.trim())
         })
       });
@@ -461,7 +489,13 @@ export default function FollowUpClient({
                               placeholder="What happened with this item?"
                               className="mt-2 w-full rounded border border-slate-300 p-2 text-sm"
                             />
-                            <div className="mt-1 grid grid-cols-2 gap-1 text-xs sm:grid-cols-4">
+                            <div className="mt-2 grid grid-cols-2 gap-2 text-xs font-medium text-slate-500 sm:grid-cols-4">
+                              <span>Follow-up type</span>
+                              <span>Status after meeting</span>
+                              <span>Assigned to</span>
+                              <span>Due date</span>
+                            </div>
+                            <div className="mt-1 grid grid-cols-2 gap-2 text-xs sm:grid-cols-4">
                               <select
                                 value={u.type}
                                 onChange={(e) =>
@@ -470,7 +504,7 @@ export default function FollowUpClient({
                                     ...(e.target.value !== "Devops" ? { devopsAction: "none" } : {})
                                   })
                                 }
-                                className="rounded border border-slate-300 p-1"
+                                className="min-w-0 rounded border border-slate-300 p-1"
                               >
                                 {TYPE_OPTIONS.map((t) => (
                                   <option key={t} value={t}>{t}</option>
@@ -479,7 +513,7 @@ export default function FollowUpClient({
                               <select
                                 value={u.status}
                                 onChange={(e) => setUpdate(it.id, { status: e.target.value })}
-                                className="rounded border border-slate-300 p-1"
+                                className="min-w-0 rounded border border-slate-300 p-1"
                               >
                                 {STATUS_OPTIONS.map((s) => (
                                   <option key={s} value={s}>{s}</option>
@@ -488,7 +522,7 @@ export default function FollowUpClient({
                               <select
                                 value={u.assignedTo}
                                 onChange={(e) => setUpdate(it.id, { assignedTo: e.target.value })}
-                                className="rounded border border-slate-300 p-1"
+                                className="min-w-0 rounded border border-slate-300 p-1"
                               >
                                 <option value="">— Unassigned —</option>
                                 {assigneeOptions(u.assignedTo).map((n) => (
@@ -499,7 +533,7 @@ export default function FollowUpClient({
                                 type="date"
                                 value={u.dueDate}
                                 onChange={(e) => setUpdate(it.id, { dueDate: e.target.value })}
-                                className="rounded border border-slate-300 p-1"
+                                className="min-w-0 rounded border border-slate-300 p-1"
                               />
                             </div>
                             {u.type === "Devops" && (

@@ -95,7 +95,7 @@ export async function loadFollowUpData(
     });
   }
 
-  // Derive each item's CURRENT status from its latest entry (root + follow-ups).
+  // Derive each item's CURRENT details from its latest entry (root + follow-ups).
   // Since we no longer overwrite a root's status (point-in-time model), an item
   // is "open" based on its newest entry, not the root's original status.
   const entriesByRoot: Record<string, typeof minutes> = {};
@@ -103,7 +103,7 @@ export async function loadFollowUpData(
     const rid = m.parentMinuteId ?? m.id;
     (entriesByRoot[rid] ??= []).push(m);
   }
-  const currentStatusOf = (rootId: string): string => {
+  const currentEntryOf = (rootId: string): (typeof minutes)[number] | null => {
     const entries = entriesByRoot[rootId] ?? [];
     let latest = entries[0];
     for (const e of entries) {
@@ -111,7 +111,10 @@ export async function loadFollowUpData(
       const lt = latest.meeting.meetingDate.getTime();
       if (et > lt || (et === lt && e.createdAt > latest.createdAt)) latest = e;
     }
-    return latest?.status ?? "New";
+    return latest ?? null;
+  };
+  const currentStatusOf = (rootId: string): string => {
+    return currentEntryOf(rootId)?.status ?? "New";
   };
 
   const openItems: OpenItem[] = minutes
@@ -121,16 +124,17 @@ export async function loadFollowUpData(
       return cur !== "Completed" && cur !== "Cancelled";
     })
     .map((m) => {
-      const cur = currentStatusOf(m.id);
+      const current = currentEntryOf(m.id) ?? m;
+      const cur = current.status;
       return {
         id: m.id,
         area: m.area || "General",
         title: m.title,
         description: m.description,
-        type: TYPE_LABEL[m.type] ?? m.type,
+        type: TYPE_LABEL[current.type] ?? current.type,
         status: STATUS_LABEL[cur] ?? cur, // show CURRENT status, not the root's original
-        assignedTo: m.assignedTo?.displayName ?? null,
-        dueDate: m.dueDate ? m.dueDate.toISOString() : null,
+        assignedTo: current.assignedTo?.displayName ?? null,
+        dueDate: current.dueDate ? current.dueDate.toISOString() : null,
         devopsItemId: m.devopsItemId ?? null,
         history: historyByRoot[m.id] ?? []
       };
