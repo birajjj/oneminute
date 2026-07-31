@@ -109,9 +109,9 @@ export default function FollowUpClient({
         note: "",
         assignedTo: it.assignedTo ?? "",
         dueDate: it.dueDate ? it.dueDate.slice(0, 10) : "",
-        // Starts empty every meeting: these flag what THIS meeting decided, they
-        // aren't the item's running flags.
-        tags: [],
+        // Carried forward from the item's newest entry (same as status/assignee),
+        // so you can see what's flagged and adjust it for this meeting.
+        tags: it.tags ?? [],
         devopsAction: "none",
         devopsProject: "",
         devopsWorkItemType: "User Story",
@@ -205,7 +205,8 @@ export default function FollowUpClient({
           noUpdate: false,
           note: u.note || next[u.rootMinuteId].note,
           status: STATUS_OPTIONS.includes(u.status) ? u.status : next[u.rootMinuteId].status,
-          tags: normalizeTags(u.tags),
+          // Union: an AI suggestion adds a flag, it never drops one carried forward.
+          tags: normalizeTags([...next[u.rootMinuteId].tags, ...(u.tags ?? [])]),
           // A DevOps suggestion arms the controls (type -> Devops) for review.
           ...(wantsDevops
             ? {

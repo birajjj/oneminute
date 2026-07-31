@@ -131,9 +131,16 @@ export async function commitFollowUp(
           continue;
         }
 
-        // Point-in-time: flags record what THIS meeting decided, so they go on
-        // this meeting's entry — never backdated onto the root item.
+        // Point-in-time: flags go on THIS meeting's entry, never backdated onto
+        // the root. They carry forward from the item's newest entry, so a change
+        // only counts as an update when it differs from what was carried in.
         const entryTags = normalizeTags(u.tags);
+        const latest = await tx.minute.findFirst({
+          where: { orgId, OR: [{ id: root.id }, { parentMinuteId: root.id }] },
+          orderBy: [{ meeting: { meetingDate: "desc" } }, { createdAt: "desc" }],
+          select: { tags: true }
+        });
+        const tagsChanged = entryTags.join(",") !== normalizeTags(latest?.tags ?? []).join(",");
 
         // "No action this meeting" — record a marker note; item stays open/unchanged.
         if (u.noUpdate) {
@@ -162,8 +169,8 @@ export async function commitFollowUp(
         const hasNote = !!u.note && !!u.note.trim();
         const wantsDevops = u.devopsAction === "create" || u.devopsAction === "link";
         // Nothing meaningful to record — treat as an implicit "no update".
-        // Flags count: flagging an item as a Decision is itself worth recording.
-        if (!hasNote && !statusChanged && !wantsDevops && entryTags.length === 0) continue;
+        // A flag change counts: flagging something a Decision is worth recording.
+        if (!hasNote && !statusChanged && !wantsDevops && !tagsChanged) continue;
 
         const newStatus = mappedStatus ?? root.status;
         const area = root.area || "General";

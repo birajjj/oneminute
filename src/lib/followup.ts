@@ -44,6 +44,7 @@ export interface OpenItem {
   assignedTo: string | null;
   dueDate: string | null;
   devopsItemId: number | null;
+  tags: string[]; // flags currently on the item (from its newest entry)
   history: OpenItemHistory[];
 }
 
@@ -103,7 +104,7 @@ export async function loadFollowUpData(
     const rid = m.parentMinuteId ?? m.id;
     (entriesByRoot[rid] ??= []).push(m);
   }
-  const currentStatusOf = (rootId: string): string => {
+  const latestEntryOf = (rootId: string) => {
     const entries = entriesByRoot[rootId] ?? [];
     let latest = entries[0];
     for (const e of entries) {
@@ -111,8 +112,9 @@ export async function loadFollowUpData(
       const lt = latest.meeting.meetingDate.getTime();
       if (et > lt || (et === lt && e.createdAt > latest.createdAt)) latest = e;
     }
-    return latest?.status ?? "New";
+    return latest;
   };
+  const currentStatusOf = (rootId: string): string => latestEntryOf(rootId)?.status ?? "New";
 
   const openItems: OpenItem[] = minutes
     .filter((m) => {
@@ -132,6 +134,9 @@ export async function loadFollowUpData(
         assignedTo: m.assignedTo?.displayName ?? null,
         dueDate: m.dueDate ? m.dueDate.toISOString() : null,
         devopsItemId: m.devopsItemId ?? null,
+        // Flags carry forward from the item's newest entry (same rule as status),
+        // so a follow-up opens showing what's currently flagged.
+        tags: latestEntryOf(m.id)?.tags ?? [],
         history: historyByRoot[m.id] ?? []
       };
     });
