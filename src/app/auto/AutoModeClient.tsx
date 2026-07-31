@@ -88,8 +88,8 @@ export default function AutoModeClient({
     { minutesSaved: number; projectCreated: boolean; meetingId?: string; warnings?: string[] } | null
   >(null);
   const [error, setError] = useState("");
-  // The AI panel starts collapsed so the manual form is the primary path.
-  const [aiOpen, setAiOpen] = useState(false);
+  // The AI panel starts open so recording/pasting is immediately available.
+  const [aiOpen, setAiOpen] = useState(true);
 
   // Real DevOps projects for the "Create work item" dropdown. Loaded lazily so a
   // slow or unreachable TFS never blocks the page; empty => free-text fallback.
