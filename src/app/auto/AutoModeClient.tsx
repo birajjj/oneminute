@@ -322,7 +322,11 @@ function PlanReview({
   onCommit: () => void;
 }) {
   const [committing, setCommitting] = useState(false);
-  const approvedCount = plan.minutes.filter((m) => m.approved).length;
+  // Count only minutes that will actually save — must match the commit filter
+  // (approved AND a non-empty title). Counting bare `approved` let title-less
+  // minutes enable the button, then get dropped at save → an empty meeting.
+  const approvedCount = plan.minutes.filter((m) => m.approved && m.title.trim()).length;
+  const titlelessCount = plan.minutes.filter((m) => m.approved && !m.title.trim()).length;
 
   function updateMinute(i: number, patch: Partial<AutoPlan["minutes"][number]>) {
     const minutes = plan.minutes.map((m, idx) => (idx === i ? { ...m, ...patch } : m));
@@ -515,6 +519,13 @@ function PlanReview({
         <p className="rounded border border-dashed border-slate-300 p-4 text-sm text-slate-500">
           No minutes yet — click <b>+ Add minute</b> to write them yourself, or use the AI panel above to
           fill this form from a recording or transcript.
+        </p>
+      )}
+
+      {titlelessCount > 0 && (
+        <p className="rounded border border-amber-300 bg-amber-50 p-3 text-sm text-amber-800">
+          ⚠️ {titlelessCount} minute(s) came back without a title and won&apos;t save. Add titles below,
+          or click <b>Analyze with AI</b> again — the model occasionally returns an incomplete result.
         </p>
       )}
 

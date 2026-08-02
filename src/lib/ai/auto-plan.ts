@@ -179,6 +179,14 @@ export async function buildAutoPlan(
     return m;
   });
 
+  // Visibility: an occasional AI run returns a good meeting/summary but an empty
+  // or title-less minutes array. Log the shape so a ghost meeting can be traced.
+  const titled = data.minutes.filter((m) => m.title.trim()).length;
+  console.log(
+    `[auto-plan] minutes=${data.minutes.length} titled=${titled} ` +
+      `titles=${JSON.stringify(data.minutes.map((m) => m.title).slice(0, 20))} rawLen=${raw?.length ?? 0}`
+  );
+
   data.raw = raw;
   return data;
 }
