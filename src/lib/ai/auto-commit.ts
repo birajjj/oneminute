@@ -213,24 +213,23 @@ export async function commitAutoPlan(
 function resolveMeetingDate(s: string | null | undefined): Date {
   const now = new Date();
   if (!s || !s.trim()) return now;
+  const str = s.trim();
 
-  const m = s.trim().match(/^(\d{4})-(\d{2})-(\d{2})/);
-  if (m) {
-    const year = Number(m[1]);
-    const month = Number(m[2]) - 1;
-    const day = Number(m[3]);
-    // Local-time date with current time-of-day.
-    return new Date(
-      year,
-      month,
-      day,
-      now.getHours(),
-      now.getMinutes(),
-      now.getSeconds()
-    );
+  // Full ISO instant (what the client now sends, already at the user's local
+  // wall-clock time) — store it verbatim.
+  if (str.includes("T")) {
+    const parsed = new Date(str);
+    if (!isNaN(parsed.getTime())) return parsed;
   }
 
-  const parsed = new Date(s);
+  // Bare YYYY-MM-DD (e.g. an AI default). Anchor at noon so the calendar day is
+  // preserved when a UTC server stores it and it's rendered in another timezone.
+  const m = str.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (m) {
+    return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]), 12, 0, 0);
+  }
+
+  const parsed = new Date(str);
   return isNaN(parsed.getTime()) ? now : parsed;
 }
 

@@ -7,7 +7,10 @@ export const runtime = "nodejs";
 export const maxDuration = 60;
 
 const BodySchema = z.object({
-  transcript: z.string().min(1)
+  transcript: z.string().min(1),
+  // The caller's local date (YYYY-MM-DD) so meetings default to the user's day,
+  // not the server's UTC day.
+  today: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional()
 });
 
 export async function POST(req: NextRequest) {
@@ -19,7 +22,7 @@ export async function POST(req: NextRequest) {
     }
 
     const user = await requireUser();
-    const plan = await buildAutoPlan(user.orgId, parsed.data.transcript);
+    const plan = await buildAutoPlan(user.orgId, parsed.data.transcript, parsed.data.today);
 
     return NextResponse.json(plan);
   } catch (err) {

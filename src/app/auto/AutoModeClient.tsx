@@ -20,6 +20,28 @@ export interface Member {
 const TYPE_OPTIONS = ["Note", "To-Do", "Action", "Devops"];
 const STATUS_OPTIONS = ["New", "Initiated", "In Progress", "Completed", "Cancelled"];
 
+// Today's date in the USER's timezone (not UTC). `toISOString()` would give the
+// UTC date, which is a day behind for +hours zones in the morning.
+function todayLocal(): string {
+  const d = new Date();
+  const p = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+}
+
+// A YYYY-MM-DD date the user picked → a full ISO instant at the current local
+// time-of-day, so the server stores the exact moment and it renders on the right
+// calendar day back in the user's timezone.
+function localDateToISO(dateStr: string): string {
+  const m = dateStr.trim().match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  const now = new Date();
+  if (!m) return now.toISOString();
+  const d = new Date(
+    Number(m[1]), Number(m[2]) - 1, Number(m[3]),
+    now.getHours(), now.getMinutes(), now.getSeconds()
+  );
+  return d.toISOString();
+}
+
 function emptyMinute(area = "General"): AutoPlan["minutes"][number] {
   return {
     type: "new",
@@ -60,7 +82,7 @@ function emptyPlan(): AutoPlan {
       followUpToMeetingTitle: null,
       title: "",
       description: "",
-      meetingDate: new Date().toISOString().slice(0, 10),
+      meetingDate: todayLocal(),
       attendees: "",
       reason: "",
       confidence: ""
@@ -133,7 +155,9 @@ export default function AutoModeClient({
       const res = await fetch("/api/auto/analyze", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ transcript })
+        // Send the user's local date so the AI defaults meetings to today in
+        // THEIR timezone, not the server's UTC day.
+        body: JSON.stringify({ transcript, today: todayLocal() })
       });
       if (!res.ok) throw new Error(await res.text());
       // The AI FILLS the same form you could have typed yourself.
@@ -148,10 +172,15 @@ export default function AutoModeClient({
   async function commit() {
     setError("");
     try {
+      // Convert the picked date to a full local instant so the server stores the
+      // exact moment and Browse renders it on the right day in the user's zone.
+      const payload = {
+        plan: { ...plan, meeting: { ...plan.meeting, meetingDate: localDateToISO(plan.meeting.meetingDate) } }
+      };
       const res = await fetch("/api/auto/commit", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ plan })
+        body: JSON.stringify(payload)
       });
       if (!res.ok) throw new Error(await res.text());
       const r = await res.json();

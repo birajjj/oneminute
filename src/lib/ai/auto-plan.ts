@@ -116,10 +116,11 @@ const responseSchema = {
 
 export async function buildAutoPlan(
   orgId: string,
-  transcript: string
+  transcript: string,
+  today?: string
 ): Promise<AutoPlan> {
   const context = await loadContext(orgId);
-  const prompt = buildPrompt(transcript, context);
+  const prompt = buildPrompt(transcript, context, today);
 
   const { data, raw } = await generateJson<AutoPlan>({
     prompt,
@@ -302,8 +303,10 @@ async function loadContext(orgId: string): Promise<Context> {
   };
 }
 
-function buildPrompt(transcript: string, ctx: Context): string {
-  const today = new Date().toISOString().slice(0, 10);
+function buildPrompt(transcript: string, ctx: Context, todayOverride?: string): string {
+  // Prefer the caller's local date; the server clock is UTC and would be a day
+  // behind for ahead-of-UTC timezones in the morning.
+  const today = todayOverride || new Date().toISOString().slice(0, 10);
   const lines: string[] = [];
 
   lines.push("You are the auto-planner for a meeting minutes system.");
