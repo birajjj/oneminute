@@ -178,10 +178,23 @@ export default function FollowUpClient({
     return () => { cancelled = true; };
   }, [devopsEnabled]);
 
-  const byArea = useMemo(() => {
-    const map: Record<string, OpenItem[]> = {};
-    for (const it of data.openItems) (map[it.area] ??= []).push(it);
-    return map;
+  // Items raised under another open item are nested beneath that parent (so they
+  // travel with the original minute) instead of appearing as their own row. An
+  // orphan (its parent already closed) falls back to being top-level.
+  const { byArea, childrenByParent } = useMemo(() => {
+    const openIds = new Set(data.openItems.map((i) => i.id));
+    const children: Record<string, OpenItem[]> = {};
+    const topLevel: OpenItem[] = [];
+    for (const it of data.openItems) {
+      if (it.raisedFromRootId && openIds.has(it.raisedFromRootId)) {
+        (children[it.raisedFromRootId] ??= []).push(it);
+      } else {
+        topLevel.push(it);
+      }
+    }
+    const area: Record<string, OpenItem[]> = {};
+    for (const it of topLevel) (area[it.area] ??= []).push(it);
+    return { byArea: area, childrenByParent: children };
   }, [data.openItems]);
 
   function setUpdate(id: string, patch: Partial<ItemUpdate>) {
@@ -640,21 +653,11 @@ export default function FollowUpClient({
                               placeholder="What happened with this item?"
                               className="mt-2 w-full rounded border border-slate-300 p-2 text-sm"
                             />
-                            <div className="mt-1 grid grid-cols-2 gap-1 text-xs sm:grid-cols-4">
-                              <select
-                                value={u.type}
-                                onChange={(e) =>
-                                  setUpdate(it.id, {
-                                    type: e.target.value,
-                                    ...(e.target.value !== "Devops" ? { devopsAction: "none" } : {})
-                                  })
-                                }
-                                className="rounded border border-slate-300 p-1"
-                              >
-                                {TYPE_OPTIONS.map((t) => (
-                                  <option key={t} value={t}>{t}</option>
-                                ))}
-                              </select>
+                            {/* The item's own update is just a note + its status.
+                                Type/owner/due/DevOps belong on the nested items
+                                below, where they actually apply. */}
+                            <div className="mt-1 flex items-center gap-2 text-xs text-slate-500">
+                              <span>Status</span>
                               <select
                                 value={u.status}
                                 onChange={(e) => setUpdate(it.id, { status: e.target.value })}
@@ -664,39 +667,80 @@ export default function FollowUpClient({
                                   <option key={s} value={s}>{s}</option>
                                 ))}
                               </select>
-                              <select
-                                value={u.assignedTo}
-                                onChange={(e) => setUpdate(it.id, { assignedTo: e.target.value })}
-                                className="rounded border border-slate-300 p-1"
-                              >
-                                <option value="">— Unassigned —</option>
-                                {assigneeOptions(u.assignedTo).map((n) => (
-                                  <option key={n} value={n}>{n}</option>
-                                ))}
-                              </select>
-                              <input
-                                type="date"
-                                value={u.dueDate}
-                                onChange={(e) => setUpdate(it.id, { dueDate: e.target.value })}
-                                className="rounded border border-slate-300 p-1"
-                              />
                             </div>
-                            {u.type === "Devops" && (
-                              <DevopsControls
-                                action={u.devopsAction}
-                                project={u.devopsProject}
-                                workItemType={u.devopsWorkItemType}
-                                workItemId={u.devopsWorkItemId}
-                                devopsEnabled={devopsEnabled}
-                                devopsProjects={devopsProjects}
-                                onChange={(patch) => setUpdate(it.id, patch)}
-                              />
-                            )}
                           </>
                         )}
 
-                        {/* Extra minutes raised under this item — each becomes its
-                            own trackable minute, grouped under this item. */}
+                        {/* Items raised under this in EARLIER meetings — nested so
+                            they stay with the parent, each still updatable on its
+                            own (marking one complete closes just that item). */}
+                        {(childrenByParent[it.id] ?? []).length > 0 && (
+                          <div className="mt-3 space-y-2 border-t border-amber-200 pt-2">
+                            <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+                              Items under this
+                            </div>
+                            {(childrenByParent[it.id] ?? []).map((child) => {
+                              const cu = updates[child.id];
+                              if (!cu) return null;
+                              return (
+                                <div key={child.id} className="rounded border-l-4 border-l-brand-blue bg-blue-50 p-2">
+                                  <div className="flex flex-wrap items-center gap-2">
+                                    <span className="text-sm font-medium">{child.title}</span>
+                                    <span className="text-[11px] italic text-slate-500">{child.type}</span>
+                                    <span className="rounded bg-white px-1.5 py-0.5 text-[10px] text-slate-500">{child.status}</span>
+                                  </div>
+                                  {child.description && (
+                                    <div className="mt-0.5 text-xs text-slate-500">{child.description}</div>
+                                  )}
+                                  <div className="mt-1 flex flex-wrap items-center gap-2 text-xs">
+                                    <label className="flex items-center gap-1 text-slate-600">
+                                      <input
+                                        type="checkbox"
+                                        checked={cu.noUpdate}
+                                        onChange={(e) => setUpdate(child.id, { noUpdate: e.target.checked })}
+                                      />
+                                      No action
+                                    </label>
+                                    {!cu.noUpdate && (
+                                      <button
+                                        type="button"
+                                        onClick={() => setUpdate(child.id, { status: "Completed", note: cu.note || "Marked complete." })}
+                                        className="rounded border border-emerald-300 px-2 py-0.5 font-medium text-emerald-700 hover:bg-emerald-50"
+                                      >
+                                        ✓ Mark complete
+                                      </button>
+                                    )}
+                                  </div>
+                                  {!cu.noUpdate && (
+                                    <>
+                                      <textarea
+                                        value={cu.note}
+                                        onChange={(e) => setUpdate(child.id, { note: e.target.value })}
+                                        rows={1}
+                                        placeholder="What happened with this item?"
+                                        className="mt-1 w-full rounded border border-slate-300 p-1 text-sm"
+                                      />
+                                      <div className="mt-1 flex items-center gap-2 text-xs text-slate-500">
+                                        <span>Status</span>
+                                        <select
+                                          value={cu.status}
+                                          onChange={(e) => setUpdate(child.id, { status: e.target.value })}
+                                          className="rounded border border-slate-300 p-1"
+                                        >
+                                          {STATUS_OPTIONS.map((s) => (
+                                            <option key={s} value={s}>{s}</option>
+                                          ))}
+                                        </select>
+                                      </div>
+                                    </>
+                                  )}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+
+                        {/* New minutes raised under this item THIS meeting. */}
                         {u.subEntries.length > 0 && (
                           <div className="mt-3 space-y-2 border-t border-amber-200 pt-2">
                             <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">

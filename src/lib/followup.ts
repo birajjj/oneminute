@@ -45,6 +45,9 @@ export interface OpenItem {
   dueDate: string | null;
   devopsItemId: number | null;
   tags: string[]; // flags currently on the item (from its newest entry)
+  // If set, this open item was raised under another item in an earlier follow-up.
+  // The review nests it under that parent so it travels with the original minute.
+  raisedFromRootId: string | null;
   history: OpenItemHistory[];
 }
 
@@ -137,6 +140,7 @@ export async function loadFollowUpData(
         // Flags carry forward from the item's newest entry (same rule as status),
         // so a follow-up opens showing what's currently flagged.
         tags: latestEntryOf(m.id)?.tags ?? [],
+        raisedFromRootId: m.raisedFromRootId ?? null,
         history: historyByRoot[m.id] ?? []
       };
     });
