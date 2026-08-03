@@ -692,55 +692,62 @@ export default function FollowUpClient({
                               if (!cu) return null;
                               return (
                                 <div key={child.id} className="rounded border-l-4 border-l-brand-blue bg-blue-50 p-2">
+                                  {/* Editable header, same as the parent item. */}
                                   <div className="flex flex-wrap items-center gap-2">
                                     <span className="text-sm font-medium">{child.title}</span>
-                                    <span className="text-[11px] italic text-slate-500">{child.type}</span>
-                                    <span className="rounded bg-white px-1.5 py-0.5 text-[10px] text-slate-500">{child.status}</span>
+                                    <select
+                                      value={cu.type}
+                                      onChange={(e) => setUpdate(child.id, { type: e.target.value })}
+                                      className="rounded border border-slate-300 bg-white px-1 py-0.5 text-[11px]"
+                                      title="Type"
+                                    >
+                                      {TYPE_OPTIONS.map((t) => <option key={t} value={t}>{t}</option>)}
+                                    </select>
+                                    <select
+                                      value={cu.status}
+                                      onChange={(e) => setUpdate(child.id, { status: e.target.value })}
+                                      disabled={cu.noUpdate}
+                                      className="rounded border border-slate-300 bg-white px-1 py-0.5 text-[11px] disabled:opacity-50"
+                                      title="Status"
+                                    >
+                                      {STATUS_OPTIONS.map((s) => <option key={s} value={s}>{s}</option>)}
+                                    </select>
+                                    <select
+                                      value={cu.assignedTo}
+                                      onChange={(e) => setUpdate(child.id, { assignedTo: e.target.value })}
+                                      className="rounded border border-slate-300 bg-white px-1 py-0.5 text-[11px]"
+                                      title="Assignee"
+                                    >
+                                      <option value="">— Unassigned —</option>
+                                      {assigneeOptions(cu.assignedTo).map((n) => <option key={n} value={n}>{n}</option>)}
+                                    </select>
+                                    <input
+                                      type="date"
+                                      value={cu.dueDate}
+                                      onChange={(e) => setUpdate(child.id, { dueDate: e.target.value })}
+                                      className="rounded border border-slate-300 bg-white px-1 py-0.5 text-[11px]"
+                                      title="Due date"
+                                    />
                                   </div>
                                   {child.description && (
                                     <div className="mt-0.5 text-xs text-slate-500">{child.description}</div>
                                   )}
-                                  <div className="mt-1 flex flex-wrap items-center gap-2 text-xs">
-                                    <label className="flex items-center gap-1 text-slate-600">
-                                      <input
-                                        type="checkbox"
-                                        checked={cu.noUpdate}
-                                        onChange={(e) => setUpdate(child.id, { noUpdate: e.target.checked })}
-                                      />
-                                      No action
-                                    </label>
-                                    {!cu.noUpdate && (
-                                      <button
-                                        type="button"
-                                        onClick={() => setUpdate(child.id, { status: "Completed", note: cu.note || "Marked complete." })}
-                                        className="rounded border border-emerald-300 px-2 py-0.5 font-medium text-emerald-700 hover:bg-emerald-50"
-                                      >
-                                        ✓ Mark complete
-                                      </button>
-                                    )}
-                                  </div>
+                                  <label className="mt-1 flex items-center gap-1 text-xs text-slate-600">
+                                    <input
+                                      type="checkbox"
+                                      checked={cu.noUpdate}
+                                      onChange={(e) => setUpdate(child.id, { noUpdate: e.target.checked })}
+                                    />
+                                    No action
+                                  </label>
                                   {!cu.noUpdate && (
-                                    <>
-                                      <textarea
-                                        value={cu.note}
-                                        onChange={(e) => setUpdate(child.id, { note: e.target.value })}
-                                        rows={1}
-                                        placeholder="What happened with this item?"
-                                        className="mt-1 w-full rounded border border-slate-300 p-1 text-sm"
-                                      />
-                                      <div className="mt-1 flex items-center gap-2 text-xs text-slate-500">
-                                        <span>Status</span>
-                                        <select
-                                          value={cu.status}
-                                          onChange={(e) => setUpdate(child.id, { status: e.target.value })}
-                                          className="rounded border border-slate-300 p-1"
-                                        >
-                                          {STATUS_OPTIONS.map((s) => (
-                                            <option key={s} value={s}>{s}</option>
-                                          ))}
-                                        </select>
-                                      </div>
-                                    </>
+                                    <textarea
+                                      value={cu.note}
+                                      onChange={(e) => setUpdate(child.id, { note: e.target.value })}
+                                      rows={1}
+                                      placeholder="What happened with this item?"
+                                      className="mt-1 w-full rounded border border-slate-300 p-1 text-sm"
+                                    />
                                   )}
                                 </div>
                               );
