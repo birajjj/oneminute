@@ -900,42 +900,23 @@ export default function BrowseClient({
 
                             {/* Nested update rows (on-prem style). Click a row for detail. */}
                             {nestedRows.length > 0 && (
-                              <table className="mt-2 w-full border-collapse overflow-hidden rounded border border-slate-200 bg-white text-left text-sm">
-                                <thead>
-                                  <tr className="bg-slate-50 text-xs text-slate-500">
-                                    <th className="border-b border-slate-200 px-3 py-1.5 font-medium">Follow-up</th>
-                                    <th className="border-b border-slate-200 px-3 py-1.5 font-medium">Type</th>
-                                    <th className="border-b border-slate-200 px-3 py-1.5 font-medium">Status</th>
-                                    <th className="border-b border-slate-200 px-3 py-1.5 font-medium">Date</th>
-                                  </tr>
-                                </thead>
-                                <tbody>
-                                  {nestedRows.map((fu) => {
-                                    const open = fu.status !== "Completed" && fu.status !== "Cancelled";
-                                    return (
-                                      <tr
-                                        key={fu.id}
-                                        onClick={() => setOpenEntry(fu)}
-                                        className={`cursor-pointer hover:bg-blue-50 ${open ? "" : "text-slate-400"}`}
-                                      >
-                                        <td className="border-b border-slate-100 px-3 py-1.5 text-brand-blue">
-                                          {/* Note-less rows are filtered out upstream,
-                                              so this is always the update's note. */}
-                                          {fu.description?.trim()}
-                                        </td>
-                                        <td className="border-b border-slate-100 px-3 py-1.5">{fu.type}</td>
-                                        <td className="border-b border-slate-100 px-3 py-1.5">
-                                          {fu.status}
-                                          {open && (fu.type === "Action" || fu.type === "To-Do" || fu.type === "Devops") && (
-                                            <span className="ml-1 rounded bg-amber-200 px-1 text-[9px] font-semibold text-amber-800">open</span>
-                                          )}
-                                        </td>
-                                        <td className="border-b border-slate-100 px-3 py-1.5 text-slate-500">{shortDate(fu.date)}</td>
-                                      </tr>
-                                    );
-                                  })}
-                                </tbody>
-                              </table>
+                              // Follow-up entries are all Notes now, so the table's
+                              // Type/Status/Date columns were noise — just list the
+                              // update text. Click a line for the full detail popup.
+                              <div className="mt-2 space-y-1 rounded border border-slate-200 bg-white p-2 text-sm">
+                                <div className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+                                  Follow-up
+                                </div>
+                                {nestedRows.map((fu) => (
+                                  <button
+                                    key={fu.id}
+                                    onClick={() => setOpenEntry(fu)}
+                                    className="block w-full rounded px-1 py-0.5 text-left text-brand-blue hover:bg-blue-50"
+                                  >
+                                    {fu.description?.trim()}
+                                  </button>
+                                ))}
+                              </div>
                             )}
 
                             {/* Minutes raised under this item this meeting — their
