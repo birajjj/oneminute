@@ -596,11 +596,11 @@ function PlanReview({
         </p>
       )}
 
-      <div className="space-y-2">
+      <div className="space-y-4">
         {plan.minutes.map((m, i) => (
           <div
             key={i}
-            className={`rounded border p-2 ${m.type === "followup" ? "border-l-4 border-l-amber-500 bg-amber-50" : "border-l-4 border-l-brand-blue bg-blue-50"} ${!m.approved ? "opacity-45" : ""}`}
+            className={`rounded border p-2 ${m.type === "followup" ? "border-l-4 border-l-amber-500 bg-amber-100" : "border-l-4 border-l-brand-blue bg-blue-100"} ${!m.approved ? "opacity-45" : ""}`}
           >
             <div className="mb-1 flex items-center gap-2">
               <label className="flex items-center gap-1 text-xs">

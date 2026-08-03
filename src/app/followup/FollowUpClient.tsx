@@ -233,7 +233,7 @@ export default function FollowUpClient({
   // added minute appears right where you clicked, not in a section off-screen).
   function renderNewMinuteEditor(m: NewMinute, i: number) {
     return (
-      <div key={i} className="rounded border-l-4 border-l-brand-blue bg-blue-50 p-2">
+      <div key={i} className="rounded border-l-4 border-l-brand-blue bg-blue-100 p-2">
         <div className="mb-1 flex items-center gap-2">
           <input
             value={m.title}
@@ -587,11 +587,11 @@ export default function FollowUpClient({
           data.areas.map((area) => (
             <div key={area} className="mb-4">
               <div className="mb-2 text-sm font-semibold text-slate-700">{area}</div>
-              <div className="space-y-3">
+              <div className="space-y-5">
                 {(byArea[area] ?? []).map((it) => {
                   const u = updates[it.id];
                   return (
-                    <div key={it.id} className="rounded-lg border-l-4 border-l-amber-500 bg-amber-50 p-3">
+                    <div key={it.id} className="rounded-lg border-l-4 border-l-amber-500 bg-amber-100 p-3">
                       {/* Original item summary — the item's own fields (type,
                           status, owner, due) are editable right here. */}
                       <div className="flex flex-wrap items-center gap-2">
@@ -710,7 +710,7 @@ export default function FollowUpClient({
                               const cu = updates[child.id];
                               if (!cu) return null;
                               return (
-                                <div key={child.id} className="rounded border-l-4 border-l-brand-blue bg-blue-50 p-2">
+                                <div key={child.id} className="rounded border-l-4 border-l-brand-blue bg-blue-100 p-2">
                                   {/* Editable header, same as the parent item. */}
                                   <div className="flex flex-wrap items-center gap-2">
                                     <span className="text-sm font-medium">{child.title}</span>
@@ -781,7 +781,7 @@ export default function FollowUpClient({
                               Raised under this item
                             </div>
                             {u.subEntries.map((s, si) => (
-                              <div key={si} className="rounded border-l-4 border-l-brand-blue bg-blue-50 p-2">
+                              <div key={si} className="rounded border-l-4 border-l-brand-blue bg-blue-100 p-2">
                                 <div className="mb-1 flex items-center gap-2">
                                   <select
                                     value={s.type}
