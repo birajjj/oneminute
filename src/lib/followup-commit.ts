@@ -223,28 +223,30 @@ export async function commitFollowUp(
         }
         created += subCreated;
 
-        // "No action this meeting" — record a marker note; item stays open/unchanged.
+        // "No action this meeting" records NOTHING — the item just carries forward
+        // untouched, so the follow-up meeting shows only items that actually
+        // changed. EXCEPTION: if sub-items were raised under it this meeting, keep
+        // a placeholder entry so those sub-items have a parent card to nest under.
         if (u.noUpdate) {
-          const area = root.area || "General";
-          areaSet.add(area);
-          await tx.minute.create({
-            data: {
-              orgId,
-              meetingId: meeting.id,
-              area,
-              title: root.title,
-              description: "No action this meeting.",
-              // A "no action" marker is just a status note, not the item itself —
-              // record it as a Note. The item keeps its real type on its root, so
-              // the Browse card header still reads To-Do.
-              type: "Note",
-              status: root.status,
-              tags: entryTags,
-              parentMinuteId: root.id,
-              isPersistent: false
-            }
-          });
-          updated++;
+          if (subCreated > 0) {
+            const area = root.area || "General";
+            areaSet.add(area);
+            await tx.minute.create({
+              data: {
+                orgId,
+                meetingId: meeting.id,
+                area,
+                title: root.title,
+                description: null, // no note — Browse shows "(no note)"
+                type: "Note", // a status placeholder, not the item; card header keeps the real type
+                status: root.status,
+                tags: entryTags,
+                parentMinuteId: root.id,
+                isPersistent: false
+              }
+            });
+            updated++;
+          }
           continue;
         }
 
