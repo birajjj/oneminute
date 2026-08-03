@@ -802,7 +802,14 @@ export default function BrowseClient({
                                         className={`cursor-pointer hover:bg-blue-50 ${open ? "" : "text-slate-400"}`}
                                       >
                                         <td className="border-b border-slate-100 px-3 py-1.5 text-brand-blue">
-                                          {fu.description?.trim() || fu.title}
+                                          {/* An update entry with no note (e.g. only a
+                                              status change, or a placeholder created when
+                                              sub-items were raised) previously fell back to
+                                              the item's title — which just repeats the card
+                                              header. Show a muted marker instead. */}
+                                          {fu.description?.trim() || (
+                                            <span className="italic text-slate-400">(no note)</span>
+                                          )}
                                         </td>
                                         <td className="border-b border-slate-100 px-3 py-1.5">{fu.type}</td>
                                         <td className="border-b border-slate-100 px-3 py-1.5">
