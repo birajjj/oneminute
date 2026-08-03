@@ -899,18 +899,22 @@ export default function BrowseClient({
                               </div>
                             )}
                           </div>
-                          {/* Click-based alternative to dragging (touch / precise moves) */}
-                          <select
-                            value=""
-                            onChange={(e) => { if (e.target.value) moveMinuteToArea(mn.id, e.target.value); }}
-                            className="ml-4 shrink-0 rounded border border-slate-300 bg-white px-1 py-0.5 text-[10px] text-slate-500"
-                            title="Move this minute to another area"
-                          >
-                            <option value="">Move to…</option>
-                            {areas.filter((a) => a !== (mn.area || "General")).map((a) => (
-                              <option key={a} value={a}>{a}</option>
-                            ))}
-                          </select>
+                          {/* Click-based alternative to dragging (touch / precise
+                              moves) — only useful when there's another area to
+                              move to, so hidden when the meeting has a single tab. */}
+                          {areas.length > 1 && (
+                            <select
+                              value=""
+                              onChange={(e) => { if (e.target.value) moveMinuteToArea(mn.id, e.target.value); }}
+                              className="ml-4 shrink-0 rounded border border-slate-300 bg-white px-1 py-0.5 text-[10px] text-slate-500"
+                              title="Move this minute to another area"
+                            >
+                              <option value="">Move to…</option>
+                              {areas.filter((a) => a !== (mn.area || "General")).map((a) => (
+                                <option key={a} value={a}>{a}</option>
+                              ))}
+                            </select>
+                          )}
                           {/* Mark As Complete only on follow-up minutes; new/root
                               minutes (e.g. in a fresh meeting) use the status dropdown. */}
                           {mn.isFollowUp && (
