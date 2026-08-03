@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation";
 import ProjectFilterDropdown from "@/components/ProjectFilterDropdown";
 import { TagChips, TagBadges } from "@/components/TagChips";
 
+const DESKTOP_SIDEBAR_COLLAPSED_KEY = "oneminute:desktop-sidebar-collapsed";
+
 export interface BrowseMinute {
   id: string;
   rootId: string;
@@ -108,6 +110,7 @@ export default function BrowseClient({
   );
   const [search, setSearch] = useState("");
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [desktopSidebarCollapsed, setDesktopSidebarCollapsed] = useState(false);
   // Flag filter (Decision/Scope/Governance). Both search and flags narrow the
   // meeting list AND the minutes shown, so it's declared up here with search.
   const [tagFilter, setTagFilter] = useState<string[]>([]);
@@ -128,6 +131,20 @@ export default function BrowseClient({
   const [editingId, setEditingId] = useState<string | null>(null);
   const [draft, setDraft] = useState({ title: "", description: "", origTitle: "", origDescription: "" });
   const [savedFlash, setSavedFlash] = useState<string | null>(null);
+
+  useEffect(() => {
+    setDesktopSidebarCollapsed(
+      window.localStorage.getItem(DESKTOP_SIDEBAR_COLLAPSED_KEY) === "true"
+    );
+  }, []);
+
+  function toggleDesktopSidebar() {
+    setDesktopSidebarCollapsed((prev) => {
+      const next = !prev;
+      window.localStorage.setItem(DESKTOP_SIDEBAR_COLLAPSED_KEY, String(next));
+      return next;
+    });
+  }
 
   async function saveMinute(
     id: string,
@@ -382,6 +399,16 @@ export default function BrowseClient({
         >
           ☰
         </button>
+        <button
+          onClick={toggleDesktopSidebar}
+          className="hidden rounded p-1.5 text-slate-600 hover:bg-slate-100 md:inline-block"
+          aria-label={desktopSidebarCollapsed ? "Show recent meetings" : "Hide recent meetings"}
+          title={desktopSidebarCollapsed ? "Show recent meetings" : "Hide recent meetings"}
+        >
+          <span className="block h-0.5 w-4 bg-current" />
+          <span className="mt-1 block h-0.5 w-4 bg-current" />
+          <span className="mt-1 block h-0.5 w-4 bg-current" />
+        </button>
         <h1 className="text-lg font-bold sm:text-xl">Meeting Minutes</h1>
         <div className="ml-auto flex flex-wrap items-center gap-2">
           <div className="relative">
@@ -427,7 +454,7 @@ export default function BrowseClient({
         <aside
           className={`w-72 shrink-0 flex-col overflow-y-auto border-r border-slate-200 bg-white p-4 ${
             sidebarOpen ? "fixed inset-y-0 left-0 z-40 flex" : "hidden"
-          } md:static md:z-auto md:flex`}
+          } ${desktopSidebarCollapsed ? "md:hidden" : "md:static md:z-auto md:flex"}`}
         >
           <div className="mb-3 flex items-center justify-between">
             <h2 className="text-lg font-bold">Recent Meetings</h2>
