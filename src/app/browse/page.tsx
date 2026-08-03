@@ -66,9 +66,15 @@ export default async function BrowsePage({
   // entries. Map each thread root -> its raisedFromRootId so every minute in the
   // thread can be nested under the item it was raised from, in ANY meeting.
   const rootRaisedFrom = new Map<string, string | null>();
+  // parent thread root -> the child (sub-item) roots raised under it, so a parent
+  // card can always show its whole sub-tree (as-of the viewed meeting).
+  const raisedChildrenOf: Record<string, string[]> = {};
   for (const m of meetings) {
     for (const mn of m.minutes) {
-      if (!mn.parentMinuteId) rootRaisedFrom.set(mn.id, mn.raisedFromRootId ?? null);
+      if (!mn.parentMinuteId) {
+        rootRaisedFrom.set(mn.id, mn.raisedFromRootId ?? null);
+        if (mn.raisedFromRootId) (raisedChildrenOf[mn.raisedFromRootId] ??= []).push(mn.id);
+      }
     }
   }
 
@@ -89,7 +95,8 @@ export default async function BrowsePage({
         isRoot: !mn.parentMinuteId,
         devopsItemId: mn.devopsItemId ?? null,
         assignedTo: mn.assignedTo?.displayName ?? null,
-        tags: mn.tags ?? []
+        tags: mn.tags ?? [],
+        area: mn.area || "General"
       });
     }
   }
@@ -161,6 +168,7 @@ export default async function BrowsePage({
       meetings={shaped}
       projects={shapedProjects}
       threads={threads}
+      raisedChildrenOf={raisedChildrenOf}
       members={members}
       userName={user.displayName}
       devopsBaseUrl={devopsBaseUrl}

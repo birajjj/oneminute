@@ -45,6 +45,24 @@ export interface ThreadEntry {
   devopsItemId: number | null;
   assignedTo: string | null;
   tags: string[];
+  area: string;
+}
+
+// A sub-item shown nested under a parent card, at its AS-OF-this-meeting state.
+interface NestedSub {
+  key: string;
+  childRootId: string;
+  title: string;
+  type: string;
+  description: string | null;
+  status: string;
+  assignedTo: string | null;
+  tags: string[];
+  devopsItemId: number | null;
+  // Editable only in the meeting where the sub-item was actually touched; a
+  // read-only "as-of" row elsewhere so we never rewrite history off-meeting.
+  editable: boolean;
+  entryId: string | null; // this-meeting entry id when editable
 }
 
 const STATUS_OPTIONS = ["New", "Initiated", "In Progress", "Completed", "Cancelled"];
@@ -97,6 +115,7 @@ export default function BrowseClient({
   meetings,
   projects,
   threads,
+  raisedChildrenOf,
   members,
   userName,
   devopsBaseUrl,
@@ -105,6 +124,7 @@ export default function BrowseClient({
   meetings: BrowseMeeting[];
   projects: BrowseProject[];
   threads: Record<string, ThreadEntry[]>;
+  raisedChildrenOf: Record<string, string[]>;
   members: { id: string; displayName: string }[];
   userName: string;
   devopsBaseUrl: string;
@@ -377,51 +397,102 @@ export default function BrowseClient({
   const [activeArea, setActiveArea] = useState<string>("General");
   const currentArea = areas.includes(activeArea) ? activeArea : areas[0] ?? "General";
 
-  // A minute whose THREAD was raised under another item is ALWAYS nested beneath
-  // that parent — in every meeting — so sub-items travel with their parent. If
-  // the parent wasn't discussed this meeting (no card of its own), we conjure a
-  // "reference" host card from the thread root so the sub-items still nest.
-  const { raisedByRoot, isNested, referenceParents } = useMemo(() => {
-    const map: Record<string, BrowseMinute[]> = {};
-    if (!selected) return { raisedByRoot: map, isNested: () => false, referenceParents: [] as BrowseMinute[] };
+  // A parent card ALWAYS shows its whole sub-tree, in every meeting from when each
+  // sub-item was raised — each sub-item at its status AS OF the viewed meeting
+  // (point-in-time preserved). Sub-items touched this meeting are editable; the
+  // rest are read-only "as-of" context. Parents with no card of their own here
+  // get a "reference" host card so their sub-items still show.
+  const { nestedSubsByRoot, isNested, referenceParents } = useMemo(() => {
+    const subsByRoot: Record<string, NestedSub[]> = {};
+    if (!selected) return { nestedSubsByRoot: subsByRoot, isNested: () => false, referenceParents: [] as BrowseMinute[] };
+    const meetingDate = selected.date;
     const nested = (m: BrowseMinute) => !!m.threadRaisedFrom;
+
+    // Sub-item roots that have an entry in THIS meeting → editable here.
+    const touchedByChildRoot = new Map<string, BrowseMinute>();
     for (const m of selected.minutes) {
-      if (nested(m)) (map[m.threadRaisedFrom!] ??= []).push(m);
+      if (m.threadRaisedFrom) touchedByChildRoot.set(m.rootId, m);
     }
-    // Parents that already have their own card here need no reference host.
+
+    // Newest entry on-or-before the viewed meeting (= state as-of that meeting).
+    const asOf = (rootId: string) => (threads[rootId] ?? []).find((e) => e.date <= meetingDate) ?? null;
+    // Did the thread exist by the viewed meeting? (earliest entry is last, newest-first.)
+    const existedBy = (rootId: string) => {
+      const t = threads[rootId] ?? [];
+      return t.length > 0 && t[t.length - 1].date <= meetingDate;
+    };
+
+    for (const [parentRoot, childRoots] of Object.entries(raisedChildrenOf)) {
+      const subs: NestedSub[] = [];
+      for (const c of childRoots) {
+        const entries = threads[c] ?? [];
+        if (entries.length === 0 || !existedBy(c)) continue;
+        const asOfEntry = asOf(c);
+        if (!asOfEntry) continue;
+        const rootEntry = entries.find((e) => e.isRoot);
+        const touched = touchedByChildRoot.get(c);
+        if (touched) {
+          subs.push({
+            key: touched.id, childRootId: c,
+            title: rootEntry?.title ?? touched.title,
+            type: rootEntry?.type ?? touched.type,
+            description: touched.description,
+            status: touched.status,
+            assignedTo: touched.assignedTo,
+            tags: touched.tags,
+            devopsItemId: touched.devopsItemId,
+            editable: true, entryId: touched.id
+          });
+        } else {
+          subs.push({
+            key: c, childRootId: c,
+            title: rootEntry?.title ?? "",
+            type: rootEntry?.type ?? "Note",
+            description: rootEntry?.description ?? null,
+            status: asOfEntry.status,
+            assignedTo: asOfEntry.assignedTo,
+            tags: asOfEntry.tags,
+            devopsItemId: asOfEntry.devopsItemId,
+            editable: false, entryId: null
+          });
+        }
+      }
+      if (subs.length) subsByRoot[parentRoot] = subs;
+    }
+
     const presentRoots = new Set(
       selected.minutes.filter((m) => !m.threadRaisedFrom).map((m) => m.rootId)
     );
     const refs: BrowseMinute[] = [];
-    for (const parentRoot of Object.keys(map)) {
-      if (presentRoots.has(parentRoot)) continue;
+    for (const parentRoot of Object.keys(subsByRoot)) {
+      if (presentRoots.has(parentRoot) || !existedBy(parentRoot)) continue;
       const rootEntry = (threads[parentRoot] ?? []).find((e) => e.isRoot);
       if (!rootEntry) continue;
-      const latest = (threads[parentRoot] ?? [])[0]; // newest-first
-      const sub0 = map[parentRoot][0];
+      const pa = asOf(parentRoot);
       refs.push({
         id: parentRoot,
         rootId: parentRoot,
-        area: sub0.area,
+        area: rootEntry.area,
         title: rootEntry.title,
         description: rootEntry.description,
         type: rootEntry.type,
-        status: latest?.status ?? rootEntry.status,
+        status: pa?.status ?? rootEntry.status,
         isFollowUp: false,
         isPersistent: true,
         threadCount: (threads[parentRoot] ?? []).length,
-        assignedTo: latest?.assignedTo ?? null,
+        assignedTo: pa?.assignedTo ?? null,
         dueDate: null,
         devopsItemId: rootEntry.devopsItemId ?? null,
-        tags: latest?.tags ?? [],
+        tags: pa?.tags ?? [],
         raisedFromRootId: null,
         threadRaisedFrom: null,
         isReference: true
       });
     }
-    return { raisedByRoot: map, isNested: nested, referenceParents: refs };
+
+    return { nestedSubsByRoot: subsByRoot, isNested: nested, referenceParents: refs };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selected]);
+  }, [selected, raisedChildrenOf, threads]);
 
   const areaMinutes = selected
     ? [
@@ -921,7 +992,7 @@ export default function BrowseClient({
 
                             {/* Minutes raised under this item this meeting — their
                                 own trackable minutes, grouped here for provenance. */}
-                            {(raisedByRoot[mn.rootId] ?? []).length > 0 && (
+                            {(nestedSubsByRoot[mn.rootId] ?? []).length > 0 && (
                               <div className="mt-3">
                                 <div className="mb-1.5 flex items-center gap-2">
                                   <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">
@@ -930,41 +1001,43 @@ export default function BrowseClient({
                                   <span className="h-px flex-1 bg-slate-200" />
                                 </div>
                                 <div className="space-y-2">
-                                  {(raisedByRoot[mn.rootId] ?? []).map((sub) => {
-                                    const subStatus = edits[sub.id]?.status ?? sub.status;
+                                  {(nestedSubsByRoot[mn.rootId] ?? []).map((sub) => {
+                                    // Editable sub-items apply live edits; read-only
+                                    // "as-of" rows show the state at this meeting.
+                                    const subStatus = sub.editable ? (edits[sub.entryId!]?.status ?? sub.status) : sub.status;
+                                    const subType = sub.editable ? (edits[sub.childRootId]?.type ?? sub.type) : sub.type;
                                     const subDone = subStatus === "Completed" || subStatus === "Cancelled";
-                                    // Title/type are the sub-item's identity — read
-                                    // them from its thread root so a later-meeting
-                                    // update row still shows the real to-do, and edits
-                                    // to type target the root.
-                                    const subRoot = (threads[sub.rootId] ?? []).find((e) => e.isRoot);
-                                    const subTitle = subRoot?.title ?? sub.title;
-                                    const subType = edits[sub.rootId]?.type ?? subRoot?.type ?? sub.type;
                                     return (
                                       <div
-                                        key={sub.id}
-                                        className="rounded-md border border-slate-200 bg-white p-2.5 shadow-sm"
+                                        key={sub.key}
+                                        className={`rounded-md border p-2.5 ${sub.editable ? "border-slate-200 bg-white shadow-sm" : "border-slate-200 bg-slate-50"}`}
                                       >
                                         <div className="flex items-start gap-2">
-                                          <select
-                                            value={subType}
-                                            onChange={(e) => saveMinute(sub.rootId, { type: e.target.value })}
-                                            className={`mt-0.5 shrink-0 rounded border-0 px-1 py-0.5 text-[10px] font-semibold ${TYPE_BADGE[subType] ?? "bg-slate-100 text-slate-600"}`}
-                                            title="Type"
-                                          >
-                                            {["Note", "To-Do", "Action", "Devops"].map((t) => (
-                                              <option key={t} value={t}>{t}</option>
-                                            ))}
-                                          </select>
+                                          {sub.editable ? (
+                                            <select
+                                              value={subType}
+                                              onChange={(e) => saveMinute(sub.childRootId, { type: e.target.value })}
+                                              className={`mt-0.5 shrink-0 rounded border-0 px-1 py-0.5 text-[10px] font-semibold ${TYPE_BADGE[subType] ?? "bg-slate-100 text-slate-600"}`}
+                                              title="Type"
+                                            >
+                                              {["Note", "To-Do", "Action", "Devops"].map((t) => (
+                                                <option key={t} value={t}>{t}</option>
+                                              ))}
+                                            </select>
+                                          ) : (
+                                            <span className={`mt-0.5 shrink-0 rounded px-1.5 py-0.5 text-[10px] font-semibold ${TYPE_BADGE[subType] ?? "bg-slate-100 text-slate-600"}`}>
+                                              {subType}
+                                            </span>
+                                          )}
                                           <div className="min-w-0 flex-1">
                                             <div className={`text-sm font-medium ${subDone ? "text-slate-400 line-through" : "text-slate-800"}`}>
-                                              {subTitle}
+                                              {sub.title}
                                             </div>
                                             {sub.description && (
                                               <p className="mt-0.5 text-xs text-slate-500">{sub.description}</p>
                                             )}
                                             <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
-                                              <TagBadges tags={edits[sub.id]?.tags ?? sub.tags} />
+                                              <TagBadges tags={sub.tags} />
                                               {sub.devopsItemId && (
                                                 <button
                                                   onClick={() => setOpenDevopsId(sub.devopsItemId)}
@@ -975,29 +1048,37 @@ export default function BrowseClient({
                                               )}
                                             </div>
                                           </div>
-                                          <div className="flex shrink-0 items-center gap-1.5">
-                                            <select
-                                              value={subStatus}
-                                              onChange={(e) => saveMinute(sub.id, { status: e.target.value })}
-                                              className="rounded border border-slate-300 bg-white px-1.5 py-1 text-[11px] text-slate-600"
-                                              title="Status"
-                                            >
-                                              {STATUS_OPTIONS.map((s) => (
-                                                <option key={s} value={s}>{s}</option>
-                                              ))}
-                                            </select>
-                                            <select
-                                              value={edits[sub.id]?.assignedTo ?? sub.assignedTo ?? ""}
-                                              onChange={(e) => saveMinute(sub.id, { assignedTo: e.target.value })}
-                                              className="max-w-[8rem] rounded border border-slate-300 bg-white px-1.5 py-1 text-[11px] text-slate-600"
-                                              title="Assignee"
-                                            >
-                                              <option value="">— Unassigned —</option>
-                                              {members.map((mem) => (
-                                                <option key={mem.id} value={mem.displayName}>{mem.displayName}</option>
-                                              ))}
-                                            </select>
-                                          </div>
+                                          {sub.editable ? (
+                                            <div className="flex shrink-0 items-center gap-1.5">
+                                              <select
+                                                value={subStatus}
+                                                onChange={(e) => saveMinute(sub.entryId!, { status: e.target.value })}
+                                                className="rounded border border-slate-300 bg-white px-1.5 py-1 text-[11px] text-slate-600"
+                                                title="Status"
+                                              >
+                                                {STATUS_OPTIONS.map((s) => (
+                                                  <option key={s} value={s}>{s}</option>
+                                                ))}
+                                              </select>
+                                              <select
+                                                value={edits[sub.entryId!]?.assignedTo ?? sub.assignedTo ?? ""}
+                                                onChange={(e) => saveMinute(sub.entryId!, { assignedTo: e.target.value })}
+                                                className="max-w-[8rem] rounded border border-slate-300 bg-white px-1.5 py-1 text-[11px] text-slate-600"
+                                                title="Assignee"
+                                              >
+                                                <option value="">— Unassigned —</option>
+                                                {members.map((mem) => (
+                                                  <option key={mem.id} value={mem.displayName}>{mem.displayName}</option>
+                                                ))}
+                                              </select>
+                                            </div>
+                                          ) : (
+                                            // Read-only as-of state (not touched this meeting).
+                                            <div className="flex shrink-0 items-center gap-2 text-[11px] text-slate-500" title="As of this meeting — edit it in the meeting where it was worked on">
+                                              <span>{subStatus}</span>
+                                              <span>{sub.assignedTo ?? "—"}</span>
+                                            </div>
+                                          )}
                                         </div>
                                       </div>
                                     );
