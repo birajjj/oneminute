@@ -719,7 +719,7 @@ export default function BrowseClient({
               {areaMinutes.length === 0 ? (
                 <p className="text-slate-500">No minutes available for this area.</p>
               ) : (
-                <div className="space-y-3">
+                <div className="space-y-5">
                   {areaMinutes.map((mn) => {
                     // A follow-up minute is shown with its ORIGINAL item as the
                     // header and the update nested underneath — so a follow-up
@@ -790,8 +790,8 @@ export default function BrowseClient({
                         onDragEnd={() => { setDraggingId(null); setDragOverArea(null); }}
                         className={`rounded-lg border-l-4 p-4 ${
                           mn.isFollowUp
-                            ? "border-l-amber-500 bg-amber-50"
-                            : "border-l-brand-blue bg-blue-50"
+                            ? "border-l-amber-500 bg-amber-100"
+                            : "border-l-brand-blue bg-blue-100"
                         } ${draggingId === mn.id ? "opacity-50 ring-2 ring-brand-blue" : ""}`}
                       >
                         <div className="flex items-start justify-between">
