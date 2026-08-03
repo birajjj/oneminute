@@ -1000,8 +1000,6 @@ export default function BrowseClient({
       {openThreadRoot && (
         <ThreadModal
           entries={threads[openThreadRoot] ?? []}
-          devopsBaseUrl={devopsBaseUrl}
-          onOpenDevops={setOpenDevopsId}
           onClose={() => setOpenThreadRoot(null)}
         />
       )}
@@ -1395,16 +1393,13 @@ function EntryModal({
 
 function ThreadModal({
   entries,
-  devopsBaseUrl,
-  onOpenDevops,
   onClose
 }: {
   entries: ThreadEntry[];
-  devopsBaseUrl: string;
-  onOpenDevops: (id: number) => void;
   onClose: () => void;
 }) {
   const rootTitle = entries.find((e) => e.isRoot)?.title ?? entries[entries.length - 1]?.title ?? "Thread";
+  const noteEntries = entries.filter((e) => e.type === "Note");
 
   return (
     <div
@@ -1418,7 +1413,7 @@ function ThreadModal({
         <div className="mb-4 flex items-start justify-between">
           <div>
             <div className="text-xs font-semibold uppercase tracking-wide text-slate-400">
-              Thread history ({entries.length})
+              Thread notes ({noteEntries.length})
             </div>
             <h3 className="text-lg font-bold">{rootTitle}</h3>
           </div>
@@ -1428,12 +1423,15 @@ function ThreadModal({
         </div>
 
         <div className="space-y-4">
-          {entries.map((e, i) => {
+          {noteEntries.length === 0 && (
+            <div className="text-sm italic text-slate-400">No notes recorded in this thread.</div>
+          )}
+          {noteEntries.map((e, i) => {
             // The thread title is shown once in the header. Only repeat a per-entry
             // title when an update changed the wording from the root title.
             const showEntryTitle = e.title.trim() !== rootTitle.trim();
             return (
-              <div key={e.id} className={i < entries.length - 1 ? "border-b border-slate-100 pb-4" : ""}>
+              <div key={e.id} className={i < noteEntries.length - 1 ? "border-b border-slate-100 pb-4" : ""}>
                 {showEntryTitle && (
                   <div className="mb-1 font-semibold text-slate-800">{e.title}</div>
                 )}
@@ -1441,14 +1439,6 @@ function ThreadModal({
                   {e.description || <span className="italic text-slate-400">(no details recorded)</span>}
                 </div>
                 <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
-                  <span className={`rounded px-1.5 py-0.5 font-medium ${typeBadgeClass(e.type)}`}>
-                    {e.type}
-                  </span>
-                  <span className="rounded bg-slate-100 px-1.5 py-0.5 text-slate-500">{e.status}</span>
-                  {e.isRoot && (
-                    <span className="rounded bg-brand-blue px-1.5 py-0.5 text-white">original</span>
-                  )}
-                  {e.devopsItemId && <DevopsBadge id={e.devopsItemId} baseUrl={devopsBaseUrl} onOpen={onOpenDevops} />}
                   <span className="text-slate-400">
                     {e.meetingTitle} · {fmtDate(e.date)}
                   </span>
