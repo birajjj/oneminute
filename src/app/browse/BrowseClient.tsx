@@ -28,6 +28,9 @@ export interface BrowseMinute {
   // The raised-from of this minute's whole thread — set on every entry in a
   // raised sub-item's thread, so later-meeting updates nest under the parent too.
   threadRaisedFrom: string | null;
+  // Client-only: a "host" card conjured for a parent item that wasn't discussed
+  // this meeting, purely so its sub-items still nest under it.
+  isReference?: boolean;
 }
 
 export interface ThreadEntry {
@@ -374,27 +377,59 @@ export default function BrowseClient({
   const [activeArea, setActiveArea] = useState<string>("General");
   const currentArea = areas.includes(activeArea) ? activeArea : areas[0] ?? "General";
 
-  // Minutes whose THREAD was raised under another item are nested beneath that
-  // item's card — in every meeting, not just the one they were raised in — so a
-  // sub-item's later updates stay with the parent. Only nest when the parent
-  // actually has a card in this meeting; otherwise the sub-item shows standalone.
-  const { raisedByRoot, isNested } = useMemo(() => {
+  // A minute whose THREAD was raised under another item is ALWAYS nested beneath
+  // that parent — in every meeting — so sub-items travel with their parent. If
+  // the parent wasn't discussed this meeting (no card of its own), we conjure a
+  // "reference" host card from the thread root so the sub-items still nest.
+  const { raisedByRoot, isNested, referenceParents } = useMemo(() => {
     const map: Record<string, BrowseMinute[]> = {};
-    if (!selected) return { raisedByRoot: map, isNested: () => false };
-    const presentRoots = new Set(
-      selected.minutes.filter((m) => !m.threadRaisedFrom).map((m) => m.rootId)
-    );
-    const nested = (m: BrowseMinute) => !!m.threadRaisedFrom && presentRoots.has(m.threadRaisedFrom);
+    if (!selected) return { raisedByRoot: map, isNested: () => false, referenceParents: [] as BrowseMinute[] };
+    const nested = (m: BrowseMinute) => !!m.threadRaisedFrom;
     for (const m of selected.minutes) {
       if (nested(m)) (map[m.threadRaisedFrom!] ??= []).push(m);
     }
-    return { raisedByRoot: map, isNested: nested };
+    // Parents that already have their own card here need no reference host.
+    const presentRoots = new Set(
+      selected.minutes.filter((m) => !m.threadRaisedFrom).map((m) => m.rootId)
+    );
+    const refs: BrowseMinute[] = [];
+    for (const parentRoot of Object.keys(map)) {
+      if (presentRoots.has(parentRoot)) continue;
+      const rootEntry = (threads[parentRoot] ?? []).find((e) => e.isRoot);
+      if (!rootEntry) continue;
+      const latest = (threads[parentRoot] ?? [])[0]; // newest-first
+      const sub0 = map[parentRoot][0];
+      refs.push({
+        id: parentRoot,
+        rootId: parentRoot,
+        area: sub0.area,
+        title: rootEntry.title,
+        description: rootEntry.description,
+        type: rootEntry.type,
+        status: latest?.status ?? rootEntry.status,
+        isFollowUp: false,
+        isPersistent: true,
+        threadCount: (threads[parentRoot] ?? []).length,
+        assignedTo: latest?.assignedTo ?? null,
+        dueDate: null,
+        devopsItemId: rootEntry.devopsItemId ?? null,
+        tags: latest?.tags ?? [],
+        raisedFromRootId: null,
+        threadRaisedFrom: null,
+        isReference: true
+      });
+    }
+    return { raisedByRoot: map, isNested: nested, referenceParents: refs };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selected]);
 
   const areaMinutes = selected
-    ? selected.minutes.filter(
-        (m) => (m.area || "General") === currentArea && !isNested(m) && minutePasses(m)
-      )
+    ? [
+        ...selected.minutes.filter(
+          (m) => (m.area || "General") === currentArea && !isNested(m) && minutePasses(m)
+        ),
+        ...referenceParents.filter((m) => (m.area || "General") === currentArea)
+      ]
     : [];
   const isEditingMeeting = !!selected && editingMeeting === selected.id;
 
@@ -726,16 +761,20 @@ export default function BrowseClient({
                     // Nested history: only what existed UP TO the meeting being viewed
                     // (so an earlier meeting doesn't show later updates). The full
                     // journey is still in the thread popup.
-                    const nestedRows: ThreadEntry[] = (
-                      mn.isFollowUp
-                        ? selfEntry ? [selfEntry] : []
-                        : (threads[mn.rootId] ?? []).filter(
-                            (e) => !e.isRoot && (!selected || e.date <= selected.date)
-                          )
-                      // Only show updates that carry a note — a note-less entry
-                      // (e.g. a placeholder created when sub-items were raised, or a
-                      // bare status change) would just be an empty row.
-                    ).filter((e) => e.description?.trim());
+                    const nestedRows: ThreadEntry[] = mn.isReference
+                      // A reference host card only exists to nest sub-items — it
+                      // shows no update history of its own this meeting.
+                      ? []
+                      : (
+                          mn.isFollowUp
+                            ? selfEntry ? [selfEntry] : []
+                            : (threads[mn.rootId] ?? []).filter(
+                                (e) => !e.isRoot && (!selected || e.date <= selected.date)
+                              )
+                          // Only show updates that carry a note — a note-less entry
+                          // (e.g. a placeholder created when sub-items were raised, or a
+                          // bare status change) would just be an empty row.
+                        ).filter((e) => e.description?.trim());
                     const noteThreadCount = (threads[mn.rootId] ?? []).filter((e) => e.type === "Note").length;
 
                     const isOpenPending =
@@ -787,6 +826,11 @@ export default function BrowseClient({
                                 <span className="text-[10px] font-medium text-emerald-600">Saved ✓</span>
                               )}
                               <span className="text-xs italic text-slate-500">{headerType}</span>
+                              {mn.isReference && (
+                                <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] text-slate-400" title="Not discussed this meeting — shown so its items stay grouped">
+                                  carried
+                                </span>
+                              )}
                               <TagChips
                                 value={displayTags}
                                 onChange={(tags) => saveMinute(entryId, { tags })}
