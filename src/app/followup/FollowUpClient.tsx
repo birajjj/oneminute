@@ -5,6 +5,7 @@ import type { FollowUpData, OpenItem } from "@/lib/followup";
 import { useSegmentRecorder } from "@/lib/useSegmentRecorder";
 import { TagChips } from "@/components/TagChips";
 import { normalizeTags } from "@/lib/tags";
+import BusyOverlay from "@/components/BusyOverlay";
 
 const TYPE_OPTIONS = ["Note", "To-Do", "Action", "Devops"];
 // Types allowed for extra minutes raised under an open item (boss: note/todo/
@@ -463,6 +464,13 @@ export default function FollowUpClient({
 
   return (
     <div className="space-y-4">
+      {saving && (
+        <BusyOverlay
+          message="Please wait"
+          detail="Saving and committing your follow-up meeting..."
+        />
+      )}
+
       {/* Header */}
       <div>
         <span className="mb-2 inline-block rounded bg-gradient-to-r from-amber-500 to-brand-purple px-2 py-0.5 text-xs font-semibold uppercase tracking-wider text-white">

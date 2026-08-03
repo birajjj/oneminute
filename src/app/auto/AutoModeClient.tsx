@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import type { AutoPlan } from "@/lib/ai/auto-plan";
 import { useSegmentRecorder } from "@/lib/useSegmentRecorder";
 import { TagChips } from "@/components/TagChips";
+import BusyOverlay from "@/components/BusyOverlay";
 
 // The page is manual-first: you land straight in the editable form and can fill
 // it in by hand. Recording / pasting a transcript is an optional accelerator
@@ -442,6 +443,13 @@ function PlanReview({
 
   return (
     <div className="rounded-lg border border-slate-200 bg-white p-4">
+      {committing && (
+        <BusyOverlay
+          message="Please wait"
+          detail="Saving and committing your meeting..."
+        />
+      )}
+
       <div className="mb-3 grid gap-3 sm:grid-cols-2">
         {/* PROJECT — AI pre-selects; user can override */}
         <div className="rounded border border-slate-200 bg-slate-50 p-3">
