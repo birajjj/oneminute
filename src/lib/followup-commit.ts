@@ -193,6 +193,8 @@ export async function commitFollowUp(
             title: true,
             type: true,
             status: true,
+            assignedToUserId: true,
+            dueDate: true,
             meeting: { select: { projectId: true } }
           }
         });
@@ -200,6 +202,24 @@ export async function commitFollowUp(
         if (!root || root.meeting.projectId !== parent.projectId) {
           if (!u.noUpdate) warnings.push("Skipped an update to an item outside this project.");
           continue;
+        }
+
+        // Item-level edits from the header (type / assignee / due) apply to the
+        // ROOT — they're the item's own properties, not point-in-time — and run
+        // for every reviewed item, even one with no status/note change.
+        const rootPatch: {
+          type?: MinuteType;
+          assignedToUserId?: string | null;
+          dueDate?: Date | null;
+        } = {};
+        const newType = TYPE_MAP[u.type];
+        if (newType && newType !== root.type) rootPatch.type = newType;
+        const newAssignee = resolveUser(u.assignedTo);
+        if (newAssignee !== root.assignedToUserId) rootPatch.assignedToUserId = newAssignee;
+        const curDue = root.dueDate ? root.dueDate.toISOString().slice(0, 10) : "";
+        if ((u.dueDate || "").trim() !== curDue) rootPatch.dueDate = parseDate(u.dueDate);
+        if (Object.keys(rootPatch).length > 0) {
+          await tx.minute.update({ where: { id: root.id }, data: rootPatch });
         }
 
         // Point-in-time: flags go on THIS meeting's entry, never backdated onto
@@ -306,17 +326,8 @@ export async function commitFollowUp(
         });
 
         // Point-in-time: the update is recorded as its own entry; we do NOT
-        // overwrite the item's status (current status is derived from the latest
-        // entry). An update may still re-assign / re-date the item itself.
-        if (u.assignedTo || u.dueDate) {
-          await tx.minute.update({
-            where: { id: root.id },
-            data: {
-              ...(u.assignedTo ? { assignedToUserId: resolveUser(u.assignedTo) } : {}),
-              ...(u.dueDate ? { dueDate: parseDate(u.dueDate) } : {})
-            }
-          });
-        }
+        // overwrite the item's status here. Item-level edits (type/assignee/due)
+        // were already applied to the root above.
         updated++;
       }
 

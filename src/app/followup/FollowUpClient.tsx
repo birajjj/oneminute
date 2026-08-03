@@ -248,7 +248,7 @@ export default function FollowUpClient({
         <div className="mt-1">
           <TagChips value={m.tags} onChange={(tags) => setNewMinute(i, { tags })} />
         </div>
-        <div className="mt-1 grid grid-cols-2 gap-1 text-xs sm:grid-cols-5">
+        <div className="mt-1 grid grid-cols-2 gap-1 text-xs">
           <input
             value={m.area}
             onChange={(e) => setNewMinute(i, { area: e.target.value })}
@@ -269,36 +269,41 @@ export default function FollowUpClient({
               <option key={t} value={t}>{t}</option>
             ))}
           </select>
-          <select
-            value={m.status}
-            onChange={(e) => setNewMinute(i, { status: e.target.value })}
-            className="rounded border border-slate-300 p-1"
-          >
-            {STATUS_OPTIONS.map((s) => (
-              <option key={s} value={s}>{s}</option>
-            ))}
-          </select>
-          <select
-            value={m.assignedTo}
-            onChange={(e) => setNewMinute(i, { assignedTo: e.target.value })}
-            className="rounded border border-slate-300 p-1"
-          >
-            <option value="">— Unassigned —</option>
-            {/* Keep the AI's suggestion selectable even if not in the roster */}
-            {m.assignedTo && !members.some((mem) => mem.displayName === m.assignedTo) && (
-              <option value={m.assignedTo}>{m.assignedTo} (AI)</option>
-            )}
-            {members.map((mem) => (
-              <option key={mem.id} value={mem.displayName}>{mem.displayName}</option>
-            ))}
-          </select>
-          <input
-            type="date"
-            value={m.dueDate}
-            onChange={(e) => setNewMinute(i, { dueDate: e.target.value })}
-            className="rounded border border-slate-300 p-1"
-          />
         </div>
+        {/* Status/owner/due only apply to a To-Do or DevOps, not a plain Note. */}
+        {m.type !== "Note" && (
+          <div className="mt-1 grid grid-cols-1 gap-1 text-xs sm:grid-cols-3">
+            <select
+              value={m.status}
+              onChange={(e) => setNewMinute(i, { status: e.target.value })}
+              className="rounded border border-slate-300 p-1"
+            >
+              {STATUS_OPTIONS.map((s) => (
+                <option key={s} value={s}>{s}</option>
+              ))}
+            </select>
+            <select
+              value={m.assignedTo}
+              onChange={(e) => setNewMinute(i, { assignedTo: e.target.value })}
+              className="rounded border border-slate-300 p-1"
+            >
+              <option value="">— Unassigned —</option>
+              {/* Keep the AI's suggestion selectable even if not in the roster */}
+              {m.assignedTo && !members.some((mem) => mem.displayName === m.assignedTo) && (
+                <option value={m.assignedTo}>{m.assignedTo} (AI)</option>
+              )}
+              {members.map((mem) => (
+                <option key={mem.id} value={mem.displayName}>{mem.displayName}</option>
+              ))}
+            </select>
+            <input
+              type="date"
+              value={m.dueDate}
+              onChange={(e) => setNewMinute(i, { dueDate: e.target.value })}
+              className="rounded border border-slate-300 p-1"
+            />
+          </div>
+        )}
         {m.type === "Devops" && (
           <DevopsControls
             action={m.devopsAction}
@@ -568,17 +573,46 @@ export default function FollowUpClient({
                   const u = updates[it.id];
                   return (
                     <div key={it.id} className="rounded-lg border-l-4 border-l-amber-500 bg-amber-50 p-3">
-                      {/* Original item summary */}
+                      {/* Original item summary — the item's own fields (type,
+                          status, owner, due) are editable right here. */}
                       <div className="flex flex-wrap items-center gap-2">
                         <span className="font-semibold">{it.title}</span>
                         {aiFilled.has(it.id) && (
                           <span className="rounded bg-brand-purple px-1.5 py-0.5 text-[10px] font-medium text-white">AI</span>
                         )}
-                        <span className="text-xs italic text-slate-500">{it.type}</span>
-                        <span className="rounded bg-white px-1.5 py-0.5 text-[11px] text-slate-500">{it.status}</span>
-                        {it.assignedTo && (
-                          <span className="rounded bg-slate-200 px-1.5 py-0.5 text-[10px] text-slate-600">👤 {it.assignedTo}</span>
-                        )}
+                        <select
+                          value={u.type}
+                          onChange={(e) => setUpdate(it.id, { type: e.target.value })}
+                          className="rounded border border-slate-300 bg-white px-1 py-0.5 text-[11px]"
+                          title="Type"
+                        >
+                          {TYPE_OPTIONS.map((t) => <option key={t} value={t}>{t}</option>)}
+                        </select>
+                        <select
+                          value={u.status}
+                          onChange={(e) => setUpdate(it.id, { status: e.target.value })}
+                          disabled={u.noUpdate}
+                          className="rounded border border-slate-300 bg-white px-1 py-0.5 text-[11px] disabled:opacity-50"
+                          title={u.noUpdate ? "No status change while 'No action' is ticked" : "Status"}
+                        >
+                          {STATUS_OPTIONS.map((s) => <option key={s} value={s}>{s}</option>)}
+                        </select>
+                        <select
+                          value={u.assignedTo}
+                          onChange={(e) => setUpdate(it.id, { assignedTo: e.target.value })}
+                          className="rounded border border-slate-300 bg-white px-1 py-0.5 text-[11px]"
+                          title="Assignee"
+                        >
+                          <option value="">— Unassigned —</option>
+                          {assigneeOptions(u.assignedTo).map((n) => <option key={n} value={n}>{n}</option>)}
+                        </select>
+                        <input
+                          type="date"
+                          value={u.dueDate}
+                          onChange={(e) => setUpdate(it.id, { dueDate: e.target.value })}
+                          className="rounded border border-slate-300 bg-white px-1 py-0.5 text-[11px]"
+                          title="Due date"
+                        />
                         {it.devopsItemId &&
                           (devopsBaseUrl ? (
                             <a
@@ -622,53 +656,27 @@ export default function FollowUpClient({
                         </details>
                       )}
 
-                      {/* Update controls */}
+                      {/* Update controls — the item's own update is just a note.
+                          Its state (type/status/owner/due) is edited on the header
+                          above; set Status → Completed there to close it. */}
                       <div className="mt-2 rounded border border-amber-200 bg-white p-2">
-                        <div className="flex flex-wrap items-center gap-3 text-xs">
-                          <label className="flex items-center gap-1 text-slate-600">
-                            <input
-                              type="checkbox"
-                              checked={u.noUpdate}
-                              onChange={(e) => setUpdate(it.id, { noUpdate: e.target.checked })}
-                            />
-                            No action this meeting
-                          </label>
-                          {!u.noUpdate && (
-                            <button
-                              type="button"
-                              onClick={() => setUpdate(it.id, { status: "Completed", note: u.note || "Marked complete." })}
-                              className="rounded border border-emerald-300 px-2 py-0.5 font-medium text-emerald-700 hover:bg-emerald-50"
-                            >
-                              ✓ Mark complete
-                            </button>
-                          )}
-                        </div>
+                        <label className="flex items-center gap-1 text-xs text-slate-600">
+                          <input
+                            type="checkbox"
+                            checked={u.noUpdate}
+                            onChange={(e) => setUpdate(it.id, { noUpdate: e.target.checked })}
+                          />
+                          No action this meeting
+                        </label>
 
                         {!u.noUpdate && (
-                          <>
-                            <textarea
-                              value={u.note}
-                              onChange={(e) => setUpdate(it.id, { note: e.target.value })}
-                              rows={2}
-                              placeholder="What happened with this item?"
-                              className="mt-2 w-full rounded border border-slate-300 p-2 text-sm"
-                            />
-                            {/* The item's own update is just a note + its status.
-                                Type/owner/due/DevOps belong on the nested items
-                                below, where they actually apply. */}
-                            <div className="mt-1 flex items-center gap-2 text-xs text-slate-500">
-                              <span>Status</span>
-                              <select
-                                value={u.status}
-                                onChange={(e) => setUpdate(it.id, { status: e.target.value })}
-                                className="rounded border border-slate-300 p-1"
-                              >
-                                {STATUS_OPTIONS.map((s) => (
-                                  <option key={s} value={s}>{s}</option>
-                                ))}
-                              </select>
-                            </div>
-                          </>
+                          <textarea
+                            value={u.note}
+                            onChange={(e) => setUpdate(it.id, { note: e.target.value })}
+                            rows={2}
+                            placeholder="What happened with this item?"
+                            className="mt-2 w-full rounded border border-slate-300 p-2 text-sm"
+                          />
                         )}
 
                         {/* Items raised under this in EARLIER meetings — nested so
@@ -784,33 +792,37 @@ export default function FollowUpClient({
                                   placeholder="Description"
                                   className="w-full rounded border border-slate-300 p-1 text-sm"
                                 />
-                                <div className="mt-1 grid grid-cols-2 gap-1 text-xs sm:grid-cols-3">
-                                  <select
-                                    value={s.status}
-                                    onChange={(e) => setSub(it.id, si, { status: e.target.value })}
-                                    className="rounded border border-slate-300 p-1"
-                                  >
-                                    {STATUS_OPTIONS.map((st) => (
-                                      <option key={st} value={st}>{st}</option>
-                                    ))}
-                                  </select>
-                                  <select
-                                    value={s.assignedTo}
-                                    onChange={(e) => setSub(it.id, si, { assignedTo: e.target.value })}
-                                    className="rounded border border-slate-300 p-1"
-                                  >
-                                    <option value="">— Unassigned —</option>
-                                    {assigneeOptions(s.assignedTo).map((n) => (
-                                      <option key={n} value={n}>{n}</option>
-                                    ))}
-                                  </select>
-                                  <input
-                                    type="date"
-                                    value={s.dueDate}
-                                    onChange={(e) => setSub(it.id, si, { dueDate: e.target.value })}
-                                    className="rounded border border-slate-300 p-1"
-                                  />
-                                </div>
+                                {/* A Note is just title + description; status/owner
+                                    /due only make sense for a To-Do or DevOps. */}
+                                {s.type !== "Note" && (
+                                  <div className="mt-1 grid grid-cols-2 gap-1 text-xs sm:grid-cols-3">
+                                    <select
+                                      value={s.status}
+                                      onChange={(e) => setSub(it.id, si, { status: e.target.value })}
+                                      className="rounded border border-slate-300 p-1"
+                                    >
+                                      {STATUS_OPTIONS.map((st) => (
+                                        <option key={st} value={st}>{st}</option>
+                                      ))}
+                                    </select>
+                                    <select
+                                      value={s.assignedTo}
+                                      onChange={(e) => setSub(it.id, si, { assignedTo: e.target.value })}
+                                      className="rounded border border-slate-300 p-1"
+                                    >
+                                      <option value="">— Unassigned —</option>
+                                      {assigneeOptions(s.assignedTo).map((n) => (
+                                        <option key={n} value={n}>{n}</option>
+                                      ))}
+                                    </select>
+                                    <input
+                                      type="date"
+                                      value={s.dueDate}
+                                      onChange={(e) => setSub(it.id, si, { dueDate: e.target.value })}
+                                      className="rounded border border-slate-300 p-1"
+                                    />
+                                  </div>
+                                )}
                                 {s.type === "Devops" && (
                                   <DevopsControls
                                     action={s.devopsAction}
