@@ -409,7 +409,9 @@ export default function BrowseClient({
           <span className="mt-1 block h-0.5 w-4 bg-current" />
           <span className="mt-1 block h-0.5 w-4 bg-current" />
         </button>
-        <h1 className="text-lg font-bold sm:text-xl">Meeting Minutes</h1>
+        <a href="/browse" className="text-lg font-bold hover:text-brand-blue sm:text-xl">
+          Meeting Minutes
+        </a>
         <div className="ml-auto flex flex-wrap items-center gap-2">
           <div className="relative">
             <input
