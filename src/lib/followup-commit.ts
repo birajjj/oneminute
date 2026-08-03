@@ -229,9 +229,13 @@ export async function commitFollowUp(
         const latest = await tx.minute.findFirst({
           where: { orgId, OR: [{ id: root.id }, { parentMinuteId: root.id }] },
           orderBy: [{ meeting: { meetingDate: "desc" } }, { createdAt: "desc" }],
-          select: { tags: true }
+          select: { tags: true, status: true }
         });
         const tagsChanged = entryTags.join(",") !== normalizeTags(latest?.tags ?? []).join(",");
+        // The item's CURRENT status = its newest entry's status (point-in-time
+        // never overwrites the root, so root.status is stale). Compare against this
+        // so an unchanged item isn't treated as "changed" every follow-up.
+        const currentStatus = latest?.status ?? root.status;
 
         // Extra minutes raised under this item this meeting → their own roots,
         // grouped under the item. Done first (before the no-action short-circuit)
@@ -268,7 +272,7 @@ export async function commitFollowUp(
         }
 
         const mappedStatus = STATUS_MAP[u.status];
-        const statusChanged = !!mappedStatus && mappedStatus !== root.status;
+        const statusChanged = !!mappedStatus && mappedStatus !== currentStatus;
         const hasNote = !!u.note && !!u.note.trim();
         const wantsDevops = u.devopsAction === "create" || u.devopsAction === "link";
         // Nothing meaningful to record — treat as an implicit "no update".
@@ -276,7 +280,7 @@ export async function commitFollowUp(
         // its own entry this meeting so Browse has a card to group them under).
         if (!hasNote && !statusChanged && !wantsDevops && !tagsChanged && subCreated === 0) continue;
 
-        const newStatus = mappedStatus ?? root.status;
+        const newStatus = mappedStatus ?? currentStatus;
         const area = root.area || "General";
         areaSet.add(area);
 
