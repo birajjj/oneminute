@@ -61,6 +61,10 @@ export interface FollowUpData {
   };
   areas: string[];
   openItems: OpenItem[];
+  // Identity of every item referenced as a "raised-from" parent — including
+  // completed ones — so the review can show a raised item's parent as a
+  // read-only header even when the parent no longer carries forward.
+  raisedParents: Record<string, { title: string; status: string; open: boolean }>;
 }
 
 export async function loadFollowUpData(
@@ -147,6 +151,24 @@ export async function loadFollowUpData(
 
   const areas = [...new Set(openItems.map((i) => i.area))].sort();
 
+  // Resolve the identity of each raised-from parent (even completed ones) so the
+  // review can render a raised item under its parent as a read-only header.
+  const rootById = new Map(minutes.filter((m) => !m.parentMinuteId).map((m) => [m.id, m]));
+  const openItemIds = new Set(openItems.map((i) => i.id));
+  const raisedParents: Record<string, { title: string; status: string; open: boolean }> = {};
+  for (const it of openItems) {
+    const pid = it.raisedFromRootId;
+    if (!pid || raisedParents[pid]) continue;
+    const proot = rootById.get(pid);
+    if (!proot) continue;
+    const cur = currentStatusOf(pid);
+    raisedParents[pid] = {
+      title: proot.title,
+      status: STATUS_LABEL[cur] ?? cur,
+      open: openItemIds.has(pid)
+    };
+  }
+
   return {
     parent: {
       id: parent.id,
@@ -156,6 +178,7 @@ export async function loadFollowUpData(
       projectName: parent.project.name
     },
     areas,
-    openItems
+    openItems,
+    raisedParents
   };
 }

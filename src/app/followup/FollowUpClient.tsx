@@ -190,24 +190,34 @@ export default function FollowUpClient({
     return () => { cancelled = true; };
   }, [devopsEnabled]);
 
-  // Items raised under another open item are nested beneath that parent (so they
-  // travel with the original minute) instead of appearing as their own row. An
-  // orphan (its parent already closed) falls back to being top-level.
-  const { byArea, childrenByParent } = useMemo(() => {
+  // Items raised under another item nest beneath that parent. If the parent is
+  // still open → nested under its editable block. If the parent is COMPLETED it
+  // no longer carries forward, so the child is grouped under a read-only header
+  // (data.raisedParents) instead of floating as a bare top-level row.
+  const { byArea, childrenByParent, orphanGroupsByArea } = useMemo(() => {
     const openIds = new Set(data.openItems.map((i) => i.id));
     const children: Record<string, OpenItem[]> = {};
+    const orphans: Record<string, OpenItem[]> = {};
     const topLevel: OpenItem[] = [];
     for (const it of data.openItems) {
-      if (it.raisedFromRootId && openIds.has(it.raisedFromRootId)) {
-        (children[it.raisedFromRootId] ??= []).push(it);
+      const pid = it.raisedFromRootId;
+      if (pid && openIds.has(pid)) {
+        (children[pid] ??= []).push(it);
+      } else if (pid && data.raisedParents[pid] && !data.raisedParents[pid].open) {
+        (orphans[pid] ??= []).push(it);
       } else {
         topLevel.push(it);
       }
     }
     const area: Record<string, OpenItem[]> = {};
     for (const it of topLevel) (area[it.area] ??= []).push(it);
-    return { byArea: area, childrenByParent: children };
-  }, [data.openItems]);
+    const orphanArea: Record<string, { parentId: string; info: { title: string; status: string }; children: OpenItem[] }[]> = {};
+    for (const [pid, kids] of Object.entries(orphans)) {
+      const a = kids[0].area;
+      (orphanArea[a] ??= []).push({ parentId: pid, info: data.raisedParents[pid], children: kids });
+    }
+    return { byArea: area, childrenByParent: children, orphanGroupsByArea: orphanArea };
+  }, [data.openItems, data.raisedParents]);
 
   // Tabbed review: only the active area's items are shown, like Browse.
   const [activeArea, setActiveArea] = useState<string>(() => data.areas[0] ?? "General");
@@ -441,6 +451,73 @@ export default function FollowUpClient({
     return [...extra, ...names];
   }
 
+  // One nested sub-item's editable review block — used both under an open parent
+  // ("Items under this") and under a completed parent's read-only header.
+  function renderChildReview(child: OpenItem) {
+    const cu = updates[child.id];
+    if (!cu) return null;
+    return (
+      <div key={child.id} className="rounded border-l-4 border-l-brand-blue bg-blue-100 p-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-sm font-medium">{child.title}</span>
+          <select
+            value={cu.type}
+            onChange={(e) => setUpdate(child.id, { type: e.target.value })}
+            className="rounded border border-slate-300 bg-white px-1 py-0.5 text-[11px]"
+            title="Type"
+          >
+            {TYPE_OPTIONS.map((t) => <option key={t} value={t}>{t}</option>)}
+          </select>
+          <select
+            value={cu.status}
+            onChange={(e) => setUpdate(child.id, { status: e.target.value })}
+            disabled={cu.noUpdate}
+            className="rounded border border-slate-300 bg-white px-1 py-0.5 text-[11px] disabled:opacity-50"
+            title="Status"
+          >
+            {STATUS_OPTIONS.map((s) => <option key={s} value={s}>{s}</option>)}
+          </select>
+          <select
+            value={cu.assignedTo}
+            onChange={(e) => setUpdate(child.id, { assignedTo: e.target.value })}
+            className="rounded border border-slate-300 bg-white px-1 py-0.5 text-[11px]"
+            title="Assignee"
+          >
+            <option value="">— Unassigned —</option>
+            {assigneeOptions(cu.assignedTo).map((n) => <option key={n} value={n}>{n}</option>)}
+          </select>
+          <input
+            type="date"
+            value={cu.dueDate}
+            onChange={(e) => setUpdate(child.id, { dueDate: e.target.value })}
+            className="rounded border border-slate-300 bg-white px-1 py-0.5 text-[11px]"
+            title="Due date"
+          />
+        </div>
+        {child.description && (
+          <div className="mt-0.5 text-xs text-slate-500">{child.description}</div>
+        )}
+        <label className="mt-1 flex items-center gap-1 text-xs text-slate-600">
+          <input
+            type="checkbox"
+            checked={cu.noUpdate}
+            onChange={(e) => setUpdate(child.id, { noUpdate: e.target.checked })}
+          />
+          No action
+        </label>
+        {!cu.noUpdate && (
+          <textarea
+            value={cu.note}
+            onChange={(e) => setUpdate(child.id, { note: e.target.value })}
+            rows={1}
+            placeholder="What happened with this item?"
+            className="mt-1 w-full rounded border border-slate-300 p-1 text-sm"
+          />
+        )}
+      </div>
+    );
+  }
+
   if (result) {
     return (
       <div className="flex items-center gap-3 rounded-lg border border-emerald-200 bg-emerald-50 p-6">
@@ -593,7 +670,9 @@ export default function FollowUpClient({
           {data.areas.length > 1 && (
             <div className="mb-4 flex flex-wrap gap-2 border-b border-slate-200 pb-2">
               {data.areas.map((area) => {
-                const count = (byArea[area] ?? []).length;
+                const count =
+                  (byArea[area] ?? []).length +
+                  (orphanGroupsByArea[area] ?? []).reduce((n, g) => n + g.children.length, 0);
                 const active = area === currentArea;
                 return (
                   <button
@@ -734,71 +813,7 @@ export default function FollowUpClient({
                             <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">
                               Items under this
                             </div>
-                            {(childrenByParent[it.id] ?? []).map((child) => {
-                              const cu = updates[child.id];
-                              if (!cu) return null;
-                              return (
-                                <div key={child.id} className="rounded border-l-4 border-l-brand-blue bg-blue-100 p-2">
-                                  {/* Editable header, same as the parent item. */}
-                                  <div className="flex flex-wrap items-center gap-2">
-                                    <span className="text-sm font-medium">{child.title}</span>
-                                    <select
-                                      value={cu.type}
-                                      onChange={(e) => setUpdate(child.id, { type: e.target.value })}
-                                      className="rounded border border-slate-300 bg-white px-1 py-0.5 text-[11px]"
-                                      title="Type"
-                                    >
-                                      {TYPE_OPTIONS.map((t) => <option key={t} value={t}>{t}</option>)}
-                                    </select>
-                                    <select
-                                      value={cu.status}
-                                      onChange={(e) => setUpdate(child.id, { status: e.target.value })}
-                                      disabled={cu.noUpdate}
-                                      className="rounded border border-slate-300 bg-white px-1 py-0.5 text-[11px] disabled:opacity-50"
-                                      title="Status"
-                                    >
-                                      {STATUS_OPTIONS.map((s) => <option key={s} value={s}>{s}</option>)}
-                                    </select>
-                                    <select
-                                      value={cu.assignedTo}
-                                      onChange={(e) => setUpdate(child.id, { assignedTo: e.target.value })}
-                                      className="rounded border border-slate-300 bg-white px-1 py-0.5 text-[11px]"
-                                      title="Assignee"
-                                    >
-                                      <option value="">— Unassigned —</option>
-                                      {assigneeOptions(cu.assignedTo).map((n) => <option key={n} value={n}>{n}</option>)}
-                                    </select>
-                                    <input
-                                      type="date"
-                                      value={cu.dueDate}
-                                      onChange={(e) => setUpdate(child.id, { dueDate: e.target.value })}
-                                      className="rounded border border-slate-300 bg-white px-1 py-0.5 text-[11px]"
-                                      title="Due date"
-                                    />
-                                  </div>
-                                  {child.description && (
-                                    <div className="mt-0.5 text-xs text-slate-500">{child.description}</div>
-                                  )}
-                                  <label className="mt-1 flex items-center gap-1 text-xs text-slate-600">
-                                    <input
-                                      type="checkbox"
-                                      checked={cu.noUpdate}
-                                      onChange={(e) => setUpdate(child.id, { noUpdate: e.target.checked })}
-                                    />
-                                    No action
-                                  </label>
-                                  {!cu.noUpdate && (
-                                    <textarea
-                                      value={cu.note}
-                                      onChange={(e) => setUpdate(child.id, { note: e.target.value })}
-                                      rows={1}
-                                      placeholder="What happened with this item?"
-                                      className="mt-1 w-full rounded border border-slate-300 p-1 text-sm"
-                                    />
-                                  )}
-                                </div>
-                              );
-                            })}
+                            {(childrenByParent[it.id] ?? []).map((child) => renderChildReview(child))}
                           </div>
                         )}
 
@@ -903,6 +918,23 @@ export default function FollowUpClient({
                   );
                 })}
               </div>
+
+              {/* Open items whose parent is already COMPLETED: shown under a
+                  read-only header so they stay linked to their origin, but the
+                  completed parent itself is not re-reviewed or saved. */}
+              {(orphanGroupsByArea[area] ?? []).map((grp) => (
+                <div key={grp.parentId} className="mt-5 rounded-lg border-l-4 border-l-slate-300 bg-slate-50 p-3">
+                  <div className="flex flex-wrap items-center gap-2 text-sm text-slate-600">
+                    <span className="font-medium">{grp.info.title}</span>
+                    <span className="rounded bg-slate-200 px-1.5 py-0.5 text-[10px] font-medium text-slate-600">{grp.info.status}</span>
+                    <span className="text-[11px] italic text-slate-400">— parent done; shown for context</span>
+                  </div>
+                  <div className="mt-2 space-y-2">
+                    {grp.children.map((child) => renderChildReview(child))}
+                  </div>
+                </div>
+              ))}
+
               <button
                 onClick={() => addNewMinute(area)}
                 className="mt-2 rounded border border-slate-300 px-3 py-1 text-xs text-slate-600 hover:bg-slate-50"
