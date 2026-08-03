@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { requireUser } from "@/lib/auth";
 import { db } from "@/lib/db";
-import type { MinuteStatus } from "@prisma/client";
+import type { MinuteStatus, MinuteType } from "@prisma/client";
 import { normalizeTags } from "@/lib/tags";
 
 export const runtime = "nodejs";
@@ -13,6 +13,13 @@ const STATUS_MAP: Record<string, MinuteStatus> = {
   "In Progress": "InProgress",
   Completed: "Completed",
   Cancelled: "Cancelled"
+};
+
+const TYPE_MAP: Record<string, MinuteType> = {
+  Note: "Note",
+  "To-Do": "Todo",
+  Action: "Action",
+  Devops: "Devops"
 };
 
 // Inline edits from Browse. status is a label ("In Progress"); assignedTo is a
@@ -27,7 +34,10 @@ const BodySchema = z.object({
   // updates don't scatter across tabs.
   area: z.string().optional(),
   // Governance flags — the full desired set, not a delta.
-  tags: z.array(z.string()).optional()
+  tags: z.array(z.string()).optional(),
+  // Item type (label). Belongs to the item's identity, so it's applied to the
+  // thread ROOT, not just this entry.
+  type: z.string().optional()
 });
 
 export async function PATCH(
@@ -68,6 +78,15 @@ export async function PATCH(
         await db.meetingArea.create({
           data: { orgId: user.orgId, meetingId: minute.meetingId, areaName: area }
         });
+      }
+    }
+
+    // Type is the item's identity → set it on the thread root.
+    if (parsed.data.type !== undefined) {
+      const mapped = TYPE_MAP[parsed.data.type];
+      if (mapped) {
+        const rootId = minute.parentMinuteId ?? minute.id;
+        await db.minute.update({ where: { id: rootId }, data: { type: mapped } });
       }
     }
 

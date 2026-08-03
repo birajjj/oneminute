@@ -62,6 +62,16 @@ export default async function BrowsePage({
   // Resolve follow-up parent meeting titles for display.
   const meetingById = new Map(meetings.map((m) => [m.id, m]));
 
+  // raisedFromRootId lives only on a sub-item's ROOT, not on its later update
+  // entries. Map each thread root -> its raisedFromRootId so every minute in the
+  // thread can be nested under the item it was raised from, in ANY meeting.
+  const rootRaisedFrom = new Map<string, string | null>();
+  for (const m of meetings) {
+    for (const mn of m.minutes) {
+      if (!mn.parentMinuteId) rootRaisedFrom.set(mn.id, mn.raisedFromRootId ?? null);
+    }
+  }
+
   // Build threads: rootId -> all minutes in that thread (across every meeting),
   // newest-first. rootId = a minute's parentMinuteId, or its own id if it's a root.
   const threads: Record<string, ThreadEntry[]> = {};
@@ -129,7 +139,10 @@ export default async function BrowsePage({
           dueDate: mn.dueDate ? mn.dueDate.toISOString() : null,
           devopsItemId: mn.devopsItemId ?? null,
           tags: mn.tags ?? [],
-          raisedFromRootId: mn.raisedFromRootId ?? null
+          raisedFromRootId: mn.raisedFromRootId ?? null,
+          // The raised-from of this minute's whole thread (so update entries in
+          // later meetings nest under the same parent as the original sub-item).
+          threadRaisedFrom: rootRaisedFrom.get(rootId) ?? null
         };
       })
     };

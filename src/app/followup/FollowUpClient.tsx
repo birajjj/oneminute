@@ -443,7 +443,7 @@ export default function FollowUpClient({
         <div className="flex h-10 w-10 items-center justify-center rounded-full bg-emerald-500 text-lg font-bold text-white">✓</div>
         <div className="flex-1">
           <div className="font-semibold">
-            Follow-up saved — {result.updated} update(s), {result.created} new minute(s)
+            Follow-up saved — {result.updated} update(s), {result.created} new item(s)
           </div>
           {result.warnings.length > 0 && (
             <ul className="mt-1 list-disc pl-5 text-xs text-amber-700">

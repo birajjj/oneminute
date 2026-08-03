@@ -25,6 +25,9 @@ export interface BrowseMinute {
   // If set, this minute was raised under another item during a follow-up; Browse
   // groups it beneath that item in the meeting it was raised.
   raisedFromRootId: string | null;
+  // The raised-from of this minute's whole thread — set on every entry in a
+  // raised sub-item's thread, so later-meeting updates nest under the parent too.
+  threadRaisedFrom: string | null;
 }
 
 export interface ThreadEntry {
@@ -123,7 +126,7 @@ export default function BrowseClient({
   // / assignee lives on its thread root). saveMinute updates immediately and
   // reverts on failure.
   const [edits, setEdits] = useState<
-    Record<string, { status?: string; assignedTo?: string | null; title?: string; description?: string | null; tags?: string[] }>
+    Record<string, { status?: string; assignedTo?: string | null; title?: string; description?: string | null; tags?: string[]; type?: string }>
   >({});
   const [saveError, setSaveError] = useState("");
 
@@ -148,7 +151,7 @@ export default function BrowseClient({
 
   async function saveMinute(
     id: string,
-    patch: { status?: string; assignedTo?: string | null; title?: string; description?: string | null; tags?: string[] }
+    patch: { status?: string; assignedTo?: string | null; title?: string; description?: string | null; tags?: string[]; type?: string }
   ) {
     const prev = edits[id];
     setSaveError("");
@@ -160,6 +163,7 @@ export default function BrowseClient({
       if (patch.title !== undefined) body.title = patch.title;
       if (patch.description !== undefined) body.description = patch.description ?? "";
       if (patch.tags !== undefined) body.tags = patch.tags;
+      if (patch.type !== undefined) body.type = patch.type;
       const res = await fetch(`/api/minutes/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
@@ -370,20 +374,26 @@ export default function BrowseClient({
   const [activeArea, setActiveArea] = useState<string>("General");
   const currentArea = areas.includes(activeArea) ? activeArea : areas[0] ?? "General";
 
-  // Minutes raised under another item this meeting are shown nested beneath that
-  // item's card, not as standalone cards — group them by the item they came from.
-  const raisedByRoot = useMemo(() => {
+  // Minutes whose THREAD was raised under another item are nested beneath that
+  // item's card — in every meeting, not just the one they were raised in — so a
+  // sub-item's later updates stay with the parent. Only nest when the parent
+  // actually has a card in this meeting; otherwise the sub-item shows standalone.
+  const { raisedByRoot, isNested } = useMemo(() => {
     const map: Record<string, BrowseMinute[]> = {};
-    if (!selected) return map;
+    if (!selected) return { raisedByRoot: map, isNested: () => false };
+    const presentRoots = new Set(
+      selected.minutes.filter((m) => !m.threadRaisedFrom).map((m) => m.rootId)
+    );
+    const nested = (m: BrowseMinute) => !!m.threadRaisedFrom && presentRoots.has(m.threadRaisedFrom);
     for (const m of selected.minutes) {
-      if (m.raisedFromRootId) (map[m.raisedFromRootId] ??= []).push(m);
+      if (nested(m)) (map[m.threadRaisedFrom!] ??= []).push(m);
     }
-    return map;
+    return { raisedByRoot: map, isNested: nested };
   }, [selected]);
 
   const areaMinutes = selected
     ? selected.minutes.filter(
-        (m) => (m.area || "General") === currentArea && !m.raisedFromRootId && minutePasses(m)
+        (m) => (m.area || "General") === currentArea && !isNested(m) && minutePasses(m)
       )
     : [];
   const isEditingMeeting = !!selected && editingMeeting === selected.id;
@@ -890,7 +900,7 @@ export default function BrowseClient({
                               <div className="mt-3">
                                 <div className="mb-1.5 flex items-center gap-2">
                                   <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">
-                                    Raised this meeting
+                                    Items under this
                                   </span>
                                   <span className="h-px flex-1 bg-slate-200" />
                                 </div>
@@ -898,18 +908,32 @@ export default function BrowseClient({
                                   {(raisedByRoot[mn.rootId] ?? []).map((sub) => {
                                     const subStatus = edits[sub.id]?.status ?? sub.status;
                                     const subDone = subStatus === "Completed" || subStatus === "Cancelled";
+                                    // Title/type are the sub-item's identity — read
+                                    // them from its thread root so a later-meeting
+                                    // update row still shows the real to-do, and edits
+                                    // to type target the root.
+                                    const subRoot = (threads[sub.rootId] ?? []).find((e) => e.isRoot);
+                                    const subTitle = subRoot?.title ?? sub.title;
+                                    const subType = edits[sub.rootId]?.type ?? subRoot?.type ?? sub.type;
                                     return (
                                       <div
                                         key={sub.id}
                                         className="rounded-md border border-slate-200 bg-white p-2.5 shadow-sm"
                                       >
                                         <div className="flex items-start gap-2">
-                                          <span className={`mt-0.5 shrink-0 rounded px-1.5 py-0.5 text-[10px] font-semibold ${TYPE_BADGE[sub.type] ?? "bg-slate-100 text-slate-600"}`}>
-                                            {sub.type}
-                                          </span>
+                                          <select
+                                            value={subType}
+                                            onChange={(e) => saveMinute(sub.rootId, { type: e.target.value })}
+                                            className={`mt-0.5 shrink-0 rounded border-0 px-1 py-0.5 text-[10px] font-semibold ${TYPE_BADGE[subType] ?? "bg-slate-100 text-slate-600"}`}
+                                            title="Type"
+                                          >
+                                            {["Note", "To-Do", "Action", "Devops"].map((t) => (
+                                              <option key={t} value={t}>{t}</option>
+                                            ))}
+                                          </select>
                                           <div className="min-w-0 flex-1">
                                             <div className={`text-sm font-medium ${subDone ? "text-slate-400 line-through" : "text-slate-800"}`}>
-                                              {sub.title}
+                                              {subTitle}
                                             </div>
                                             {sub.description && (
                                               <p className="mt-0.5 text-xs text-slate-500">{sub.description}</p>
