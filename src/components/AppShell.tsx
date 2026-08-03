@@ -44,6 +44,7 @@ export default function AppShell({
 }) {
   const [projectFilter, setProjectFilter] = useState("all");
   const [search, setSearch] = useState("");
+  const [sidebarOpen, setSidebarOpen] = useState(false);
 
   const filtered = useMemo(() => {
     let list = meetings;
@@ -59,14 +60,21 @@ export default function AppShell({
 
   return (
     <div className="flex h-screen flex-col bg-slate-50">
-      <header className="shrink-0 flex items-center justify-between border-b border-slate-200 bg-white px-6 py-3">
-        <h1 className="text-xl font-bold">Meeting Minutes</h1>
-        <div className="flex items-center gap-3">
+      <header className="shrink-0 flex flex-wrap items-center gap-2 border-b border-slate-200 bg-white px-4 py-3 sm:px-6">
+        <button
+          onClick={() => setSidebarOpen(true)}
+          className="rounded p-1.5 text-slate-600 hover:bg-slate-100 md:hidden"
+          aria-label="Open meetings menu"
+        >
+          ☰
+        </button>
+        <h1 className="text-lg font-bold sm:text-xl">Meeting Minutes</h1>
+        <div className="ml-auto flex flex-wrap items-center gap-2">
           <input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search notes…"
-            className="w-64 rounded-full border border-slate-300 px-4 py-1.5 text-sm"
+            className="w-36 rounded-full border border-slate-300 px-4 py-1.5 text-sm sm:w-64"
           />
           <a
             href="/browse"
@@ -74,7 +82,7 @@ export default function AppShell({
           >
             Browse
           </a>
-          <span className="text-sm text-slate-500">{userName}</span>
+          <span className="hidden text-sm text-slate-500 sm:inline">{userName}</span>
           <form action="/auth/signout" method="post">
             <button className="rounded border border-slate-300 px-3 py-1.5 text-sm">Sign out</button>
           </form>
@@ -82,8 +90,28 @@ export default function AppShell({
       </header>
 
       <div className="flex min-h-0 flex-1">
-        <aside className="flex w-72 shrink-0 flex-col border-r border-slate-200 bg-white p-4">
-          <h2 className="mb-3 text-lg font-bold">Recent Meetings</h2>
+        {/* Mobile drawer backdrop */}
+        {sidebarOpen && (
+          <div
+            className="fixed inset-0 z-30 bg-black/40 md:hidden"
+            onClick={() => setSidebarOpen(false)}
+          />
+        )}
+        <aside
+          className={`w-72 shrink-0 flex-col overflow-y-auto border-r border-slate-200 bg-white p-4 ${
+            sidebarOpen ? "fixed inset-y-0 left-0 z-40 flex" : "hidden"
+          } md:static md:z-auto md:flex`}
+        >
+          <div className="mb-3 flex items-center justify-between">
+            <h2 className="text-lg font-bold">Recent Meetings</h2>
+            <button
+              onClick={() => setSidebarOpen(false)}
+              className="rounded p-1 text-slate-500 hover:bg-slate-100 md:hidden"
+              aria-label="Close menu"
+            >
+              ✕
+            </button>
+          </div>
 
           <ProjectFilterDropdown
             projects={projects}
@@ -108,7 +136,7 @@ export default function AppShell({
           </div>
         </aside>
 
-        <main className="min-h-0 flex-1 overflow-y-auto p-6">{children}</main>
+        <main className="min-h-0 flex-1 overflow-y-auto p-4 sm:p-6">{children}</main>
       </div>
     </div>
   );
