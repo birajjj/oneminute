@@ -388,18 +388,22 @@ async function commitDevops(input: {
 function resolveMeetingDate(s: string | null | undefined): Date {
   const now = new Date();
   if (!s || !s.trim()) return now;
-  const m = s.trim().match(/^(\d{4})-(\d{2})-(\d{2})/);
-  if (m) {
-    return new Date(
-      Number(m[1]),
-      Number(m[2]) - 1,
-      Number(m[3]),
-      now.getHours(),
-      now.getMinutes(),
-      now.getSeconds()
-    );
+  const str = s.trim();
+
+  // Full ISO instant (what the client sends — already the user's local wall
+  // clock) — store it verbatim.
+  if (str.includes("T")) {
+    const parsed = new Date(str);
+    if (!isNaN(parsed.getTime())) return parsed;
   }
-  const parsed = new Date(s);
+
+  // Bare YYYY-MM-DD — anchor at noon so the calendar day survives timezone render.
+  const m = str.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (m) {
+    return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]), 12, 0, 0);
+  }
+
+  const parsed = new Date(str);
   return isNaN(parsed.getTime()) ? now : parsed;
 }
 

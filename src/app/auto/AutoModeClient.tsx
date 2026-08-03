@@ -28,12 +28,34 @@ function todayLocal(): string {
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
 }
 
-// A YYYY-MM-DD date the user picked → a full ISO instant at the current local
-// time-of-day, so the server stores the exact moment and it renders on the right
-// calendar day back in the user's timezone.
-function localDateToISO(dateStr: string): string {
-  const m = dateStr.trim().match(/^(\d{4})-(\d{2})-(\d{2})$/);
+// Local now as a datetime-local value (YYYY-MM-DDTHH:mm) for the date+time input.
+function nowLocalDateTime(): string {
+  const d = new Date();
+  const p = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+
+// Normalize a stored meetingDate (date-only from the AI, or a datetime-local the
+// user picked) into a datetime-local value for the input.
+function toDateTimeLocalValue(s: string): string {
+  if (!s) return nowLocalDateTime();
+  if (s.includes("T")) return s.slice(0, 16);
   const now = new Date();
+  const p = (n: number) => String(n).padStart(2, "0");
+  return `${s}T${p(now.getHours())}:${p(now.getMinutes())}`;
+}
+
+// The picked date/time → a full ISO instant. A datetime-local value is the user's
+// local wall clock, so `new Date()` parses it in their timezone; a bare date is
+// anchored at the current local time-of-day.
+function localDateToISO(dateStr: string): string {
+  const s = dateStr.trim();
+  const now = new Date();
+  if (s.includes("T")) {
+    const d = new Date(s);
+    return isNaN(d.getTime()) ? now.toISOString() : d.toISOString();
+  }
+  const m = s.match(/^(\d{4})-(\d{2})-(\d{2})$/);
   if (!m) return now.toISOString();
   const d = new Date(
     Number(m[1]), Number(m[2]) - 1, Number(m[3]),
@@ -508,7 +530,15 @@ function PlanReview({
               ))}
             </select>
           )}
-          <div className="mt-1 text-xs text-slate-500">{plan.meeting.meetingDate}</div>
+          <label className="mt-1 block text-[11px] text-slate-500">
+            Date &amp; time
+            <input
+              type="datetime-local"
+              value={toDateTimeLocalValue(plan.meeting.meetingDate)}
+              onChange={(e) => setMeeting({ meetingDate: e.target.value })}
+              className="mt-0.5 block rounded border border-slate-300 px-2 py-1 text-xs text-slate-700"
+            />
+          </label>
           {plan.meeting.action === "followup" && (
             <div className="mt-1.5 rounded bg-amber-50 px-2 py-1 text-[11px] leading-snug text-amber-800">
               This links the meeting as a follow-up and saves the items below as <b>new</b> minutes.

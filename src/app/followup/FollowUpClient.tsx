@@ -61,12 +61,23 @@ function fmtDate(iso: string): string {
   );
 }
 
-function todayDateInput(): string {
+// Local now as a datetime-local value (YYYY-MM-DDTHH:mm) for the date+time input.
+function nowDateTimeInput(): string {
   const d = new Date();
-  const year = d.getFullYear();
-  const month = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
+  const p = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+
+// A datetime-local value (the user's local wall clock) → a full ISO instant, so
+// the server stores the exact moment and it renders correctly in their timezone.
+function dateTimeLocalToISO(s: string): string {
+  const d = new Date(s);
+  return isNaN(d.getTime()) ? new Date().toISOString() : d.toISOString();
+}
+
+// The follow-up title still uses just the date part.
+function datePart(s: string): string {
+  return s.slice(0, 10);
 }
 
 function buildFollowUpTitle(parentTitle: string, date: string): string {
@@ -98,9 +109,9 @@ export default function FollowUpClient({
   devopsBaseUrl: string;
   devopsEnabled: boolean;
 }) {
-  const initialDate = todayDateInput();
+  const initialDate = nowDateTimeInput();
   const parentDisplayTitle = stripFollowUpSuffixes(data.parent.title) || data.parent.title;
-  const [title, setTitle] = useState(() => buildFollowUpTitle(data.parent.title, initialDate));
+  const [title, setTitle] = useState(() => buildFollowUpTitle(data.parent.title, datePart(initialDate)));
   const [date, setDate] = useState(initialDate);
 
   const [updates, setUpdates] = useState<Record<string, ItemUpdate>>(() => {
@@ -403,7 +414,7 @@ export default function FollowUpClient({
         body: JSON.stringify({
           parentMeetingId: data.parent.id,
           meetingTitle: title,
-          meetingDate: date,
+          meetingDate: dateTimeLocalToISO(date),
           updates: data.openItems.map((it) => ({ rootMinuteId: it.id, ...updates[it.id] })),
           newMinutes: newMinutes.filter((m) => m.title.trim())
         })
@@ -540,9 +551,9 @@ export default function FollowUpClient({
           />
         </label>
         <label className="text-sm">
-          <span className="text-xs font-semibold uppercase text-slate-500">Date</span>
+          <span className="text-xs font-semibold uppercase text-slate-500">Date &amp; time</span>
           <input
-            type="date"
+            type="datetime-local"
             value={date}
             onChange={(e) => setDate(e.target.value)}
             className="mt-1 w-full rounded border border-slate-300 p-2 text-sm"
