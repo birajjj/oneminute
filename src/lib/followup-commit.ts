@@ -223,30 +223,27 @@ export async function commitFollowUp(
         }
         created += subCreated;
 
-        // "No action this meeting" records NOTHING — the item just carries forward
-        // untouched, so the follow-up meeting shows only items that actually
-        // changed. EXCEPTION: if sub-items were raised under it this meeting, keep
-        // a placeholder entry so those sub-items have a parent card to nest under.
+        // "No action this meeting" — record a marker note so the review is on the
+        // record. It carries a note ("No action this meeting."), so it shows in the
+        // follow-up table; note-less entries are hidden there instead.
         if (u.noUpdate) {
-          if (subCreated > 0) {
-            const area = root.area || "General";
-            areaSet.add(area);
-            await tx.minute.create({
-              data: {
-                orgId,
-                meetingId: meeting.id,
-                area,
-                title: root.title,
-                description: null, // no note — Browse shows "(no note)"
-                type: "Note", // a status placeholder, not the item; card header keeps the real type
-                status: root.status,
-                tags: entryTags,
-                parentMinuteId: root.id,
-                isPersistent: false
-              }
-            });
-            updated++;
-          }
+          const area = root.area || "General";
+          areaSet.add(area);
+          await tx.minute.create({
+            data: {
+              orgId,
+              meetingId: meeting.id,
+              area,
+              title: root.title,
+              description: "No action this meeting.",
+              type: "Note", // an item's update is always a Note; its real type is on the card
+              status: root.status,
+              tags: entryTags,
+              parentMinuteId: root.id,
+              isPersistent: false
+            }
+          });
+          updated++;
           continue;
         }
 
@@ -263,12 +260,10 @@ export async function commitFollowUp(
         const area = root.area || "General";
         areaSet.add(area);
 
-        // The update entry's type. Closing an item (Completed/Cancelled) records
-        // a Note — it's a closing status note, not a fresh to-do — matching the
-        // "no action" marker. Otherwise use the user's choice (default: the
-        // item's own type). The item's real type stays on its root regardless.
-        const isClosing = newStatus === "Completed" || newStatus === "Cancelled";
-        const updateType = isClosing ? "Note" : TYPE_MAP[u.type] ?? root.type;
+        // An item's own follow-up update is always recorded as a Note — it's
+        // commentary on the item, not a fresh to-do. The item's real type stays
+        // on its root, so the Browse card header still reads To-Do/Action/etc.
+        const updateType: MinuteType = "Note";
 
         // Optionally create/link a DevOps work item for this update.
         let devopsItemId: number | null = null;

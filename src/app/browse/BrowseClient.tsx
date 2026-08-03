@@ -659,11 +659,16 @@ export default function BrowseClient({
                     // Nested history: only what existed UP TO the meeting being viewed
                     // (so an earlier meeting doesn't show later updates). The full
                     // journey is still in the thread popup.
-                    const nestedRows: ThreadEntry[] = mn.isFollowUp
-                      ? selfEntry ? [selfEntry] : []
-                      : (threads[mn.rootId] ?? []).filter(
-                          (e) => !e.isRoot && (!selected || e.date <= selected.date)
-                        );
+                    const nestedRows: ThreadEntry[] = (
+                      mn.isFollowUp
+                        ? selfEntry ? [selfEntry] : []
+                        : (threads[mn.rootId] ?? []).filter(
+                            (e) => !e.isRoot && (!selected || e.date <= selected.date)
+                          )
+                      // Only show updates that carry a note — a note-less entry
+                      // (e.g. a placeholder created when sub-items were raised, or a
+                      // bare status change) would just be an empty row.
+                    ).filter((e) => e.description?.trim());
 
                     const isOpenPending =
                       mn.isPersistent && displayStatus !== "Completed" && displayStatus !== "Cancelled";
@@ -802,14 +807,9 @@ export default function BrowseClient({
                                         className={`cursor-pointer hover:bg-blue-50 ${open ? "" : "text-slate-400"}`}
                                       >
                                         <td className="border-b border-slate-100 px-3 py-1.5 text-brand-blue">
-                                          {/* An update entry with no note (e.g. only a
-                                              status change, or a placeholder created when
-                                              sub-items were raised) previously fell back to
-                                              the item's title — which just repeats the card
-                                              header. Show a muted marker instead. */}
-                                          {fu.description?.trim() || (
-                                            <span className="italic text-slate-400">(no note)</span>
-                                          )}
+                                          {/* Note-less rows are filtered out upstream,
+                                              so this is always the update's note. */}
+                                          {fu.description?.trim()}
                                         </td>
                                         <td className="border-b border-slate-100 px-3 py-1.5">{fu.type}</td>
                                         <td className="border-b border-slate-100 px-3 py-1.5">
