@@ -209,6 +209,10 @@ export default function FollowUpClient({
     return { byArea: area, childrenByParent: children };
   }, [data.openItems]);
 
+  // Tabbed review: only the active area's items are shown, like Browse.
+  const [activeArea, setActiveArea] = useState<string>(() => data.areas[0] ?? "General");
+  const currentArea = data.areas.includes(activeArea) ? activeArea : (data.areas[0] ?? "General");
+
   function setUpdate(id: string, patch: Partial<ItemUpdate>) {
     setUpdates((prev) => ({ ...prev, [id]: { ...prev[id], ...patch } }));
   }
@@ -584,9 +588,33 @@ export default function FollowUpClient({
             No open items to carry forward from this project. You can still add new minutes below.
           </p>
         ) : (
-          data.areas.map((area) => (
+          <>
+          {/* Area tabs — click to jump to a group without scrolling. */}
+          {data.areas.length > 1 && (
+            <div className="mb-4 flex flex-wrap gap-2 border-b border-slate-200 pb-2">
+              {data.areas.map((area) => {
+                const count = (byArea[area] ?? []).length;
+                const active = area === currentArea;
+                return (
+                  <button
+                    key={area}
+                    onClick={() => setActiveArea(area)}
+                    className={`rounded-t px-3 py-1.5 text-sm font-medium ${
+                      active
+                        ? "bg-brand-blue/10 text-brand-blue"
+                        : "text-slate-500 hover:bg-slate-100"
+                    }`}
+                  >
+                    {area}
+                    {count > 0 && <span className="ml-1 text-xs text-slate-400">({count})</span>}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+          {data.areas.map((area) =>
+            area !== currentArea ? null : (
             <div key={area} className="mb-4">
-              <div className="mb-2 text-sm font-semibold text-slate-700">{area}</div>
               <div className="space-y-5">
                 {(byArea[area] ?? []).map((it) => {
                   const u = updates[it.id];
@@ -888,7 +916,8 @@ export default function FollowUpClient({
                 </div>
               )}
             </div>
-          ))
+          ))}
+          </>
         )}
       </div>
 
