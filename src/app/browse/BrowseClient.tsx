@@ -724,6 +724,7 @@ export default function BrowseClient({
                       // (e.g. a placeholder created when sub-items were raised, or a
                       // bare status change) would just be an empty row.
                     ).filter((e) => e.description?.trim());
+                    const noteThreadCount = (threads[mn.rootId] ?? []).filter((e) => e.type === "Note").length;
 
                     const isOpenPending =
                       mn.isPersistent && displayStatus !== "Completed" && displayStatus !== "Cancelled";
@@ -793,12 +794,12 @@ export default function BrowseClient({
                                   ● pending
                                 </span>
                               )}
-                              {mn.threadCount > 1 && (
+                              {mn.threadCount > 1 && noteThreadCount > 0 && (
                                 <button
                                   onClick={() => setOpenThreadRoot(mn.rootId)}
                                   className="rounded bg-indigo-100 px-1.5 py-0.5 text-[10px] font-medium text-indigo-700 hover:bg-indigo-200"
                                 >
-                                  🔗 {mn.threadCount} in thread
+                                  <span>{noteThreadCount} {noteThreadCount === 1 ? "note" : "notes"}</span>
                                 </button>
                               )}
                               <select
