@@ -896,7 +896,20 @@ export default function BrowseClient({
                               {savedFlash === itemId && (
                                 <span className="text-[10px] font-medium text-emerald-600">Saved ✓</span>
                               )}
-                              <span className="text-xs italic text-slate-500">{headerType}</span>
+                              {mn.isReference ? (
+                                <span className="text-xs italic text-slate-500">{headerType}</span>
+                              ) : (
+                                <select
+                                  value={edits[itemId]?.type ?? headerType}
+                                  onChange={(e) => saveMinute(itemId, { type: e.target.value })}
+                                  className={`rounded border-0 px-1 py-0.5 text-[10px] font-semibold ${TYPE_BADGE[edits[itemId]?.type ?? headerType] ?? "bg-slate-100 text-slate-600"}`}
+                                  title="Type — applies to the whole item"
+                                >
+                                  {["Note", "To-Do", "Action", "Devops"].map((t) => (
+                                    <option key={t} value={t}>{t}</option>
+                                  ))}
+                                </select>
+                              )}
                               {mn.isReference && (
                                 <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] text-slate-400" title="Not discussed this meeting — shown so its items stay grouped">
                                   carried
