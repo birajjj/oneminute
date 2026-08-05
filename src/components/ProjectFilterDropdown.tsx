@@ -11,11 +11,14 @@ export default function ProjectFilterDropdown({
   projects,
   value,
   onChange,
+  onDeleteProject,
   className = ""
 }: {
   projects: ProjectFilterOption[];
   value: string;
   onChange: (value: string) => void;
+  // When provided, each project row shows a hover trash icon that calls this.
+  onDeleteProject?: (project: ProjectFilterOption) => void;
   className?: string;
 }) {
   const [open, setOpen] = useState(false);
@@ -59,6 +62,11 @@ export default function ProjectFilterDropdown({
               label={p.name}
               selected={value === p.id}
               onChoose={() => choose(p.id)}
+              onDelete={
+                onDeleteProject
+                  ? () => { setOpen(false); onDeleteProject(p); }
+                  : undefined
+              }
             />
           ))}
         </div>
@@ -70,25 +78,47 @@ export default function ProjectFilterDropdown({
 function DropdownOption({
   label,
   selected,
-  onChoose
+  onChoose,
+  onDelete
 }: {
   label: string;
   selected: boolean;
   onChoose: () => void;
+  onDelete?: () => void;
 }) {
   return (
-    <button
-      type="button"
-      role="option"
-      aria-selected={selected}
-      onMouseDown={(e) => e.preventDefault()}
-      onClick={onChoose}
-      className={`block w-full truncate px-3 py-1.5 text-left ${
-        selected ? "bg-brand-blue text-white" : "text-slate-900 hover:bg-slate-100"
+    <div
+      className={`group flex items-center ${
+        selected ? "bg-brand-blue" : "hover:bg-slate-100"
       }`}
-      title={label}
     >
-      {label}
-    </button>
+      <button
+        type="button"
+        role="option"
+        aria-selected={selected}
+        onMouseDown={(e) => e.preventDefault()}
+        onClick={onChoose}
+        className={`min-w-0 flex-1 truncate px-3 py-1.5 text-left ${
+          selected ? "text-white" : "text-slate-900"
+        }`}
+        title={label}
+      >
+        {label}
+      </button>
+      {onDelete && (
+        <button
+          type="button"
+          onMouseDown={(e) => e.preventDefault()}
+          onClick={(e) => { e.stopPropagation(); onDelete(); }}
+          className={`shrink-0 px-2 py-1.5 text-xs opacity-0 transition group-hover:opacity-100 ${
+            selected ? "text-white/80 hover:text-white" : "text-slate-400 hover:text-red-600"
+          }`}
+          title={`Delete project “${label}”`}
+          aria-label={`Delete project ${label}`}
+        >
+          🗑
+        </button>
+      )}
+    </div>
   );
 }

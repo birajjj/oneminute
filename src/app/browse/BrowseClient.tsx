@@ -229,6 +229,36 @@ export default function BrowseClient({
     }
   }
 
+  // ---- Delete a whole project (from the sidebar filter dropdown) ----
+  const [confirmDeleteProject, setConfirmDeleteProject] = useState<BrowseProject | null>(null);
+  const [deletingProject, setDeletingProject] = useState(false);
+
+  // Counts for the confirmation, from data already loaded.
+  function projectCounts(projectId: string) {
+    const ms = meetings.filter((m) => m.projectId === projectId);
+    const minutes = ms.reduce((n, m) => n + m.minutes.length, 0);
+    return { meetings: ms.length, minutes };
+  }
+
+  async function deleteProject(p: BrowseProject) {
+    setDeletingProject(true);
+    try {
+      const res = await fetch(`/api/projects/${p.id}`, { method: "DELETE" });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || String(res.status));
+      setConfirmDeleteProject(null);
+      if (projectFilter === p.id) setProjectFilter("all");
+      // The selected meeting may have belonged to the deleted project.
+      if (selected && selected.projectId === p.id) setSelectedId(null);
+      router.refresh();
+    } catch (err) {
+      setSaveError("Couldn't delete project: " + (err instanceof Error ? err.message : "error"));
+      setConfirmDeleteProject(null);
+    } finally {
+      setDeletingProject(false);
+    }
+  }
+
   // ---- Area/tab: drag-and-drop re-filing + rename ----
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [dragOverArea, setDragOverArea] = useState<string | null>(null);
@@ -589,6 +619,7 @@ export default function BrowseClient({
             projects={projects}
             value={projectFilter}
             onChange={setProjectFilter}
+            onDeleteProject={(p) => setConfirmDeleteProject(p)}
             className="mb-3"
           />
 
@@ -1164,6 +1195,41 @@ export default function BrowseClient({
 
       {/* Delete confirmation — shows exactly what will go, and refuses while
           later meetings still depend on this one. */}
+      {confirmDeleteProject && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setConfirmDeleteProject(null)}>
+          <div className="w-full max-w-md rounded-lg bg-white p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
+            <h3 className="text-lg font-bold">Delete this project?</h3>
+            <p className="mt-2 text-sm text-slate-600">
+              <span className="font-medium">{confirmDeleteProject.name}</span>
+            </p>
+            {(() => {
+              const c = projectCounts(confirmDeleteProject.id);
+              return (
+                <div className="mt-3 rounded border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+                  This permanently deletes the project and all of its{" "}
+                  <b>{c.meetings} meeting(s)</b> and <b>{c.minutes} minute(s)</b>. This cannot be undone.
+                </div>
+              );
+            })()}
+            <div className="mt-4 flex items-center gap-2 border-t border-slate-200 pt-3">
+              <button
+                onClick={() => setConfirmDeleteProject(null)}
+                className="rounded border border-slate-300 px-4 py-1.5 text-sm"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => deleteProject(confirmDeleteProject)}
+                disabled={deletingProject}
+                className="ml-auto rounded bg-red-600 px-4 py-1.5 text-sm font-medium text-white disabled:opacity-50"
+              >
+                {deletingProject ? "Deleting…" : "Delete project"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {confirmDelete && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setConfirmDelete(null)}>
           <div className="w-full max-w-md rounded-lg bg-white p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
