@@ -44,8 +44,12 @@ export async function POST(req: NextRequest) {
       });
     }
 
+    // The Auto page is always a NEW meeting — skip the org-wide history so the
+    // prompt stays small and fast (no follow-up detection here; that's the
+    // Follow-up flow's job).
     const plan = await buildAutoPlan(user.orgId, parsed.data.chunk, parsed.data.today, {
-      priorTitles: parsed.data.priorTitles
+      priorTitles: parsed.data.priorTitles,
+      newMeetingOnly: true
     });
     return NextResponse.json(plan);
   } catch (err) {

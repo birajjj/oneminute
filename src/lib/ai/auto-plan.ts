@@ -119,9 +119,17 @@ export async function buildAutoPlan(
   orgId: string,
   transcript: string,
   today?: string,
-  opts?: { priorTitles?: string[] }
+  opts?: { priorTitles?: string[]; newMeetingOnly?: boolean }
 ): Promise<AutoPlan> {
-  const context = await loadContext(orgId);
+  // New-meeting mode (the Auto page): this is a brand-new meeting, so there's no
+  // point loading the org's history to hunt for follow-ups — that huge context
+  // is exactly what made analysis slow. Load only the user roster (for assignee
+  // matching); the prompt sees "(no existing projects)" and treats everything as
+  // new. Filing under an existing project stays a manual choice, and continuing a
+  // project with its history is what the Follow-up flow is for.
+  const context: Context = opts?.newMeetingOnly
+    ? { projects: [], users: await loadUsers(orgId) }
+    : await loadContext(orgId);
   const prompt = buildPrompt(transcript, context, today, opts?.priorTitles);
 
   const { data, raw } = await generateJson<AutoPlan>({
@@ -218,15 +226,27 @@ interface Context {
   users: string[];
 }
 
+// Just the roster, for the new-meeting fast path (no history needed).
+async function loadUsers(orgId: string): Promise<string[]> {
+  const users = await db.user.findMany({ where: { orgId }, select: { displayName: true } });
+  return users.map((u) => u.displayName);
+}
+
+// Keep the prompt bounded no matter how much history the org has — a huge
+// open-minutes list makes every analyse call slow (and can push it past 60s).
+const MAX_PROJECTS = 20;
+const MAX_OPEN_PER_PROJECT = 12;
+const MAX_DESC_CHARS = 80;
+
 async function loadContext(orgId: string): Promise<Context> {
   const projects = await db.project.findMany({
     where: { orgId },
     orderBy: { createdAt: "desc" },
-    take: 50,
+    take: MAX_PROJECTS,
     include: {
       meetings: {
         orderBy: { meetingDate: "desc" },
-        take: 5,
+        take: 3,
         select: { id: true, title: true, meetingDate: true }
       }
     }
@@ -273,7 +293,7 @@ async function loadContext(orgId: string): Promise<Context> {
     (openByProject[m.meeting.projectId] ??= []).push({
       id: m.id,
       title: m.title,
-      description: (m.description || "").slice(0, 200),
+      description: (m.description || "").slice(0, MAX_DESC_CHARS),
       status: cur,
       area: m.area
     });
@@ -303,7 +323,9 @@ async function loadContext(orgId: string): Promise<Context> {
         title: m.title,
         date: m.meetingDate.toISOString().slice(0, 10)
       })),
-      openMinutes: openByProject[p.id] ?? []
+      // Only the most-recent open items per project — enough for follow-up
+      // detection without ballooning the prompt.
+      openMinutes: (openByProject[p.id] ?? []).slice(-MAX_OPEN_PER_PROJECT)
     })),
     users: users.map((u) => u.displayName)
   };
