@@ -10,7 +10,9 @@ import BusyOverlay from "@/components/BusyOverlay";
 const TYPE_OPTIONS = ["Note", "To-Do", "Action", "Devops"];
 // Types allowed for extra minutes raised under an open item (boss: note/todo/
 // devops, not action).
-const SUB_TYPE_OPTIONS = ["Note", "To-Do", "Devops"];
+// Sub-entries are actionable items raised under a review item. A plain note is
+// redundant — the "What happened with this item?" box already captures that.
+const SUB_TYPE_OPTIONS = ["To-Do", "Devops"];
 const STATUS_OPTIONS = ["New", "Initiated", "In Progress", "Completed", "Cancelled"];
 
 interface Member {
@@ -138,10 +140,10 @@ export default function FollowUpClient({
     return init;
   });
 
-  // Sub-entries: add / edit / remove a note-todo-devops under a given open item.
+  // Sub-entries: add / edit / remove a to-do/devops under a given open item.
   function emptySub(): NewMinute {
     return {
-      area: "", title: "", description: "", type: "Note", status: "New",
+      area: "", title: "", description: "", type: "To-Do", status: "New",
       assignedTo: "", dueDate: "", tags: [],
       devopsAction: "none", devopsProject: "", devopsWorkItemType: "User Story", devopsWorkItemId: ""
     };
@@ -911,7 +913,7 @@ export default function FollowUpClient({
                           onClick={() => addSub(it.id)}
                           className="mt-2 rounded border border-slate-300 px-2 py-1 text-[11px] text-slate-600 hover:bg-slate-50"
                         >
-                          + Add note / to-do / devops under this item
+                          + Add to-do / devops under this item
                         </button>
                       </div>
                     </div>
