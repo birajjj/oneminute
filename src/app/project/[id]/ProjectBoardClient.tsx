@@ -44,6 +44,15 @@ const STATUS_BADGE: Record<string, string> = {
   Cancelled: "bg-slate-200 text-slate-500"
 };
 
+// A coloured left edge per status, for peripheral "where does this stand" scanning.
+const STATUS_ACCENT: Record<string, string> = {
+  New: "border-l-slate-300",
+  Initiated: "border-l-indigo-400",
+  "In Progress": "border-l-blue-500",
+  Completed: "border-l-emerald-500",
+  Cancelled: "border-l-slate-300"
+};
+
 const TYPE_OPTIONS = ["To-Do", "Devops", "Action", "Note"];
 
 function isOpen(status: string) {
@@ -209,7 +218,12 @@ export default function ProjectBoardClient({
         <div className="mx-auto max-w-5xl px-4 py-5 sm:px-6">
           {/* Title + summary */}
           <div className="mb-4">
-            <h1 className="text-xl font-bold text-slate-800 sm:text-2xl">{project.name}</h1>
+            <div className="flex flex-wrap items-center gap-2">
+              <h1 className="text-xl font-bold text-slate-800 sm:text-2xl">{project.name}</h1>
+              <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-medium uppercase tracking-wide text-slate-500">
+                Board
+              </span>
+            </div>
             <p className="mt-1 text-sm text-slate-500">
               <span className="font-semibold text-slate-700">{summary.total}</span> items ·{" "}
               <span className="font-semibold text-amber-600">{summary.open}</span> open ·{" "}
@@ -225,108 +239,121 @@ export default function ProjectBoardClient({
           </div>
 
           {/* Filter bar */}
-          <div className="mb-3 flex flex-wrap items-center gap-2 rounded-lg border border-slate-200 bg-white p-3">
-            {/* Status segmented control */}
-            <div className="inline-flex overflow-hidden rounded-md border border-slate-300 text-sm">
-              {(["open", "completed", "all"] as const).map((s) => (
-                <button
-                  key={s}
-                  onClick={() => setStatusFilter(s)}
-                  className={`px-3 py-1 capitalize ${
-                    statusFilter === s
-                      ? "bg-brand-blue text-white"
-                      : "bg-white text-slate-600 hover:bg-slate-100"
-                  }`}
-                >
-                  {s}
-                </button>
-              ))}
-            </div>
-
-            <select
-              value={typeFilter}
-              onChange={(e) => setTypeFilter(e.target.value)}
-              className="rounded-md border border-slate-300 px-2 py-1 text-sm text-slate-700"
-            >
-              <option value="All">All types</option>
-              {TYPE_OPTIONS.map((t) => (
-                <option key={t} value={t}>
-                  {t}
-                </option>
-              ))}
-            </select>
-
-            <select
-              value={assigneeFilter}
-              onChange={(e) => setAssigneeFilter(e.target.value)}
-              className="rounded-md border border-slate-300 px-2 py-1 text-sm text-slate-700"
-            >
-              <option value="All">Anyone</option>
-              <option value="__unassigned">Unassigned</option>
-              {members.map((m) => (
-                <option key={m} value={m}>
-                  {m}
-                </option>
-              ))}
-            </select>
-
-            <select
-              value={sort}
-              onChange={(e) => setSort(e.target.value as typeof sort)}
-              className="rounded-md border border-slate-300 px-2 py-1 text-sm text-slate-700"
-              title="Sort"
-            >
-              <option value="activity">Recent activity</option>
-              <option value="due">Due date</option>
-              <option value="title">Title A–Z</option>
-              <option value="status">Status</option>
-            </select>
-
-            {/* Flags */}
-            <div className="flex items-center gap-1">
-              {MINUTE_TAGS.map((tag) => {
-                const on = flagFilter.includes(tag);
-                return (
+          <div className="mb-3 space-y-2 rounded-lg border border-slate-200 bg-white p-3">
+            {/* Row 1: search (grows) + sort */}
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="relative min-w-[180px] flex-1">
+                <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">
+                  ⌕
+                </span>
+                <input
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  placeholder="Search items…"
+                  className="w-full rounded-md border border-slate-300 py-1.5 pl-8 pr-8 text-sm"
+                />
+                {search && (
                   <button
-                    key={tag}
-                    onClick={() => toggleFlag(tag)}
-                    className={`rounded-full border px-2 py-0.5 text-xs font-medium ${
-                      on ? TAG_STYLES[tag] : "border-slate-200 bg-white text-slate-400 hover:bg-slate-50"
-                    }`}
-                    title={`Filter by ${tag}`}
+                    onClick={() => setSearch("")}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 rounded-full px-1 text-slate-400 hover:text-slate-600"
+                    aria-label="Clear search"
                   >
-                    {tag}
+                    ✕
                   </button>
-                );
-              })}
+                )}
+              </div>
+              <label className="flex items-center gap-1.5 text-xs text-slate-500">
+                Sort
+                <select
+                  value={sort}
+                  onChange={(e) => setSort(e.target.value as typeof sort)}
+                  className="rounded-md border border-slate-300 px-2 py-1.5 text-sm text-slate-700"
+                >
+                  <option value="activity">Recent activity</option>
+                  <option value="due">Due date</option>
+                  <option value="title">Title A–Z</option>
+                  <option value="status">Status</option>
+                </select>
+              </label>
             </div>
 
-            <div className="relative ml-auto">
-              <input
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder="Search items…"
-                className="w-40 rounded-full border border-slate-300 px-3 py-1 pr-7 text-sm sm:w-56"
-              />
-              {search && (
+            {/* Row 2: status + type + assignee + flags */}
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="inline-flex overflow-hidden rounded-md border border-slate-300 text-sm">
+                {(["open", "completed", "all"] as const).map((s) => (
+                  <button
+                    key={s}
+                    onClick={() => setStatusFilter(s)}
+                    className={`px-3 py-1 capitalize ${
+                      statusFilter === s
+                        ? "bg-brand-blue text-white"
+                        : "bg-white text-slate-600 hover:bg-slate-100"
+                    }`}
+                  >
+                    {s}
+                  </button>
+                ))}
+              </div>
+
+              <select
+                value={typeFilter}
+                onChange={(e) => setTypeFilter(e.target.value)}
+                className="rounded-md border border-slate-300 px-2 py-1 text-sm text-slate-700"
+              >
+                <option value="All">All types</option>
+                {TYPE_OPTIONS.map((t) => (
+                  <option key={t} value={t}>
+                    {t}
+                  </option>
+                ))}
+              </select>
+
+              <select
+                value={assigneeFilter}
+                onChange={(e) => setAssigneeFilter(e.target.value)}
+                className="rounded-md border border-slate-300 px-2 py-1 text-sm text-slate-700"
+              >
+                <option value="All">Anyone</option>
+                <option value="__unassigned">Unassigned</option>
+                {members.map((m) => (
+                  <option key={m} value={m}>
+                    {m}
+                  </option>
+                ))}
+              </select>
+
+              <span className="mx-0.5 hidden h-5 w-px bg-slate-200 sm:block" />
+
+              {/* Flags */}
+              <div className="flex flex-wrap items-center gap-1">
+                {MINUTE_TAGS.map((tag) => {
+                  const on = flagFilter.includes(tag);
+                  return (
+                    <button
+                      key={tag}
+                      onClick={() => toggleFlag(tag)}
+                      className={`rounded-full border px-2 py-0.5 text-xs font-medium ${
+                        on
+                          ? TAG_STYLES[tag]
+                          : "border-slate-200 bg-white text-slate-400 hover:bg-slate-50"
+                      }`}
+                      title={`Filter by ${tag}`}
+                    >
+                      {tag}
+                    </button>
+                  );
+                })}
+              </div>
+
+              {activeFilterCount > 0 && (
                 <button
-                  onClick={() => setSearch("")}
-                  className="absolute right-2 top-1/2 -translate-y-1/2 rounded-full px-1 text-slate-400 hover:text-slate-600"
-                  aria-label="Clear search"
+                  onClick={clearFilters}
+                  className="ml-auto rounded px-2 py-1 text-xs text-slate-500 hover:bg-slate-100 hover:text-slate-700"
                 >
-                  ✕
+                  Clear filters ({activeFilterCount})
                 </button>
               )}
             </div>
-
-            {activeFilterCount > 0 && (
-              <button
-                onClick={clearFilters}
-                className="rounded px-2 py-1 text-xs text-slate-500 hover:bg-slate-100 hover:text-slate-700"
-              >
-                Clear filters ({activeFilterCount})
-              </button>
-            )}
           </div>
 
           {/* Area tabs */}
@@ -367,10 +394,12 @@ export default function ProjectBoardClient({
                   <li key={it.id}>
                     <button
                       onClick={() => setOpenItem(it)}
-                      className="flex w-full items-start gap-3 rounded-lg border border-slate-200 bg-white p-3 text-left transition hover:border-brand-blue/40 hover:shadow-sm"
+                      className={`flex w-full items-start gap-3 rounded-lg border border-slate-200 border-l-4 bg-white p-3 text-left transition hover:bg-slate-50 hover:shadow-sm ${
+                        STATUS_ACCENT[it.status] ?? "border-l-slate-300"
+                      }`}
                     >
                       <span
-                        className={`mt-0.5 shrink-0 rounded px-2 py-0.5 text-xs font-semibold ${
+                        className={`mt-0.5 inline-flex w-[92px] shrink-0 justify-center whitespace-nowrap rounded px-2 py-0.5 text-xs font-semibold ${
                           STATUS_BADGE[it.status] ?? "bg-slate-100 text-slate-600"
                         }`}
                       >
