@@ -542,10 +542,9 @@ export default function ProjectBoardClient({
             <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">
               History ({openItem.thread.length})
             </div>
-            <ol className="space-y-3 border-l-2 border-slate-100 pl-4">
+            <ol className="divide-y divide-slate-200">
               {openItem.thread.map((e) => (
-                <li key={e.id} className="relative">
-                  <span className="absolute -left-[21px] top-1.5 h-2 w-2 rounded-full bg-slate-300" />
+                <li key={e.id} className="py-3 first:pt-0 last:pb-0">
                   <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500">
                     <span className="font-medium text-slate-600">{e.meetingTitle}</span>
                     <span>·</span>

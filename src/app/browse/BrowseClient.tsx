@@ -1651,16 +1651,16 @@ function ThreadModal({
           </button>
         </div>
 
-        <div className="space-y-4">
+        <div className="divide-y divide-slate-200">
           {noteEntries.length === 0 && (
             <div className="text-sm italic text-slate-400">No notes recorded in this thread.</div>
           )}
-          {noteEntries.map((e, i) => {
+          {noteEntries.map((e) => {
             // The thread title is shown once in the header. Only repeat a per-entry
             // title when an update changed the wording from the root title.
             const showEntryTitle = e.title.trim() !== rootTitle.trim();
             return (
-              <div key={e.id} className={i < noteEntries.length - 1 ? "border-b border-slate-100 pb-4" : ""}>
+              <div key={e.id} className="py-4 first:pt-0 last:pb-0">
                 {showEntryTitle && (
                   <div className="mb-1 font-semibold text-slate-800">{e.title}</div>
                 )}
