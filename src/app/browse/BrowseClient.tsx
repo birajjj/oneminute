@@ -908,7 +908,11 @@ export default function BrowseClient({
                         }}
                         onDragEnd={() => { setDraggingId(null); setDragOverArea(null); }}
                         className={`rounded-lg border-l-4 p-4 ${
-                          mn.isFollowUp
+                          // Carried = yellow: a follow-up update entry OR a
+                          // reference host (a carried item shown only to nest a
+                          // sub-item that WAS touched this meeting). Genuinely new
+                          // minutes are blue.
+                          mn.isFollowUp || mn.isReference
                             ? "border-l-amber-500 bg-amber-100"
                             : "border-l-brand-blue bg-blue-100"
                         } ${draggingId === mn.id ? "opacity-50 ring-2 ring-brand-blue" : ""}`}
