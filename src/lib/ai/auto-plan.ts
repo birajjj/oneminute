@@ -139,7 +139,11 @@ export async function buildAutoPlan(
     referenceMinuteTitle: emptyToNull(m.referenceMinuteTitle),
     statusChange: m.statusChange || "",
     area: m.area || "General",
-    title: m.title || "",
+    // The AI occasionally returns a minute with content but an empty title. Fall
+    // back to a short version of the description so it's still saveable (the user
+    // can edit it). A minute with neither title nor description stays blank and
+    // is dropped at commit.
+    title: m.title?.trim() || deriveTitle(m.description),
     description: m.description || "",
     minuteType: (["Note", "To-Do", "Action", "Devops"].includes(m.minuteType)
       ? m.minuteType
@@ -316,7 +320,8 @@ function buildPrompt(transcript: string, ctx: Context, todayOverride?: string): 
   lines.push("- Capture each distinct decision, action item, and important discussion point as its own minute.");
   lines.push("- Merge trivially-related points; skip pure small talk. Capture discussion points as 'Note'.");
   lines.push("- Aim for the meaningful items — typically 8-20 minutes; do NOT exceed 30.");
-  lines.push("- Keep each description to ONE concise sentence (the source detail, not a paragraph).");
+  lines.push("- EVERY minute MUST have a `title`: a short few-word headline (e.g. \"Fix Costco EDI delivery info\"). NEVER leave title empty.");
+  lines.push("- `description`: ONE concise sentence with the source detail — distinct from the title, not a paragraph.");
   lines.push("");
   lines.push("### FOLLOW-UP DETECTION");
   lines.push("Follow-ups ONLY make sense within the SAME project you select in project.action.");
@@ -383,6 +388,14 @@ function buildPrompt(transcript: string, ctx: Context, todayOverride?: string): 
 
 function emptyToNull(v: string | null | undefined): string | null {
   return v && v.trim() ? v : null;
+}
+
+// A short title derived from the description, used when the AI leaves the title
+// blank. Empty in → empty out (a contentless minute is dropped at commit).
+function deriveTitle(desc: string | null | undefined): string {
+  const d = (desc || "").trim();
+  if (!d) return "";
+  return d.length <= 70 ? d : d.slice(0, 67).trimEnd() + "…";
 }
 
 function emptyPlan(transcript: string, raw: string): AutoPlan {
