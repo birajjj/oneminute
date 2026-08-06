@@ -488,8 +488,11 @@ export default function FollowUpClient({
   function renderChildReview(child: OpenItem) {
     const cu = updates[child.id];
     if (!cu) return null;
+    // A carried-forward sub-item (raised in an earlier meeting) is itself a
+    // follow-up item, so it's yellow like the top-level items — a lighter amber
+    // so it still reads as nested. Only items raised THIS meeting stay blue.
     return (
-      <div key={child.id} className="rounded border-l-4 border-l-brand-blue bg-blue-100 p-2">
+      <div key={child.id} className="rounded border-l-4 border-l-amber-500 bg-amber-50 p-2">
         <div className="flex flex-wrap items-center gap-2">
           <span className="text-sm font-medium">{child.title}</span>
           <select
@@ -593,7 +596,7 @@ export default function FollowUpClient({
               ? `Analyzing… part ${Math.min(analysisProgress.done + 1, analysisProgress.total)} of ${analysisProgress.total}`
               : "Analyzing transcript…"
           }
-          detail="Reading the transcript and pre-filling the items below. Please wait — don't edit until this finishes."
+          detail="Reading the transcript and pre-filling the items below…"
         />
       )}
 

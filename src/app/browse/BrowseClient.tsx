@@ -1035,9 +1035,9 @@ export default function BrowseClient({
                               // Follow-up entries are all Notes now, so the table's
                               // Type/Status/Date columns were noise — just list the
                               // update text. Click a line for the full detail popup.
-                              <div className="mt-2 space-y-1 rounded border border-slate-200 bg-white p-2 text-sm">
-                                <div className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">
-                                  Follow-up
+                              <div className="mt-2 space-y-1 rounded border border-brand-blue/30 bg-blue-50 p-2 text-sm">
+                                <div className="text-[10px] font-semibold uppercase tracking-wide text-brand-blue">
+                                  Update this meeting
                                 </div>
                                 {nestedRows.map((fu) => (
                                   <button
@@ -1071,7 +1071,7 @@ export default function BrowseClient({
                                     return (
                                       <div
                                         key={sub.key}
-                                        className={`rounded-md border p-2.5 ${sub.editable ? "border-slate-200 bg-white shadow-sm" : "border-slate-200 bg-slate-50"}`}
+                                        className={`rounded-md border border-l-4 p-2.5 ${sub.editable ? "border-slate-200 border-l-brand-blue bg-blue-50 shadow-sm" : "border-slate-200 border-l-amber-500 bg-amber-50"}`}
                                       >
                                         <div className="flex items-start gap-2">
                                           {sub.editable ? (
