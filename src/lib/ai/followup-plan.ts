@@ -39,6 +39,9 @@ export interface FollowUpNewMinute extends DevopsSuggestion {
   status: string;
   assignedTo: string;
   tags: string[];
+  // If set, this new to-do/devops was raised UNDER an existing open item — the
+  // client nests it there (raisedFromRootId) instead of listing it standalone.
+  raisedUnderRootId: string | null;
 }
 
 export interface FollowUpPlan {
@@ -63,6 +66,7 @@ interface RawPlan {
     status: string;
     assignedTo: string;
     tags?: string[];
+    raisedUnderRef?: number;
   } & RawDevops)[];
   summary?: string;
 }
@@ -103,6 +107,7 @@ const responseSchema = {
           status: { type: "STRING" },
           assignedTo: { type: "STRING" },
           tags: { type: "ARRAY", items: { type: "STRING" } },
+          raisedUnderRef: { type: "INTEGER" },
           ...devopsSchemaProps
         },
         required: ["title"]
@@ -150,18 +155,27 @@ export async function buildFollowUpPlan(
 
   const newMinutes: FollowUpNewMinute[] = (data.newMinutes || [])
     .filter((m) => m.title && m.title.trim())
-    .map((m) => ({
-      area: m.area || "General",
-      title: m.title,
-      description: m.description || "",
-      minuteType: normalizeType(m.minuteType),
-      status: normalizeStatus(m.status) || "New",
-      assignedTo: m.assignedTo || "",
-      tags: normalizeTags(m.tags),
-      devopsAction: normalizeDevopsAction(m.devopsAction),
-      devopsWorkItemType: normalizeWorkItemType(m.devopsWorkItemType),
-      devopsWorkItemId: m.devopsWorkItemId || ""
-    }));
+    .map((m) => {
+      const type = normalizeType(m.minuteType);
+      // Only a genuine to-do/devops nests under a parent item (a note about an
+      // item is that item's own update, not a nested sub-item).
+      const parent = openItems[Number(m.raisedUnderRef) - 1];
+      const raisedUnderRootId =
+        parent && (type === "To-Do" || type === "Devops") ? parent.id : null;
+      return {
+        area: m.area || "General",
+        title: m.title,
+        description: m.description || "",
+        minuteType: type,
+        status: normalizeStatus(m.status) || "New",
+        assignedTo: m.assignedTo || "",
+        tags: normalizeTags(m.tags),
+        devopsAction: normalizeDevopsAction(m.devopsAction),
+        devopsWorkItemType: normalizeWorkItemType(m.devopsWorkItemType),
+        devopsWorkItemId: m.devopsWorkItemId || "",
+        raisedUnderRootId
+      };
+    });
 
   return { updates, newMinutes, summary: data.summary || "" };
 }
@@ -203,6 +217,12 @@ function buildPrompt(
   lines.push("mentioned (e.g. \"let's set up X\", \"we need to do Y\", \"raise a bug for Z\", \"assign someone to W\"),");
   lines.push("it MUST appear here. Each entry: title, description, minuteType (Note | To-Do | Action | Devops),");
   lines.push("status, assignedTo, and `area`. Return an empty array only if genuinely nothing new was raised.");
+  lines.push("");
+  lines.push("NESTING (optional): if a NEW to-do or devops is raised specifically about one of the open items above");
+  lines.push("(e.g. \"on the mapping document, let's also raise a to-do to review the Costco fields\"), set");
+  lines.push("`raisedUnderRef` on that new item to that open item's ref number, so it is tracked UNDER that item.");
+  lines.push("Only for a genuine new sub-task of that item; otherwise omit it and it stays a standalone new minute.");
+  lines.push("A plain remark about an item is that item's update note, NOT a nested item.");
   lines.push("");
   lines.push("AREAS (tabs): every new minute needs an `area` — the topic group it belongs to.");
   lines.push("Reuse one of the existing areas listed below whenever it fits (copy it exactly);");

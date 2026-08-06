@@ -375,7 +375,7 @@ export default function FollowUpClient({
   // Only touches items the AI marked as discussed; the human still reviews all.
   function applyPlan(plan: {
     updates?: { rootMinuteId: string; discussed: boolean; note: string; status: string; tags?: string[]; devopsAction: string; devopsWorkItemType: string; devopsWorkItemId: string }[];
-    newMinutes?: { area: string; title: string; description: string; minuteType: string; status: string; assignedTo: string; tags?: string[]; devopsAction: string; devopsWorkItemType: string; devopsWorkItemId: string }[];
+    newMinutes?: { area: string; title: string; description: string; minuteType: string; status: string; assignedTo: string; tags?: string[]; devopsAction: string; devopsWorkItemType: string; devopsWorkItemId: string; raisedUnderRootId?: string | null }[];
   }) {
     const filled = new Set<string>();
     setUpdates((prev) => {
@@ -406,9 +406,15 @@ export default function FollowUpClient({
     });
     setAiFilled(filled);
 
-    const mapped: NewMinute[] = (plan.newMinutes ?? []).map((m) => {
+    // New items split two ways: those the AI raised UNDER an existing open item
+    // nest as that item's sub-entries (same path as the manual "+ Add under this
+    // item"); the rest are standalone new minutes, exactly as before.
+    const openIds = new Set(data.openItems.map((it) => it.id));
+    const flat: NewMinute[] = [];
+    const nestedByParent = new Map<string, NewMinute[]>();
+    for (const m of plan.newMinutes ?? []) {
       const wantsDevops = m.devopsAction === "create" || m.devopsAction === "link";
-      return {
+      const nm: NewMinute = {
         area: m.area || data.areas[0] || "General",
         title: m.title || "",
         description: m.description || "",
@@ -422,8 +428,27 @@ export default function FollowUpClient({
         devopsWorkItemType: m.devopsWorkItemType === "Bug" ? "Bug" : "User Story",
         devopsWorkItemId: m.devopsWorkItemId || ""
       };
-    });
-    if (mapped.length) setNewMinutes((prev) => [...prev, ...mapped]);
+      const parentId = m.raisedUnderRootId;
+      // Nest only a to-do/devops under a real open item; anything else is flat.
+      if (parentId && openIds.has(parentId) && (nm.type === "To-Do" || nm.type === "Devops")) {
+        const arr = nestedByParent.get(parentId) ?? [];
+        arr.push(nm);
+        nestedByParent.set(parentId, arr);
+      } else {
+        flat.push(nm);
+      }
+    }
+    if (flat.length) setNewMinutes((prev) => [...prev, ...flat]);
+    if (nestedByParent.size) {
+      setUpdates((prev) => {
+        const next = { ...prev };
+        for (const [pid, subs] of nestedByParent) {
+          if (!next[pid]) continue;
+          next[pid] = { ...next[pid], subEntries: [...next[pid].subEntries, ...subs] };
+        }
+        return next;
+      });
+    }
   }
 
   async function save() {
