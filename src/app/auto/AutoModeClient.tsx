@@ -375,10 +375,15 @@ function PlanReview({
 }) {
   const [committing, setCommitting] = useState(false);
   // Count only minutes that will actually save — must match the commit filter
-  // (approved AND a non-empty title). Counting bare `approved` let title-less
-  // minutes enable the button, then get dropped at save → an empty meeting.
-  const approvedCount = plan.minutes.filter((m) => m.approved && m.title.trim()).length;
-  const titlelessCount = plan.minutes.filter((m) => m.approved && !m.title.trim()).length;
+  // A minute saves if it has a title OR a description — this must match the
+  // commit filter so the button never enables for minutes that won't persist.
+  const approvedCount = plan.minutes.filter(
+    (m) => m.approved && (m.title.trim() || m.description.trim())
+  ).length;
+  // Empty minutes (no title AND no description) won't save — warn if any.
+  const emptyCount = plan.minutes.filter(
+    (m) => m.approved && !m.title.trim() && !m.description.trim()
+  ).length;
 
   function updateMinute(i: number, patch: Partial<AutoPlan["minutes"][number]>) {
     const minutes = plan.minutes.map((m, idx) => (idx === i ? { ...m, ...patch } : m));
@@ -582,10 +587,10 @@ function PlanReview({
         </p>
       )}
 
-      {titlelessCount > 0 && (
+      {emptyCount > 0 && (
         <p className="rounded border border-amber-300 bg-amber-50 p-3 text-sm text-amber-800">
-          ⚠️ {titlelessCount} minute(s) came back without a title and won&apos;t save. Add titles below,
-          or click <b>Analyze with AI</b> again — the model occasionally returns an incomplete result.
+          ⚠️ {emptyCount} minute(s) have neither a title nor a description and won&apos;t save. Fill in a
+          title or description below, or remove them.
         </p>
       )}
 

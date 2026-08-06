@@ -9,6 +9,7 @@ import { db } from "@/lib/db";
 import type { MinuteType, MinuteStatus } from "@prisma/client";
 import { createOrLinkWorkItem, devopsConfigured } from "@/lib/devops";
 import { normalizeTags } from "@/lib/tags";
+import { hasContent, titleOrDerived } from "@/lib/minute-title";
 
 const TYPE_MAP: Record<string, MinuteType> = {
   Note: "Note",
@@ -136,7 +137,7 @@ export async function commitFollowUp(
         raisedFromRootId: string | null,
         areaOverride?: string
       ): Promise<boolean> {
-        if (!m.title.trim()) return false;
+        if (!hasContent(m.title, m.description)) return false;
         const area = (areaOverride || m.area || "General").trim();
         areaSet.add(area);
 
@@ -164,7 +165,7 @@ export async function commitFollowUp(
             orgId,
             meetingId: meeting.id,
             area,
-            title: m.title.trim(),
+            title: titleOrDerived(m.title, m.description),
             description: m.description?.trim() || null,
             type: TYPE_MAP[m.type] ?? "Note",
             status: STATUS_MAP[m.status] ?? "New",

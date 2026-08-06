@@ -6,6 +6,7 @@ import type { AutoPlan, PlanMinute } from "./auto-plan";
 import type { MinuteType, MinuteStatus } from "@prisma/client";
 import { createWorkItem, getWorkItem, devopsConfigured } from "@/lib/devops";
 import { normalizeTags } from "@/lib/tags";
+import { hasContent, titleOrDerived } from "@/lib/minute-title";
 
 export interface CommitResult {
   projectId: string;
@@ -85,8 +86,9 @@ export async function commitAutoPlan(
     });
 
     // ---- Areas (unique) ----
+    // Save a minute if it has a title OR a description; drop only the empties.
     const approved = (plan.minutes || []).filter(
-      (m) => m.approved && m.title.trim()
+      (m) => m.approved && hasContent(m.title, m.description)
     );
     const uniqueAreas = [
       ...new Set(approved.map((m) => (m.area || "General").trim()))
@@ -151,7 +153,7 @@ export async function commitAutoPlan(
             orgId,
             meetingId: meeting.id,
             area: (m.area || "General").trim(),
-            title: m.title.trim(),
+            title: titleOrDerived(m.title, m.description),
             description: m.description || null,
             type: MINUTE_TYPE_MAP[m.minuteType] ?? "Note",
             status: STATUS_MAP[m.status] ?? "New",

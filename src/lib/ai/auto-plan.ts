@@ -5,6 +5,7 @@
 import { db } from "@/lib/db";
 import { generateJson } from "./provider";
 import { normalizeTags } from "@/lib/tags";
+import { deriveTitle } from "@/lib/minute-title";
 
 export interface PlanMinute {
   type: "new" | "followup";
@@ -388,14 +389,6 @@ function buildPrompt(transcript: string, ctx: Context, todayOverride?: string): 
 
 function emptyToNull(v: string | null | undefined): string | null {
   return v && v.trim() ? v : null;
-}
-
-// A short title derived from the description, used when the AI leaves the title
-// blank. Empty in → empty out (a contentless minute is dropped at commit).
-function deriveTitle(desc: string | null | undefined): string {
-  const d = (desc || "").trim();
-  if (!d) return "";
-  return d.length <= 70 ? d : d.slice(0, 67).trimEnd() + "…";
 }
 
 function emptyPlan(transcript: string, raw: string): AutoPlan {
