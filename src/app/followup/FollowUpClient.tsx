@@ -559,6 +559,19 @@ export default function FollowUpClient({
         />
       )}
 
+      {/* Block the whole form while the AI pre-fill runs, so nobody edits an item
+          that's about to be overwritten by the analysis. */}
+      {analyzing && (
+        <BusyOverlay
+          message={
+            analysisProgress && analysisProgress.total > 1
+              ? `Analyzing… part ${Math.min(analysisProgress.done + 1, analysisProgress.total)} of ${analysisProgress.total}`
+              : "Analyzing transcript…"
+          }
+          detail="Reading the transcript and pre-filling the items below. Please wait — don't edit until this finishes."
+        />
+      )}
+
       {/* Header */}
       <div>
         <span className="mb-2 inline-block rounded bg-gradient-to-r from-amber-500 to-brand-purple px-2 py-0.5 text-xs font-semibold uppercase tracking-wider text-white">
