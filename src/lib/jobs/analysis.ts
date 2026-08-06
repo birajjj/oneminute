@@ -18,6 +18,9 @@ import { segmentTranscript } from "@/lib/ai/segment";
 export type JobKind = "auto" | "followup";
 
 const STALE_MS = 90_000;
+// Safety net: if a job hasn't finished within this window it's almost certainly
+// a segment that keeps timing out — fail it rather than retry-loop forever.
+const MAX_JOB_MS = 12 * 60_000;
 
 export async function createAnalysisJob(input: {
   orgId: string;
@@ -66,6 +69,22 @@ export async function runNextSegment(
   const segments = segmentTranscript(job.transcript);
   const total = Math.max(1, segments.length);
   const idx = job.segmentsDone;
+
+  // Runaway guard: a segment that keeps exceeding the 60s function limit leaves a
+  // stale lock and gets retried indefinitely. Cap the total job lifetime so it
+  // fails cleanly instead of looping (and burning API calls) forever.
+  if (Date.now() - new Date(job.createdAt).getTime() > MAX_JOB_MS) {
+    await db.analysisJob.update({
+      where: { id: job.id },
+      data: {
+        status: "error",
+        error:
+          "Analysis is taking too long — a part of the transcript kept timing out. Please try again.",
+        lockedAt: null
+      }
+    });
+    return { done: true, segmentsDone: job.segmentsDone, segmentsTotal: total };
+  }
 
   if (idx >= segments.length) {
     await db.analysisJob.update({

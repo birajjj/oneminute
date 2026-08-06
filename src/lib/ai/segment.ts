@@ -6,8 +6,11 @@
 // mid-way, and caps the segment COUNT so a pathologically long transcript can't
 // spawn dozens of requests (it makes each segment larger instead).
 
-const DEFAULT_SEGMENT_CHARS = 12_000;
-const MAX_SEGMENTS = 20;
+// Kept deliberately small: analysis time is driven by how many minutes a
+// segment yields (output tokens), and a dense meeting segment can blow past 60s.
+// ~5k chars keeps each analysis comfortably inside Vercel's cap.
+const DEFAULT_SEGMENT_CHARS = 5_000;
+const MAX_SEGMENTS = 40;
 
 export function segmentCount(transcript: string, targetChars = DEFAULT_SEGMENT_CHARS): number {
   return segmentTranscript(transcript, targetChars).length;
