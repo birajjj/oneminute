@@ -53,6 +53,16 @@ const STATUS_ACCENT: Record<string, string> = {
   Cancelled: "border-l-slate-300"
 };
 
+// Lifecycle order, so "Sort by status" groups items in a sensible progression
+// rather than alphabetically.
+const STATUS_RANK: Record<string, number> = {
+  New: 0,
+  Initiated: 1,
+  "In Progress": 2,
+  Completed: 3,
+  Cancelled: 4
+};
+
 const TYPE_OPTIONS = ["To-Do", "Devops", "Action", "Note"];
 
 function isOpen(status: string) {
@@ -131,7 +141,9 @@ export default function ProjectBoardClient({
           if (it.assignedTo) return false;
         } else if (it.assignedTo !== assigneeFilter) return false;
       }
-      if (flagFilter.length && !flagFilter.every((f) => it.tags.includes(f))) return false;
+      // OR across flags: an item shows if it carries ANY selected flag (clicking
+      // more flags widens the list), matching the Browse flag filter.
+      if (flagFilter.length && !it.tags.some((t) => flagFilter.includes(t))) return false;
       if (q) {
         const hay = `${it.title} ${it.assignedTo ?? ""} ${it.thread
           .map((e) => e.description ?? "")
@@ -150,8 +162,13 @@ export default function ProjectBoardClient({
         }
         case "title":
           return a.title.localeCompare(b.title);
-        case "status":
-          return a.status.localeCompare(b.status);
+        case "status": {
+          // Lifecycle order; within the same status, most-recently-touched first.
+          const ar = STATUS_RANK[a.status] ?? 99;
+          const br = STATUS_RANK[b.status] ?? 99;
+          if (ar !== br) return ar - br;
+          return new Date(b.lastActivity).getTime() - new Date(a.lastActivity).getTime();
+        }
         case "activity":
         default:
           return new Date(b.lastActivity).getTime() - new Date(a.lastActivity).getTime();
@@ -270,9 +287,9 @@ export default function ProjectBoardClient({
                   className="rounded-md border border-slate-300 px-2 py-1.5 text-sm text-slate-700"
                 >
                   <option value="activity">Recent activity</option>
-                  <option value="due">Due date</option>
+                  <option value="due">Due date (soonest)</option>
                   <option value="title">Title A–Z</option>
-                  <option value="status">Status</option>
+                  <option value="status">Status (New → Done)</option>
                 </select>
               </label>
             </div>
