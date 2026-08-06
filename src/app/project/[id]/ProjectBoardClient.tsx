@@ -232,7 +232,7 @@ export default function ProjectBoardClient({
       </header>
 
       <main className="min-h-0 flex-1 overflow-y-auto">
-        <div className="mx-auto max-w-5xl px-4 py-5 sm:px-6">
+        <div className="mx-auto max-w-[1440px] px-4 py-5 sm:px-6">
           {/* Title + summary */}
           <div className="mb-4">
             <div className="flex flex-wrap items-center gap-2">
@@ -423,59 +423,65 @@ export default function ProjectBoardClient({
                         {it.status}
                       </span>
 
-                      <div className="min-w-0 flex-1">
-                        <div
-                          className={`font-medium ${
-                            done ? "text-slate-400 line-through" : "text-slate-800"
-                          }`}
-                        >
-                          {it.title || <span className="italic text-slate-400">Untitled</span>}
-                        </div>
-
-                        <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-500">
-                          <span
-                            className={`rounded px-1.5 py-0.5 font-semibold ${
-                              TYPE_BADGE[it.type] ?? "bg-slate-100 text-slate-600"
+                      <div className="flex min-w-0 flex-1 flex-col gap-1.5 md:flex-row md:items-start md:justify-between md:gap-4">
+                        {/* Left: title + type/updates/flags */}
+                        <div className="min-w-0">
+                          <div
+                            className={`font-medium ${
+                              done ? "text-slate-400 line-through" : "text-slate-800"
                             }`}
                           >
-                            {it.type}
-                          </span>
-                          {it.assignedTo && <span>👤 {it.assignedTo}</span>}
+                            {it.title || <span className="italic text-slate-400">Untitled</span>}
+                          </div>
+
+                          <div className="mt-1 flex flex-wrap items-center gap-x-2.5 gap-y-1 text-xs text-slate-500">
+                            <span
+                              className={`rounded px-1.5 py-0.5 font-semibold ${
+                                TYPE_BADGE[it.type] ?? "bg-slate-100 text-slate-600"
+                              }`}
+                            >
+                              {it.type}
+                            </span>
+                            {it.devopsItemId && (
+                              <span className="rounded bg-orange-50 px-1.5 py-0.5 text-orange-600">
+                                #{it.devopsItemId}
+                              </span>
+                            )}
+                            {it.updateCount > 0 && (
+                              <span className="text-slate-400">
+                                {it.updateCount} update{it.updateCount > 1 ? "s" : ""}
+                              </span>
+                            )}
+                            {it.raisedFromTitle && (
+                              <span className="text-slate-400" title="Raised under another item">
+                                ↳ under “{it.raisedFromTitle}”
+                              </span>
+                            )}
+                            {it.tags.length > 0 && <TagBadges tags={it.tags} />}
+                          </div>
+                        </div>
+
+                        {/* Right: owner · due · area — fills the row width on desktop,
+                            stacks under the title on mobile */}
+                        <div className="flex shrink-0 flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-500 md:justify-end">
+                          {it.assignedTo && <span className="whitespace-nowrap">👤 {it.assignedTo}</span>}
                           {it.dueDate && (
-                            <span className={overdue ? "font-semibold text-red-600" : ""}>
+                            <span
+                              className={`whitespace-nowrap ${
+                                overdue ? "font-semibold text-red-600" : ""
+                              }`}
+                            >
                               📅 {fmtDate(it.dueDate)}
                               {overdue && " · overdue"}
                             </span>
                           )}
-                          {it.devopsItemId && (
-                            <span className="rounded bg-orange-50 px-1.5 py-0.5 text-orange-600">
-                              #{it.devopsItemId}
-                            </span>
-                          )}
-                          {it.updateCount > 0 && (
-                            <span className="text-slate-400">
-                              {it.updateCount} update{it.updateCount > 1 ? "s" : ""}
-                            </span>
-                          )}
-                          {it.raisedFromTitle && (
-                            <span className="text-slate-400" title="Raised under another item">
-                              ↳ under “{it.raisedFromTitle}”
+                          {activeTab === "All" && (
+                            <span className="rounded bg-slate-100 px-2 py-0.5 text-[11px] text-slate-500">
+                              {it.area}
                             </span>
                           )}
                         </div>
-
-                        {it.tags.length > 0 && (
-                          <div className="mt-1.5">
-                            <TagBadges tags={it.tags} />
-                          </div>
-                        )}
                       </div>
-
-                      {activeTab === "All" && (
-                        <span className="shrink-0 rounded bg-slate-100 px-2 py-0.5 text-[11px] text-slate-500">
-                          {it.area}
-                        </span>
-                      )}
                     </button>
                   </li>
                 );
