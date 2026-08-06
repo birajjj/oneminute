@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { AutoPlan } from "@/lib/ai/auto-plan";
 import { useSegmentRecorder } from "@/lib/useSegmentRecorder";
+import { runAnalysisJob } from "@/lib/analysis-job-client";
 import { TagChips } from "@/components/TagChips";
 import BusyOverlay from "@/components/BusyOverlay";
 
@@ -129,6 +130,9 @@ export default function AutoModeClient({
   const router = useRouter();
   const [step, setStep] = useState<Step>("edit");
   const [plan, setPlan] = useState<AutoPlan>(emptyPlan());
+  const [analysisProgress, setAnalysisProgress] = useState<{ done: number; total: number } | null>(
+    null
+  );
   const [result, setResult] = useState<
     { minutesSaved: number; projectCreated: boolean; meetingId?: string; warnings?: string[] } | null
   >(null);
@@ -174,21 +178,23 @@ export default function AutoModeClient({
     if (!transcript.trim()) return;
     setError("");
     setStep("analyzing");
+    setAnalysisProgress(null);
     try {
-      const res = await fetch("/api/auto/analyze", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        // Send the user's local date so the AI defaults meetings to today in
-        // THEIR timezone, not the server's UTC day.
-        body: JSON.stringify({ transcript, today: todayLocal() })
-      });
-      if (!res.ok) throw new Error(await res.text());
+      // Async job: a long transcript is analysed in <60s segments server-side,
+      // so this never hits Vercel's 60s cap. Send the user's local date so the
+      // AI defaults meetings to today in THEIR timezone, not the server's UTC day.
+      const result = await runAnalysisJob<AutoPlan>(
+        { kind: "auto", transcript, today: todayLocal() },
+        { onProgress: (p) => setAnalysisProgress({ done: p.segmentsDone, total: p.segmentsTotal }) }
+      );
       // The AI FILLS the same form you could have typed yourself.
-      setPlan(await res.json());
+      setPlan(result);
       setStep("edit");
     } catch (e) {
       setError("Analyze failed: " + (e instanceof Error ? e.message : "unknown"));
       setStep("edit");
+    } finally {
+      setAnalysisProgress(null);
     }
   }
 
@@ -314,7 +320,19 @@ export default function AutoModeClient({
       {step === "analyzing" && (
         <div className="flex items-center gap-3 rounded-lg border border-slate-200 bg-slate-50 p-6">
           <div className="h-6 w-6 animate-spin rounded-full border-2 border-slate-300 border-t-brand-purple" />
-          <span className="font-medium">Analyzing transcript…</span>
+          <div>
+            <span className="font-medium">
+              Analyzing transcript…
+              {analysisProgress && analysisProgress.total > 1
+                ? ` part ${Math.min(analysisProgress.done + 1, analysisProgress.total)} of ${analysisProgress.total}`
+                : ""}
+            </span>
+            {analysisProgress && analysisProgress.total > 1 && (
+              <p className="mt-0.5 text-sm text-slate-500">
+                Long meeting — analysing in parts. You can leave this open; it keeps going.
+              </p>
+            )}
+          </div>
         </div>
       )}
 

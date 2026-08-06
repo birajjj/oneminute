@@ -116,9 +116,10 @@ const responseSchema = {
 export async function buildFollowUpPlan(
   openItems: OpenItem[],
   users: string[],
-  transcript: string
+  transcript: string,
+  opts?: { priorTitles?: string[] }
 ): Promise<FollowUpPlan> {
-  const prompt = buildPrompt(openItems, users, transcript);
+  const prompt = buildPrompt(openItems, users, transcript, opts?.priorTitles);
   const { data } = await generateJson<RawPlan>({
     prompt,
     schema: responseSchema,
@@ -178,7 +179,12 @@ function normalizeWorkItemType(s: string | undefined): string {
   return s === "Bug" ? "Bug" : "User Story";
 }
 
-function buildPrompt(openItems: OpenItem[], users: string[], transcript: string): string {
+function buildPrompt(
+  openItems: OpenItem[],
+  users: string[],
+  transcript: string,
+  priorTitles?: string[]
+): string {
   const lines: string[] = [];
   lines.push("You are updating a FOLLOW-UP meeting's minutes.");
   lines.push(
@@ -232,6 +238,16 @@ function buildPrompt(openItems: OpenItem[], users: string[], transcript: string)
         `- ref=${i + 1} [${it.status}] ${it.type}: ${it.title} (area ${it.area}${who})`
       );
     });
+  }
+  // Long meetings are analysed in segments; tell the model which NEW items were
+  // already captured earlier so it doesn't list them again in `newMinutes`.
+  if (priorTitles && priorTitles.length) {
+    lines.push("");
+    lines.push("### NEW ITEMS ALREADY CAPTURED EARLIER IN THIS MEETING");
+    lines.push(
+      "These new items were already recorded from an earlier part of this same meeting. Do NOT list them again in newMinutes. (Still update the open items above as normal.)"
+    );
+    for (const t of priorTitles.slice(0, 80)) lines.push(`- ${t}`);
   }
   lines.push("");
   lines.push("### Transcript");

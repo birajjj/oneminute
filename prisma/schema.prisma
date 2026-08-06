@@ -209,3 +209,40 @@ model AuditLog {
   @@index([tableName, rowId])
   @@map("audit_log")
 }
+
+// --------------------------------------------------------------
+// Analysis jobs — async AI analysis so a long transcript is processed in
+// <60s segments (Vercel Hobby caps a function at 60s). The transcript is saved
+// here, then analysed one segment per request; each step advances segmentsDone
+// and re-triggers the next until done, so it finishes even if the tab closes.
+// Isolation is app-layer via orgId (like every other table); runToken lets the
+// server-to-server "next segment" trigger authenticate without a user session.
+// --------------------------------------------------------------
+
+model AnalysisJob {
+  id            String    @id @default(uuid()) @db.Uuid
+  orgId         String    @map("org_id") @db.Uuid
+  userId        String?   @map("user_id") @db.Uuid
+
+  kind          String    // "auto" | "followup"
+  status        String    @default("queued") // queued | running | done | error
+
+  transcript    String
+  params        Json?     // kind-specific inputs: { today } | { parentMeetingId }
+
+  segmentsTotal Int       @default(1) @map("segments_total")
+  segmentsDone  Int       @default(0) @map("segments_done")
+
+  result        Json?     // accumulated plan (AutoPlan | FollowUpPlan)
+  error         String?
+
+  runToken      String    @map("run_token") // shared secret for the self-trigger chain
+  lockedAt      DateTime? @map("locked_at")  // set while a segment is processing (stale after 90s)
+
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+
+  @@index([orgId, createdAt])
+  @@index([status])
+  @@map("analysis_jobs")
+}
