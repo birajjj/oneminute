@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { AutoPlan } from "@/lib/ai/auto-plan";
 import { useSegmentRecorder } from "@/lib/useSegmentRecorder";
+import { analyzeAutoChunked, commitAutoChunked } from "@/lib/chunk-analyze";
 import { TagChips } from "@/components/TagChips";
 import BusyOverlay from "@/components/BusyOverlay";
 
@@ -129,6 +130,9 @@ export default function AutoModeClient({
   const router = useRouter();
   const [step, setStep] = useState<Step>("edit");
   const [plan, setPlan] = useState<AutoPlan>(emptyPlan());
+  const [analysisProgress, setAnalysisProgress] = useState<{ done: number; total: number } | null>(
+    null
+  );
   const [result, setResult] = useState<
     { minutesSaved: number; projectCreated: boolean; meetingId?: string; warnings?: string[] } | null
   >(null);
@@ -174,21 +178,22 @@ export default function AutoModeClient({
     if (!transcript.trim()) return;
     setError("");
     setStep("analyzing");
+    setAnalysisProgress(null);
     try {
-      const res = await fetch("/api/auto/analyze", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        // Send the user's local date so the AI defaults meetings to today in
-        // THEIR timezone, not the server's UTC day.
-        body: JSON.stringify({ transcript, today: todayLocal() })
-      });
-      if (!res.ok) throw new Error(await res.text());
+      // Long transcripts are analysed in chunks (one call at a time) so no single
+      // request hits Vercel's 60s cap. Send the user's local date so the AI
+      // defaults meetings to today in THEIR timezone, not the server's UTC day.
+      const result = await analyzeAutoChunked(transcript, todayLocal(), (p) =>
+        setAnalysisProgress({ done: p.done, total: p.total })
+      );
       // The AI FILLS the same form you could have typed yourself.
-      setPlan(await res.json());
+      setPlan(result);
       setStep("edit");
     } catch (e) {
       setError("Analyze failed: " + (e instanceof Error ? e.message : "unknown"));
       setStep("edit");
+    } finally {
+      setAnalysisProgress(null);
     }
   }
 
@@ -197,21 +202,23 @@ export default function AutoModeClient({
     try {
       // Convert the picked date to a full local instant so the server stores the
       // exact moment and Browse renders it on the right day in the user's zone.
-      const payload = {
-        plan: { ...plan, meeting: { ...plan.meeting, meetingDate: localDateToISO(plan.meeting.meetingDate) } }
+      const planForCommit = {
+        ...plan,
+        meeting: { ...plan.meeting, meetingDate: localDateToISO(plan.meeting.meetingDate) }
       };
-      const res = await fetch("/api/auto/commit", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload)
-      });
-      if (!res.ok) throw new Error(await res.text());
-      const r = await res.json();
+      // Chunked commit: create the meeting first, then save minutes in batches,
+      // so a big meeting never hits Vercel's 60s cap.
+      const r = await commitAutoChunked(planForCommit);
       clearTranscript(); // committed — the draft is done with
       // Warnings (e.g. a DevOps item that failed) matter — pause on them.
       // Otherwise jump straight to Browse with the new meeting selected.
-      if (Array.isArray(r.warnings) && r.warnings.length > 0) {
-        setResult(r);
+      if (r.warnings.length > 0) {
+        setResult({
+          minutesSaved: r.minutesSaved,
+          projectCreated: r.projectCreated,
+          meetingId: r.meetingId,
+          warnings: r.warnings
+        });
         setStep("done");
       } else {
         router.push(`/browse?meeting=${r.meetingId}`);
@@ -314,7 +321,19 @@ export default function AutoModeClient({
       {step === "analyzing" && (
         <div className="flex items-center gap-3 rounded-lg border border-slate-200 bg-slate-50 p-6">
           <div className="h-6 w-6 animate-spin rounded-full border-2 border-slate-300 border-t-brand-purple" />
-          <span className="font-medium">Analyzing transcript…</span>
+          <div>
+            <span className="font-medium">
+              Analyzing transcript…
+              {analysisProgress && analysisProgress.total > 1
+                ? ` part ${Math.min(analysisProgress.done + 1, analysisProgress.total)} of ${analysisProgress.total}`
+                : ""}
+            </span>
+            {analysisProgress && analysisProgress.total > 1 && (
+              <p className="mt-0.5 text-sm text-slate-500">
+                Long meeting — analysing in parts. Keep this tab open until it finishes.
+              </p>
+            )}
+          </div>
         </div>
       )}
 

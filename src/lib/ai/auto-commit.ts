@@ -207,6 +207,167 @@ export async function commitAutoPlan(
   });
 }
 
+// ---------------------------------------------------------------------------
+// Chunked commit — for long meetings whose minutes (+ any DevOps calls) can't
+// all be written inside one 60s function. The client calls `start` once, then
+// `minutes` in small batches. Each call stays well under the cap.
+// ---------------------------------------------------------------------------
+
+// Creates the project (if needed), the meeting, and all areas up front — fast,
+// no DevOps, no per-minute work — in one short transaction.
+export async function commitAutoPlanStart(
+  orgId: string,
+  userId: string,
+  plan: AutoPlan
+): Promise<{ projectId: string; meetingId: string; projectCreated: boolean }> {
+  return db.$transaction(
+    async (tx) => {
+      let projectId: string;
+      let projectCreated = false;
+      if (plan.project.action === "use_existing" && plan.project.existingProjectId) {
+        projectId = plan.project.existingProjectId;
+      } else {
+        const name = (plan.project.newProjectName || "Untitled Project").trim();
+        const existing = await tx.project.findFirst({ where: { orgId, name } });
+        if (existing) {
+          projectId = existing.id;
+        } else {
+          const created = await tx.project.create({ data: { orgId, name } });
+          projectId = created.id;
+          projectCreated = true;
+        }
+      }
+
+      const meetingDate = resolveMeetingDate(plan.meeting.meetingDate);
+      const meeting = await tx.meeting.create({
+        data: {
+          orgId,
+          projectId,
+          title: (plan.meeting.title || "Untitled Meeting").trim(),
+          description: plan.meeting.description || plan.summary || null,
+          meetingDate,
+          attendee: plan.meeting.attendees || null,
+          ownerUserId: userId,
+          parentMeetingIdRaw:
+            plan.meeting.action === "followup"
+              ? plan.meeting.followUpToMeetingId ?? "*ALL*"
+              : null
+        }
+      });
+
+      // Register every area from the WHOLE plan now, so tabs are complete even
+      // though minutes arrive in later batches.
+      const approved = (plan.minutes || []).filter(
+        (m) => m.approved && hasContent(m.title, m.description)
+      );
+      const uniqueAreas = [...new Set(approved.map((m) => (m.area || "General").trim()))];
+      if (uniqueAreas.length === 0) uniqueAreas.push("General");
+      for (const areaName of uniqueAreas) {
+        await tx.meetingArea.create({ data: { orgId, meetingId: meeting.id, areaName } });
+      }
+
+      await tx.auditLog.create({
+        data: {
+          orgId,
+          userId,
+          action: "auto_commit_start",
+          tableName: "meetings",
+          rowId: meeting.id,
+          after: { projectId, meetingId: meeting.id, projectCreated }
+        }
+      });
+
+      return { projectId, meetingId: meeting.id, projectCreated };
+    },
+    { maxWait: 15000, timeout: 30000 }
+  );
+}
+
+// Writes one batch of minutes to an already-created meeting. Not wrapped in a
+// long transaction: each minute (and its optional DevOps call) is independent,
+// and per-minute failures become warnings — matching the single-shot commit.
+export async function commitAutoPlanMinutes(
+  orgId: string,
+  meetingId: string,
+  minutes: PlanMinute[]
+): Promise<{ saved: number; warnings: string[] }> {
+  const warnings: string[] = [];
+
+  // Authorises the caller (meeting must be in their org) and gives us the
+  // project for the cross-project follow-up guard.
+  const meeting = await db.meeting.findFirst({
+    where: { id: meetingId, orgId },
+    select: { id: true, projectId: true }
+  });
+  if (!meeting) throw new Error("meeting not found");
+  const projectId = meeting.projectId;
+
+  const orgUsers = await db.user.findMany({
+    where: { orgId },
+    select: { id: true, displayName: true }
+  });
+  const userIdByName = new Map(orgUsers.map((u) => [u.displayName.toLowerCase(), u.id]));
+
+  let saved = 0;
+  for (const m of minutes) {
+    if (!(m.approved && hasContent(m.title, m.description))) continue;
+    try {
+      let rootId: string | null = null;
+      if (m.type === "followup" && m.referenceMinuteId) {
+        const referenced = await db.minute.findUnique({
+          where: { id: m.referenceMinuteId },
+          select: { id: true, parentMinuteId: true, meeting: { select: { projectId: true } } }
+        });
+        if (referenced && referenced.meeting.projectId === projectId) {
+          rootId = referenced.parentMinuteId ?? referenced.id;
+        } else if (referenced) {
+          warnings.push(
+            `"${m.title}" was flagged as a follow-up to a minute in a different project — saved as new instead.`
+          );
+        }
+      }
+
+      let devopsItemId: number | null = null;
+      let devopsProjectName: string | null = null;
+      if (m.devopsAction === "create" || m.devopsAction === "link") {
+        try {
+          const dv = await handleDevops(m);
+          devopsItemId = dv.id;
+          devopsProjectName = dv.project;
+        } catch (dex) {
+          warnings.push(`DevOps for "${m.title}": ${dex instanceof Error ? dex.message : "failed"}`);
+        }
+      }
+
+      await db.minute.create({
+        data: {
+          orgId,
+          meetingId,
+          area: (m.area || "General").trim(),
+          title: titleOrDerived(m.title, m.description),
+          description: m.description || null,
+          type: MINUTE_TYPE_MAP[m.minuteType] ?? "Note",
+          status: STATUS_MAP[m.status] ?? "New",
+          parentMinuteId: rootId,
+          assignedToUserId: m.assignedTo
+            ? userIdByName.get(m.assignedTo.toLowerCase()) ?? null
+            : null,
+          isPersistent: ["To-Do", "Action", "Devops"].includes(m.minuteType),
+          tags: normalizeTags(m.tags),
+          dueDate: parseDate(m.dueDate),
+          devopsItemId,
+          devopsArea: devopsProjectName
+        }
+      });
+      saved += 1;
+    } catch (e) {
+      warnings.push(`Failed to save "${m.title}": ${e instanceof Error ? e.message : "unknown"}`);
+    }
+  }
+
+  return { saved, warnings };
+}
+
 // The AI returns a date-only string like "2026-07-28" (no time). Parsing that
 // alone yields midnight UTC, so every meeting would show the same wall-clock
 // time. To keep meetings distinct and ordered, we combine the AI's DATE with
