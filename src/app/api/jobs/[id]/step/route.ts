@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse, after } from "next/server";
 import { db } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
-import { claimJob, runNextSegment, triggerStep } from "@/lib/jobs/analysis";
+import { claimJob, runNextSegment, triggerStep, selfOrigin } from "@/lib/jobs/analysis";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -53,7 +53,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     }
 
     if (!outcome.done) {
-      const origin = new URL(req.url).origin;
+      const origin = selfOrigin(req);
       after(async () => {
         await triggerStep(origin, id, job.runToken);
       });

@@ -145,6 +145,25 @@ export async function runNextSegment(
   return { done: finished, segmentsDone: nextDone, segmentsTotal: total };
 }
 
+// The public origin of THIS deployment, for the server-to-server self-trigger.
+// Must come from the forwarded host headers — `new URL(req.url).origin` can be an
+// internal address behind Vercel's proxy, which makes the self-fetch fail and
+// silently breaks the chain (leaving it to limp along on client nudges only).
+export function selfOrigin(req: { headers: Headers; url: string }): string {
+  const h = req.headers;
+  const host = h.get("x-forwarded-host") ?? h.get("host");
+  if (host) {
+    const proto = h.get("x-forwarded-proto") ?? "https";
+    return `${proto}://${host}`;
+  }
+  if (process.env.VERCEL_URL) return `https://${process.env.VERCEL_URL}`;
+  try {
+    return new URL(req.url).origin;
+  } catch {
+    return "";
+  }
+}
+
 // Fire-and-forget trigger for the next segment. Best-effort: if it never lands,
 // a status poll will find the job reclaimable and nudge it.
 export async function triggerStep(origin: string, jobId: string, runToken: string): Promise<void> {

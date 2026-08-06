@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse, after } from "next/server";
 import { z } from "zod";
 import { requireUser } from "@/lib/auth";
-import { createAnalysisJob, triggerStep } from "@/lib/jobs/analysis";
+import { createAnalysisJob, triggerStep, selfOrigin } from "@/lib/jobs/analysis";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -38,7 +38,7 @@ export async function POST(req: NextRequest) {
 
     // Kick the first segment server-side; each step re-triggers the next, so the
     // job runs to completion even if the user closes the tab.
-    const origin = new URL(req.url).origin;
+    const origin = selfOrigin(req);
     after(async () => {
       await triggerStep(origin, job.id, job.runToken);
     });
