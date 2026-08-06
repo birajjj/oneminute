@@ -118,11 +118,10 @@ const responseSchema = {
 export async function buildAutoPlan(
   orgId: string,
   transcript: string,
-  today?: string,
-  opts?: { priorTitles?: string[] }
+  today?: string
 ): Promise<AutoPlan> {
   const context = await loadContext(orgId);
-  const prompt = buildPrompt(transcript, context, today, opts?.priorTitles);
+  const prompt = buildPrompt(transcript, context, today);
 
   const { data, raw } = await generateJson<AutoPlan>({
     prompt,
@@ -309,12 +308,7 @@ async function loadContext(orgId: string): Promise<Context> {
   };
 }
 
-function buildPrompt(
-  transcript: string,
-  ctx: Context,
-  todayOverride?: string,
-  priorTitles?: string[]
-): string {
+function buildPrompt(transcript: string, ctx: Context, todayOverride?: string): string {
   // Prefer the caller's local date; the server clock is UTC and would be a day
   // behind for ahead-of-UTC timezones in the morning.
   const today = todayOverride || new Date().toISOString().slice(0, 10);
@@ -385,16 +379,6 @@ function buildPrompt(
         }
       }
     }
-  }
-  // When analysing a long meeting in segments, tell the model what earlier
-  // segments already captured so it extends the list instead of repeating it.
-  if (priorTitles && priorTitles.length) {
-    lines.push("");
-    lines.push("### ALREADY CAPTURED EARLIER IN THIS MEETING");
-    lines.push(
-      "These minutes were already extracted from an EARLIER part of this SAME meeting. Do NOT repeat them. From the transcript portion below, extract ONLY items that are new; if it merely adds detail to one already captured, skip it."
-    );
-    for (const t of priorTitles.slice(0, 80)) lines.push(`- ${t}`);
   }
   lines.push("");
   lines.push("### Transcript");

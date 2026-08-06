@@ -3,8 +3,6 @@
 import { useEffect, useMemo, useState } from "react";
 import type { FollowUpData, OpenItem } from "@/lib/followup";
 import { useSegmentRecorder } from "@/lib/useSegmentRecorder";
-import { runAnalysisJob } from "@/lib/analysis-job-client";
-import type { FollowUpPlan } from "@/lib/ai/followup-plan";
 import { TagChips } from "@/components/TagChips";
 import { normalizeTags } from "@/lib/tags";
 import BusyOverlay from "@/components/BusyOverlay";
@@ -180,9 +178,6 @@ export default function FollowUpClient({
   // Optional AI pre-fill: record → transcribe → map to the open items below.
   const recorder = useSegmentRecorder(`oneminute:followup:${data.parent.id}`);
   const [analyzing, setAnalyzing] = useState(false);
-  const [analysisProgress, setAnalysisProgress] = useState<{ done: number; total: number } | null>(
-    null
-  );
   const [aiFilled, setAiFilled] = useState<Set<string>>(new Set());
 
   // Real DevOps projects for the "Create work item" dropdown (lazy, like Auto).
@@ -355,21 +350,19 @@ export default function FollowUpClient({
   async function aiPreFill() {
     if (!recorder.transcript.trim()) return;
     setAnalyzing(true);
-    setAnalysisProgress(null);
     setError("");
     try {
-      // Async job so a long transcript is analysed in <60s segments server-side
-      // (never hitting Vercel's 60s cap).
-      const plan = await runAnalysisJob<FollowUpPlan>(
-        { kind: "followup", transcript: recorder.transcript, parentMeetingId: data.parent.id },
-        { onProgress: (p) => setAnalysisProgress({ done: p.segmentsDone, total: p.segmentsTotal }) }
-      );
-      applyPlan(plan);
+      const res = await fetch("/api/followup/analyze", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ parentMeetingId: data.parent.id, transcript: recorder.transcript })
+      });
+      if (!res.ok) throw new Error(await res.text());
+      applyPlan(await res.json());
     } catch (e) {
       setError("AI pre-fill failed: " + (e instanceof Error ? e.message : "unknown"));
     } finally {
       setAnalyzing(false);
-      setAnalysisProgress(null);
     }
   }
 
@@ -595,11 +588,7 @@ export default function FollowUpClient({
             disabled={!recorder.transcript.trim() || recorder.isRecording || recorder.isTranscribing || analyzing}
             className="rounded bg-brand-purple px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50"
           >
-            {analyzing
-              ? analysisProgress && analysisProgress.total > 1
-                ? `Analyzing… ${Math.min(analysisProgress.done + 1, analysisProgress.total)}/${analysisProgress.total}`
-                : "Analyzing…"
-              : "AI pre-fill ↓"}
+            {analyzing ? "Analyzing…" : "AI pre-fill ↓"}
           </button>
           <button
             onClick={recorder.clearTranscript}

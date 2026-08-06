@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
+import { randomUUID } from "crypto";
 import { requireUser } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { loadFollowUpData } from "@/lib/followup";
@@ -22,6 +23,19 @@ export async function POST(req: NextRequest) {
 
     const user = await requireUser();
 
+    // Persist the transcript BEFORE analysis, so it's never lost — even if the
+    // analysis call fails or times out. The result is written back on success.
+    const record = await db.analysisJob.create({
+      data: {
+        orgId: user.orgId,
+        userId: user.id,
+        kind: "followup",
+        transcript: parsed.data.transcript,
+        status: "running",
+        runToken: randomUUID()
+      }
+    });
+
     // Re-load the open items server-side so the AI only ever sees this org's
     // real items (never client-supplied ids).
     const data = await loadFollowUpData(user.orgId, parsed.data.parentMeetingId);
@@ -37,6 +51,12 @@ export async function POST(req: NextRequest) {
     ).map((u) => u.displayName);
 
     const plan = await buildFollowUpPlan(data.openItems, users, parsed.data.transcript);
+
+    await db.analysisJob.update({
+      where: { id: record.id },
+      data: { result: plan as object, status: "done", segmentsDone: 1 }
+    });
+
     return NextResponse.json(plan);
   } catch (err) {
     const msg = err instanceof Error ? err.message : "unknown error";
