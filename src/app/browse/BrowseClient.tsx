@@ -620,8 +620,18 @@ export default function BrowseClient({
             value={projectFilter}
             onChange={setProjectFilter}
             onDeleteProject={(p) => setConfirmDeleteProject(p)}
-            className="mb-3"
+            className="mb-2"
           />
+
+          {projectFilter !== "all" && (
+            <a
+              href={`/project/${projectFilter}`}
+              className="mb-3 flex items-center justify-center gap-1 rounded-md border border-brand-blue/30 bg-blue-50 px-3 py-1.5 text-sm font-medium text-brand-blue hover:bg-blue-100"
+              title="See every item in this project and its current status"
+            >
+              View all items →
+            </a>
+          )}
 
           {/* Flag filter — grouped with the project filter. Click a flag to list
               every minute carrying it across meetings; click again to clear. */}
@@ -702,7 +712,14 @@ export default function BrowseClient({
 
                 <div className="mt-4 text-sm">
                   <div className="text-slate-500">Project:</div>
-                  <div className="font-medium">{selected.projectName}</div>
+                  <a
+                    href={`/project/${selected.projectId}`}
+                    className="inline-flex items-center gap-1 font-medium text-brand-blue hover:underline"
+                    title="Open the project board — all items and their current status"
+                  >
+                    {selected.projectName}
+                    <span aria-hidden>↗</span>
+                  </a>
                 </div>
 
                 <div className="mt-3 text-sm">
