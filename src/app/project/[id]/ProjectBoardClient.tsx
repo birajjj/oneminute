@@ -26,6 +26,7 @@ export interface BoardItem {
   updateCount: number;
   raisedFromTitle: string | null;
   lastActivity: string; // ISO
+  meetingIds: string[]; // every meeting this item's thread touches
   thread: BoardThreadEntry[];
 }
 
@@ -86,12 +87,14 @@ export default function ProjectBoardClient({
   project,
   items,
   areas,
+  meetings,
   members,
   userName
 }: {
   project: { id: string; name: string };
   items: BoardItem[];
   areas: string[];
+  meetings: { id: string; title: string; date: string }[];
   members: string[];
   userName: string;
 }) {
@@ -99,6 +102,7 @@ export default function ProjectBoardClient({
   const [statusFilter, setStatusFilter] = useState<"open" | "completed" | "all">("open");
   const [typeFilter, setTypeFilter] = useState<string>("All");
   const [assigneeFilter, setAssigneeFilter] = useState<string>("All");
+  const [meetingFilter, setMeetingFilter] = useState<string>("all");
   const [flagFilter, setFlagFilter] = useState<string[]>([]);
   const [search, setSearch] = useState("");
   const [sort, setSort] = useState<"activity" | "due" | "title" | "status">("activity");
@@ -141,6 +145,8 @@ export default function ProjectBoardClient({
           if (it.assignedTo) return false;
         } else if (it.assignedTo !== assigneeFilter) return false;
       }
+      // Meeting filter: show items whose thread was touched in the chosen meeting.
+      if (meetingFilter !== "all" && !it.meetingIds.includes(meetingFilter)) return false;
       // OR across flags: an item shows if it carries ANY selected flag (clicking
       // more flags widens the list), matching the Browse flag filter.
       if (flagFilter.length && !it.tags.some((t) => flagFilter.includes(t))) return false;
@@ -175,7 +181,7 @@ export default function ProjectBoardClient({
       }
     });
     return list;
-  }, [items, activeTab, statusFilter, typeFilter, assigneeFilter, flagFilter, search, sort]);
+  }, [items, activeTab, statusFilter, typeFilter, assigneeFilter, meetingFilter, flagFilter, search, sort]);
 
   // Summary strip across the WHOLE project (independent of filters), so the boss
   // always sees the true totals.
@@ -195,6 +201,7 @@ export default function ProjectBoardClient({
     (statusFilter !== "open" ? 1 : 0) +
     (typeFilter !== "All" ? 1 : 0) +
     (assigneeFilter !== "All" ? 1 : 0) +
+    (meetingFilter !== "all" ? 1 : 0) +
     flagFilter.length +
     (search.trim() ? 1 : 0);
 
@@ -202,6 +209,7 @@ export default function ProjectBoardClient({
     setStatusFilter("open");
     setTypeFilter("All");
     setAssigneeFilter("All");
+    setMeetingFilter("all");
     setFlagFilter([]);
     setSearch("");
   }
@@ -338,6 +346,22 @@ export default function ProjectBoardClient({
                   </option>
                 ))}
               </select>
+
+              {meetings.length > 0 && (
+                <select
+                  value={meetingFilter}
+                  onChange={(e) => setMeetingFilter(e.target.value)}
+                  className="max-w-[240px] rounded-md border border-slate-300 px-2 py-1 text-sm text-slate-700"
+                  title="Filter by meeting"
+                >
+                  <option value="all">All meetings</option>
+                  {meetings.map((m) => (
+                    <option key={m.id} value={m.id}>
+                      {m.title}
+                    </option>
+                  ))}
+                </select>
+              )}
 
               <span className="mx-0.5 hidden h-5 w-px bg-slate-200 sm:block" />
 

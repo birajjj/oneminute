@@ -100,17 +100,33 @@ export default async function ProjectBoardPage({
         ? rootById.get(root.raisedFromRootId)?.title ?? null
         : null,
       lastActivity: latest.meeting.meetingDate.toISOString(),
+      // Every meeting this item's thread touches — for the meeting filter.
+      meetingIds: [...new Set(entries.map((e) => e.meetingId))],
       thread
     });
   }
 
   const areas = [...new Set(items.map((i) => i.area))].sort();
 
+  // Meetings that have items, newest first — for the meeting filter dropdown.
+  const meetingMap = new Map<string, { id: string; title: string; date: string }>();
+  for (const m of minutes) {
+    if (!meetingMap.has(m.meetingId)) {
+      meetingMap.set(m.meetingId, {
+        id: m.meetingId,
+        title: m.meeting.title,
+        date: m.meeting.meetingDate.toISOString()
+      });
+    }
+  }
+  const meetings = [...meetingMap.values()].sort((a, b) => (a.date < b.date ? 1 : -1));
+
   return (
     <ProjectBoardClient
       project={project}
       items={items}
       areas={areas}
+      meetings={meetings}
       members={members.map((m) => m.displayName)}
       userName={user.displayName}
     />
