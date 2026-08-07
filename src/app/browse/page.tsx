@@ -52,6 +52,7 @@ export default async function BrowsePage({
     orderBy: { meetingDate: "desc" },
     include: {
       project: { select: { id: true, name: true } },
+      areas: { select: { areaName: true } },
       minutes: {
         orderBy: [{ area: "asc" }, { createdAt: "asc" }],
         include: { assignedTo: { select: { displayName: true } } }
@@ -140,6 +141,8 @@ export default async function BrowsePage({
       description: m.description,
       attendee: m.attendee,
       followUpFrom,
+      // Registered tabs on this meeting — so a manually-added empty tab persists.
+      areaNames: m.areas.map((a) => a.areaName),
       minutes: m.minutes.map((mn) => {
         const rootId = mn.parentMinuteId ?? mn.id;
         return {

@@ -84,6 +84,7 @@ export interface BrowseMeeting {
   description: string | null;
   attendee: string | null;
   followUpFrom: { title: string; date: string } | null;
+  areaNames: string[];
   minutes: BrowseMinute[];
 }
 
@@ -419,6 +420,9 @@ export default function BrowseClient({
     selected.minutes.forEach((m) => {
       if (!m.raisedFromRootId && minutePasses(m)) set.add(m.area || "General");
     });
+    // Registered tabs (incl. manually-added empty ones) always show when not
+    // filtering, so an added tab persists across refresh.
+    if (!filterActive) selected.areaNames.forEach((a) => set.add(a));
     if (set.size === 0 && !filterActive) set.add("General");
     return Array.from(set);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -448,6 +452,14 @@ export default function BrowseClient({
     }
     setExtraAreas((prev) => [...prev, name]);
     setActiveArea(name);
+    // Persist the tab on the meeting so it survives a refresh even while empty.
+    if (selected) {
+      fetch(`/api/meetings/${selected.id}/areas`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name })
+      }).catch(() => {});
+    }
   }
 
   // A parent card ALWAYS shows its whole sub-tree, in every meeting from when each

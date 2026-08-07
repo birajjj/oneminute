@@ -15,6 +15,44 @@ const BodySchema = z.object({
   to: z.string().min(1)
 });
 
+// Create an empty tab/area on a meeting, so a manually-added tab persists even
+// before any minute is filed under it. Idempotent (unique on meeting+name).
+export async function POST(
+  req: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const { id } = await params;
+    const parsed = z.object({ name: z.string().min(1) }).safeParse(await req.json());
+    if (!parsed.success) {
+      return NextResponse.json({ error: "name is required" }, { status: 400 });
+    }
+    const user = await requireUser();
+    const meeting = await db.meeting.findFirst({
+      where: { id, orgId: user.orgId },
+      select: { id: true }
+    });
+    if (!meeting) return NextResponse.json({ error: "meeting not found" }, { status: 404 });
+
+    const name = parsed.data.name.trim();
+    if (!name) return NextResponse.json({ error: "invalid name" }, { status: 400 });
+
+    await db.meetingArea.upsert({
+      where: { meetingId_areaName: { meetingId: id, areaName: name } },
+      update: {},
+      create: { orgId: user.orgId, meetingId: id, areaName: name, createdOnFly: true }
+    });
+    return NextResponse.json({ ok: true });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : "unknown error";
+    if (msg === "UNAUTHENTICATED") {
+      return NextResponse.json({ error: "Not signed in" }, { status: 401 });
+    }
+    console.error("area create error:", msg);
+    return NextResponse.json({ error: msg }, { status: 500 });
+  }
+}
+
 export async function PATCH(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
