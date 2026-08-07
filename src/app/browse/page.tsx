@@ -65,6 +65,16 @@ export default async function BrowsePage({
   // raisedFromRootId lives only on a sub-item's ROOT, not on its later update
   // entries. Map each thread root -> its raisedFromRootId so every minute in the
   // thread can be nested under the item it was raised from, in ANY meeting.
+  // Root -> its project, so a raised-from link is only ever honoured WITHIN one
+  // project. A sub-item must never nest under — or surface — a minute from a
+  // different project (which would leak another project's item into this view).
+  const projectByRoot = new Map<string, string>();
+  for (const m of meetings) {
+    for (const mn of m.minutes) {
+      if (!mn.parentMinuteId) projectByRoot.set(mn.id, m.project.id);
+    }
+  }
+
   const rootRaisedFrom = new Map<string, string | null>();
   // parent thread root -> the child (sub-item) roots raised under it, so a parent
   // card can always show its whole sub-tree (as-of the viewed meeting).
@@ -72,8 +82,10 @@ export default async function BrowsePage({
   for (const m of meetings) {
     for (const mn of m.minutes) {
       if (!mn.parentMinuteId) {
-        rootRaisedFrom.set(mn.id, mn.raisedFromRootId ?? null);
-        if (mn.raisedFromRootId) (raisedChildrenOf[mn.raisedFromRootId] ??= []).push(mn.id);
+        const parent = mn.raisedFromRootId;
+        const sameProject = !!parent && projectByRoot.get(parent) === m.project.id;
+        rootRaisedFrom.set(mn.id, sameProject ? parent : null);
+        if (sameProject && parent) (raisedChildrenOf[parent] ??= []).push(mn.id);
       }
     }
   }
