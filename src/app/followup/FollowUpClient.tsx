@@ -65,6 +65,35 @@ function fmtDate(iso: string): string {
   );
 }
 
+// A small grip you grab to drag. Module-level so it keeps a stable identity and
+// never remounts mid-drag, and so it never interferes with the card's inputs.
+function DragGrip({
+  onStart,
+  onEnd,
+  label
+}: {
+  onStart: () => void;
+  onEnd: () => void;
+  label: string;
+}) {
+  return (
+    <span
+      draggable
+      onDragStart={(e) => {
+        e.stopPropagation();
+        e.dataTransfer.effectAllowed = "move";
+        onStart();
+      }}
+      onDragEnd={onEnd}
+      className="cursor-grab select-none px-1 text-slate-400 hover:text-slate-600"
+      title={label}
+      aria-label={label}
+    >
+      ⠿
+    </span>
+  );
+}
+
 // Local now as a datetime-local value (YYYY-MM-DDTHH:mm) for the date+time input.
 function nowDateTimeInput(): string {
   const d = new Date();
@@ -176,6 +205,98 @@ export default function FollowUpClient({
   const [error, setError] = useState("");
   const [result, setResult] = useState<{ updated: number; created: number; warnings: string[] } | null>(null);
 
+  // ---- Drag & drop reorganisation (additive — existing controls untouched) ----
+  // Drag an item's grip handle; drop onto a tab (re-file) or onto another item
+  // (nest / re-parent). Moving a committed open item re-files it in the DB now
+  // (like Browse); moving a new minute / sub-entry is part of the draft.
+  type DragItem =
+    | { kind: "openItem"; id: string }
+    | { kind: "newMinute"; index: number }
+    | { kind: "subEntry"; parentId: string; index: number };
+  const [dragItem, setDragItem] = useState<DragItem | null>(null);
+  const [dragOverArea, setDragOverArea] = useState<string | null>(null);
+  const [dragOverItem, setDragOverItem] = useState<string | null>(null);
+  const [areaOverride, setAreaOverride] = useState<Record<string, string>>({});
+
+  function endDrag() {
+    setDragItem(null);
+    setDragOverArea(null);
+    setDragOverItem(null);
+  }
+
+  // Re-file a committed open item to another tab — moves the whole thread, same
+  // as Browse. Optimistic; reverts on failure.
+  async function moveItemToArea(id: string, area: string) {
+    setAreaOverride((o) => ({ ...o, [id]: area }));
+    try {
+      const res = await fetch(`/api/minutes/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ area })
+      });
+      if (!res.ok) throw new Error(await res.text());
+    } catch (e) {
+      setAreaOverride((o) => {
+        const n = { ...o };
+        delete n[id];
+        return n;
+      });
+      setError("Couldn't move item: " + (e instanceof Error ? e.message : "error"));
+    }
+  }
+
+  function onDropOnTab(area: string) {
+    const d = dragItem;
+    endDrag();
+    if (!d) return;
+    if (d.kind === "openItem") {
+      const cur = areaOverride[d.id] ?? data.openItems.find((i) => i.id === d.id)?.area;
+      if (cur !== area) moveItemToArea(d.id, area);
+    } else if (d.kind === "newMinute") {
+      setNewMinutes((prev) => prev.map((m, i) => (i === d.index ? { ...m, area } : m)));
+    } else if (d.kind === "subEntry") {
+      // Un-nest a sub-item back to a standalone new minute in that tab.
+      const s = updates[d.parentId]?.subEntries[d.index];
+      if (!s) return;
+      setUpdates((prev) => ({
+        ...prev,
+        [d.parentId]: {
+          ...prev[d.parentId],
+          subEntries: prev[d.parentId].subEntries.filter((_, i) => i !== d.index)
+        }
+      }));
+      setNewMinutes((prev) => [...prev, { ...s, area }]);
+    }
+  }
+
+  function onDropOnItem(targetId: string) {
+    const d = dragItem;
+    endDrag();
+    if (!d) return;
+    if (d.kind === "newMinute") {
+      const m = newMinutes[d.index];
+      if (!m) return;
+      setNewMinutes((prev) => prev.filter((_, i) => i !== d.index));
+      setUpdates((prev) => ({
+        ...prev,
+        [targetId]: { ...prev[targetId], subEntries: [...prev[targetId].subEntries, m] }
+      }));
+    } else if (d.kind === "subEntry") {
+      if (d.parentId === targetId) return;
+      const s = updates[d.parentId]?.subEntries[d.index];
+      if (!s) return;
+      setUpdates((prev) => ({
+        ...prev,
+        [d.parentId]: {
+          ...prev[d.parentId],
+          subEntries: prev[d.parentId].subEntries.filter((_, i) => i !== d.index)
+        },
+        [targetId]: { ...prev[targetId], subEntries: [...prev[targetId].subEntries, s] }
+      }));
+    }
+  }
+
+
   // Optional AI pre-fill: record → transcribe → map to the open items below.
   const recorder = useSegmentRecorder(`oneminute:followup:${data.parent.id}`);
   const [analyzing, setAnalyzing] = useState(false);
@@ -216,14 +337,14 @@ export default function FollowUpClient({
       }
     }
     const area: Record<string, OpenItem[]> = {};
-    for (const it of topLevel) (area[it.area] ??= []).push(it);
+    for (const it of topLevel) (area[areaOverride[it.id] ?? it.area] ??= []).push(it);
     const orphanArea: Record<string, { parentId: string; info: { title: string; status: string }; children: OpenItem[] }[]> = {};
     for (const [pid, kids] of Object.entries(orphans)) {
       const a = kids[0].area;
       (orphanArea[a] ??= []).push({ parentId: pid, info: data.raisedParents[pid], children: kids });
     }
     return { byArea: area, childrenByParent: children, orphanGroupsByArea: orphanArea };
-  }, [data.openItems, data.raisedParents]);
+  }, [data.openItems, data.raisedParents, areaOverride]);
 
   // Tabbed review: only the active area's items are shown, like Browse.
   const [activeArea, setActiveArea] = useState<string>(() => data.areas[0] ?? "General");
@@ -255,6 +376,11 @@ export default function FollowUpClient({
     return (
       <div key={i} className="rounded border-l-4 border-l-brand-blue bg-blue-100 p-2">
         <div className="mb-1 flex items-center gap-2">
+          <DragGrip
+            onStart={() => setDragItem({ kind: "newMinute", index: i })}
+            onEnd={endDrag}
+            label="Drag onto an item to nest it, or onto a tab"
+          />
           <input
             value={m.title}
             onChange={(e) => setNewMinute(i, { title: e.target.value })}
@@ -733,11 +859,22 @@ export default function FollowUpClient({
                   <button
                     key={area}
                     onClick={() => setActiveArea(area)}
+                    onDragOver={(e) => {
+                      if (dragItem) {
+                        e.preventDefault();
+                        setDragOverArea(area);
+                      }
+                    }}
+                    onDragLeave={() => setDragOverArea((a) => (a === area ? null : a))}
+                    onDrop={(e) => {
+                      e.preventDefault();
+                      onDropOnTab(area);
+                    }}
                     className={`rounded-t px-3 py-1.5 text-sm font-medium ${
                       active
                         ? "bg-brand-blue/10 text-brand-blue"
                         : "text-slate-500 hover:bg-slate-100"
-                    }`}
+                    } ${dragOverArea === area ? "ring-2 ring-brand-blue ring-inset" : ""}`}
                   >
                     {area}
                     {count > 0 && <span className="ml-1 text-xs text-slate-400">({count})</span>}
@@ -746,6 +883,10 @@ export default function FollowUpClient({
               })}
             </div>
           )}
+          <p className="mb-3 text-xs text-slate-400">
+            Tip: drag an item&apos;s <span className="text-slate-500">⠿</span> grip onto a tab to re-file it, or
+            onto another item to nest it underneath.
+          </p>
           {data.areas.map((area) =>
             area !== currentArea ? null : (
             <div key={area} className="mb-4">
@@ -753,10 +894,28 @@ export default function FollowUpClient({
                 {(byArea[area] ?? []).map((it) => {
                   const u = updates[it.id];
                   return (
-                    <div key={it.id} className="rounded-lg border-l-4 border-l-amber-500 bg-amber-100 p-3">
+                    <div
+                      key={it.id}
+                      onDragOver={(e) => {
+                        // Accept only draggables that can nest here.
+                        if (dragItem && dragItem.kind !== "openItem") {
+                          e.preventDefault();
+                          setDragOverItem(it.id);
+                        }
+                      }}
+                      onDragLeave={() => setDragOverItem((x) => (x === it.id ? null : x))}
+                      onDrop={(e) => {
+                        e.preventDefault();
+                        onDropOnItem(it.id);
+                      }}
+                      className={`rounded-lg border-l-4 border-l-amber-500 bg-amber-100 p-3 ${
+                        dragOverItem === it.id ? "ring-2 ring-brand-blue" : ""
+                      }`}
+                    >
                       {/* Original item summary — the item's own fields (type,
                           status, owner, due) are editable right here. */}
                       <div className="flex flex-wrap items-center gap-2">
+                        <DragGrip onStart={() => setDragItem({ kind: "openItem", id: it.id })} onEnd={endDrag} label="Drag to another tab" />
                         <span className="font-semibold">{it.title}</span>
                         <span className="text-[11px] font-normal text-slate-400" title="When this item was first captured">
                           🕒 {fmtDate(it.capturedAt)}
@@ -884,6 +1043,11 @@ export default function FollowUpClient({
                             {u.subEntries.map((s, si) => (
                               <div key={si} className="rounded border-l-4 border-l-brand-blue bg-blue-100 p-2">
                                 <div className="mb-1 flex items-center gap-2">
+                                  <DragGrip
+                                    onStart={() => setDragItem({ kind: "subEntry", parentId: it.id, index: si })}
+                                    onEnd={endDrag}
+                                    label="Drag under another item, or onto a tab to un-nest"
+                                  />
                                   <select
                                     value={s.type}
                                     onChange={(e) =>
