@@ -876,6 +876,8 @@ export default function BrowseClient({
                     // decided, so they come from (and save to) this entry.
                     const displayTags = effEntry.tags ?? mn.tags ?? [];
                     const isEditing = editingId === itemId;
+                    // When the item was first captured (its root entry's meeting date).
+                    const capturedAt = (threads[mn.rootId] ?? []).find((e) => e.isRoot)?.date ?? "";
 
                     // Nested history: only what existed UP TO the meeting being viewed
                     // (so an earlier meeting doesn't show later updates). The full
@@ -947,6 +949,11 @@ export default function BrowseClient({
                               )}
                               {savedFlash === itemId && (
                                 <span className="text-[10px] font-medium text-emerald-600">Saved ✓</span>
+                              )}
+                              {capturedAt && (
+                                <span className="text-[10px] font-normal text-slate-400" title="When this item was first captured">
+                                  🕒 {fmtDate(capturedAt)}
+                                </span>
                               )}
                               {mn.isReference ? (
                                 <span className="text-xs italic text-slate-500">{headerType}</span>

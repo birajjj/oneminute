@@ -495,6 +495,9 @@ export default function FollowUpClient({
       <div key={child.id} className="rounded border-l-4 border-l-amber-500 bg-amber-50 p-2">
         <div className="flex flex-wrap items-center gap-2">
           <span className="text-sm font-medium">{child.title}</span>
+          <span className="text-[10px] font-normal text-slate-400" title="When this item was first captured">
+            🕒 {fmtDate(child.capturedAt)}
+          </span>
           <select
             value={cu.type}
             onChange={(e) => setUpdate(child.id, { type: e.target.value })}
@@ -755,6 +758,9 @@ export default function FollowUpClient({
                           status, owner, due) are editable right here. */}
                       <div className="flex flex-wrap items-center gap-2">
                         <span className="font-semibold">{it.title}</span>
+                        <span className="text-[11px] font-normal text-slate-400" title="When this item was first captured">
+                          🕒 {fmtDate(it.capturedAt)}
+                        </span>
                         {aiFilled.has(it.id) && (
                           <span className="rounded bg-brand-purple px-1.5 py-0.5 text-[10px] font-medium text-white">AI</span>
                         )}

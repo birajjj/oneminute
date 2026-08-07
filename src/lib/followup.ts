@@ -48,6 +48,8 @@ export interface OpenItem {
   // If set, this open item was raised under another item in an earlier follow-up.
   // The review nests it under that parent so it travels with the original minute.
   raisedFromRootId: string | null;
+  // When the item was first captured — its root meeting's date/time.
+  capturedAt: string;
   history: OpenItemHistory[];
 }
 
@@ -145,6 +147,7 @@ export async function loadFollowUpData(
         // so a follow-up opens showing what's currently flagged.
         tags: latestEntryOf(m.id)?.tags ?? [],
         raisedFromRootId: m.raisedFromRootId ?? null,
+        capturedAt: m.meeting.meetingDate.toISOString(),
         history: historyByRoot[m.id] ?? []
       };
     });
