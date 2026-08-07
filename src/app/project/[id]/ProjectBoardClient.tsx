@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import { TagBadges } from "@/components/TagChips";
 import { MINUTE_TAGS, TAG_STYLES } from "@/lib/tags";
 
@@ -15,6 +16,9 @@ export interface BoardThreadEntry {
 
 export interface BoardItem {
   id: string;
+  // Latest entry in the thread — status edits target this (it's the status the
+  // board displays); type/owner/due are item identity and target `id` (the root).
+  latestEntryId: string;
   area: string;
   title: string;
   type: string; // label
@@ -65,6 +69,7 @@ const STATUS_RANK: Record<string, number> = {
 };
 
 const TYPE_OPTIONS = ["To-Do", "Devops", "Action", "Note"];
+const STATUS_OPTIONS = ["New", "Initiated", "In Progress", "Completed", "Cancelled"];
 
 function isOpen(status: string) {
   return status !== "Completed" && status !== "Cancelled";
@@ -73,6 +78,13 @@ function isOpen(status: string) {
 function fmtDate(iso: string) {
   const d = new Date(iso);
   return d.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
+}
+
+// ISO (or a plain "YYYY-MM-DD") -> the value a <input type="date"> expects. Due
+// dates are stored at UTC midnight, so the first 10 chars are the intended day
+// with no timezone drift.
+function toDateInput(value: string | null) {
+  return value ? value.slice(0, 10) : "";
 }
 
 function isOverdue(item: BoardItem) {
@@ -107,6 +119,46 @@ export default function ProjectBoardClient({
   const [search, setSearch] = useState("");
   const [sort, setSort] = useState<"activity" | "due" | "title" | "status">("activity");
   const [openItem, setOpenItem] = useState<BoardItem | null>(null);
+  const [savingField, setSavingField] = useState<string | null>(null);
+  const router = useRouter();
+
+  // Edit an item straight from the board's detail panel. Status is point-in-time
+  // (it's the latest entry's, which is what the board shows), so it saves to the
+  // latest entry; type/owner/due are the item's identity and save to the root.
+  async function editItem(
+    item: BoardItem,
+    field: "status" | "type" | "assignedTo" | "dueDate",
+    value: string
+  ) {
+    const targetId = field === "status" ? item.latestEntryId : item.id;
+    const patch: Record<string, string> = { [field]: value };
+    // Optimistic: reflect it in the open panel right away.
+    setOpenItem((prev) => {
+      if (!prev || prev.id !== item.id) return prev;
+      if (field === "status") return { ...prev, status: value };
+      if (field === "type") return { ...prev, type: value };
+      if (field === "assignedTo") return { ...prev, assignedTo: value || null };
+      return { ...prev, dueDate: value || null };
+    });
+    setSavingField(field);
+    try {
+      const res = await fetch(`/api/minutes/${targetId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(patch)
+      });
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}));
+        throw new Error(j.error || "Save failed");
+      }
+      router.refresh();
+    } catch (e) {
+      alert(e instanceof Error ? e.message : "Save failed");
+      router.refresh(); // fall back to server truth
+    } finally {
+      setSavingField(null);
+    }
+  }
 
   function toggleFlag(tag: string) {
     setFlagFilter((prev) =>
@@ -527,32 +579,67 @@ export default function ProjectBoardClient({
           >
             <div className="mb-3 flex items-start gap-2">
               <div className="min-w-0 flex-1">
-                <div className="flex flex-wrap items-center gap-2">
-                  <span
-                    className={`rounded px-1.5 py-0.5 text-xs font-semibold ${
-                      TYPE_BADGE[openItem.type] ?? "bg-slate-100 text-slate-600"
-                    }`}
-                  >
-                    {openItem.type}
-                  </span>
-                  <span
-                    className={`rounded px-1.5 py-0.5 text-xs font-semibold ${
-                      STATUS_BADGE[openItem.status] ?? "bg-slate-100 text-slate-600"
-                    }`}
-                  >
-                    {openItem.status}
-                  </span>
+                <h2 className="text-base font-semibold text-slate-800">
+                  {openItem.title || "Untitled"}
+                </h2>
+                {/* Edit the item's state right here — changes save on the spot. */}
+                <div className="mt-3 grid grid-cols-2 gap-2 text-xs sm:grid-cols-4">
+                  <label className="flex flex-col gap-1">
+                    <span className="text-slate-500">Type</span>
+                    <select
+                      value={openItem.type}
+                      onChange={(e) => editItem(openItem, "type", e.target.value)}
+                      className="rounded border border-slate-300 px-2 py-1 text-slate-700"
+                    >
+                      {TYPE_OPTIONS.map((t) => (
+                        <option key={t} value={t}>{t}</option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="flex flex-col gap-1">
+                    <span className="text-slate-500">Status</span>
+                    <select
+                      value={openItem.status}
+                      onChange={(e) => editItem(openItem, "status", e.target.value)}
+                      className="rounded border border-slate-300 px-2 py-1 text-slate-700"
+                    >
+                      {STATUS_OPTIONS.map((s) => (
+                        <option key={s} value={s}>{s}</option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="flex flex-col gap-1">
+                    <span className="text-slate-500">Owner</span>
+                    <select
+                      value={openItem.assignedTo ?? ""}
+                      onChange={(e) => editItem(openItem, "assignedTo", e.target.value)}
+                      className="rounded border border-slate-300 px-2 py-1 text-slate-700"
+                    >
+                      <option value="">— Unassigned —</option>
+                      {openItem.assignedTo && !members.includes(openItem.assignedTo) && (
+                        <option value={openItem.assignedTo}>{openItem.assignedTo}</option>
+                      )}
+                      {members.map((m) => (
+                        <option key={m} value={m}>{m}</option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="flex flex-col gap-1">
+                    <span className="text-slate-500">Due date</span>
+                    <input
+                      type="date"
+                      value={toDateInput(openItem.dueDate)}
+                      onChange={(e) => editItem(openItem, "dueDate", e.target.value)}
+                      className="rounded border border-slate-300 px-2 py-1 text-slate-700"
+                    />
+                  </label>
+                </div>
+                <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-500">
                   <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[11px] text-slate-500">
                     {openItem.area}
                   </span>
-                </div>
-                <h2 className="mt-2 text-base font-semibold text-slate-800">
-                  {openItem.title || "Untitled"}
-                </h2>
-                <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs text-slate-500">
-                  {openItem.assignedTo && <span>👤 {openItem.assignedTo}</span>}
-                  {openItem.dueDate && <span>📅 due {fmtDate(openItem.dueDate)}</span>}
                   {openItem.devopsItemId && <span>DevOps #{openItem.devopsItemId}</span>}
+                  {savingField && <span className="text-slate-400">Saving…</span>}
                 </div>
                 {openItem.tags.length > 0 && (
                   <div className="mt-2">

@@ -87,6 +87,9 @@ export default async function ProjectBoardPage({
 
     items.push({
       id: rootId,
+      // The entry whose status the board shows — status edits target THIS, so the
+      // board reflects the change (the rest are item identity, edited on the root).
+      latestEntryId: latest.id,
       area: root.area || "General",
       title: root.title,
       type: TYPE_LABEL[root.type] ?? root.type,

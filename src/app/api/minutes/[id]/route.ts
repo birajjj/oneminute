@@ -37,7 +37,10 @@ const BodySchema = z.object({
   tags: z.array(z.string()).optional(),
   // Item type (label). Belongs to the item's identity, so it's applied to the
   // thread ROOT, not just this entry.
-  type: z.string().optional()
+  type: z.string().optional(),
+  // Due date as "YYYY-MM-DD" ("" clears it). Item-level, so callers send the
+  // thread root's id (the project board does).
+  dueDate: z.string().optional()
 });
 
 export async function PATCH(
@@ -96,7 +99,21 @@ export async function PATCH(
       description?: string | null;
       title?: string;
       tags?: string[];
+      dueDate?: Date | null;
     } = {};
+
+    if (parsed.data.dueDate !== undefined) {
+      const v = parsed.data.dueDate.trim();
+      if (!v) {
+        data.dueDate = null;
+      } else {
+        const d = new Date(v);
+        if (Number.isNaN(d.getTime())) {
+          return NextResponse.json({ error: "invalid dueDate" }, { status: 400 });
+        }
+        data.dueDate = d;
+      }
+    }
 
     if (parsed.data.tags !== undefined) {
       data.tags = normalizeTags(parsed.data.tags);
