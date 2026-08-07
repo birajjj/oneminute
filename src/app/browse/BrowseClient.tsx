@@ -263,6 +263,9 @@ export default function BrowseClient({
   // ---- Area/tab: drag-and-drop re-filing + rename ----
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [dragOverArea, setDragOverArea] = useState<string | null>(null);
+  // Dragging a whole tab onto another merges them.
+  const [draggingTab, setDraggingTab] = useState<string | null>(null);
+  const [mergeTabPrompt, setMergeTabPrompt] = useState<{ from: string; to: string } | null>(null);
   const [renamingArea, setRenamingArea] = useState<string | null>(null);
   const [renameDraft, setRenameDraft] = useState("");
 
@@ -870,24 +873,40 @@ export default function BrowseClient({
                     ) : (
                       <span key={a} className="group relative inline-flex">
                         <button
+                          draggable
+                          onDragStart={(e) => {
+                            e.stopPropagation();
+                            e.dataTransfer.effectAllowed = "move";
+                            setDraggingTab(a);
+                          }}
+                          onDragEnd={() => { setDraggingTab(null); setDragOverArea(null); }}
                           onClick={() => setActiveArea(a)}
                           onDoubleClick={() => { setRenamingArea(a); setRenameDraft(a); }}
-                          onDragOver={(e) => { e.preventDefault(); setDragOverArea(a); }}
+                          onDragOver={(e) => {
+                            if (draggingTab === a) return; // can't drop a tab on itself
+                            e.preventDefault();
+                            setDragOverArea(a);
+                          }}
                           onDragLeave={() => setDragOverArea((c) => (c === a ? null : c))}
                           onDrop={(e) => {
                             e.preventDefault();
                             setDragOverArea(null);
+                            if (draggingTab && draggingTab !== a) {
+                              setMergeTabPrompt({ from: draggingTab, to: a });
+                              setDraggingTab(null);
+                              return;
+                            }
                             if (draggingId) moveMinuteToArea(draggingId, a);
                             setDraggingId(null);
                           }}
-                          title="Click to open · Double-click to rename (applies across the project) · Drop a minute here to move it"
+                          title="Click to open · Double-click to rename · Drag onto another tab to merge · Drop a minute here to move it"
                           className={`rounded px-4 py-1.5 text-sm font-medium transition ${
                             dragOverArea === a
                               ? "bg-emerald-100 text-emerald-700 ring-2 ring-emerald-400"
                               : currentArea === a
                                 ? "bg-blue-100 text-brand-blue"
                                 : "bg-slate-100 text-slate-600 hover:bg-slate-200"
-                          }`}
+                          } ${draggingTab === a ? "opacity-50" : ""}`}
                         >
                           {a}
                         </button>
@@ -930,7 +949,7 @@ export default function BrowseClient({
                     </button>
                   )}
                   <span className="ml-1 text-[11px] text-slate-400">
-                    Drag a minute onto a tab to move it · double-click to rename · hover a tab and click ✕ to delete it
+                    Drag a minute onto a tab to move · drag a tab onto another to merge · double-click to rename · hover ✕ to delete
                   </span>
                 </div>
               </div>
@@ -1415,6 +1434,43 @@ export default function BrowseClient({
           onSaved={() => router.refresh()}
           onClose={() => setOpenEntry(null)}
         />
+      )}
+
+      {/* Confirm merging one tab into another (dragged tab-onto-tab). */}
+      {mergeTabPrompt && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+          onClick={() => setMergeTabPrompt(null)}
+        >
+          <div
+            className="w-full max-w-md rounded-lg bg-white p-6 shadow-xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className="text-lg font-bold text-slate-900">Merge tabs</h3>
+            <p className="mt-2 text-sm text-slate-600">
+              Move everything from “{mergeTabPrompt.from}” into “{mergeTabPrompt.to}”? “
+              {mergeTabPrompt.from}” will then be gone.
+            </p>
+            <div className="mt-5 flex justify-end gap-2">
+              <button
+                onClick={() => setMergeTabPrompt(null)}
+                className="rounded border border-slate-300 px-4 py-2 text-sm"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => {
+                  const { from, to } = mergeTabPrompt;
+                  setMergeTabPrompt(null);
+                  renameArea(from, to); // re-files + merges + refreshes
+                }}
+                className="rounded bg-brand-blue px-4 py-2 text-sm font-medium text-white"
+              >
+                Merge
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Move-then-delete a tab that still has items (also the "merge" path). */}
