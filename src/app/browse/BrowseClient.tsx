@@ -1044,13 +1044,41 @@ export default function BrowseClient({
                                   Update this meeting
                                 </div>
                                 {nestedRows.map((fu) => (
-                                  <button
+                                  <div
                                     key={fu.id}
-                                    onClick={() => setOpenEntry(fu)}
-                                    className="block w-full rounded px-1 py-0.5 text-left text-brand-blue hover:bg-blue-50"
+                                    onBlur={(e) => {
+                                      if (editingId === fu.id && !e.currentTarget.contains(e.relatedTarget as Node))
+                                        commitEditMinute();
+                                    }}
+                                    onKeyDown={(e) => {
+                                      if (editingId === fu.id && e.key === "Escape") setEditingId(null);
+                                    }}
                                   >
-                                    {fu.description?.trim()}
-                                  </button>
+                                    {editingId === fu.id ? (
+                                      // It's just a note — edit inline, no dialog.
+                                      <textarea
+                                        autoFocus
+                                        value={draft.description}
+                                        onChange={(e) =>
+                                          setDraft((d) => ({ ...d, description: e.target.value }))
+                                        }
+                                        rows={2}
+                                        className="w-full rounded border border-brand-blue p-1.5 text-brand-blue"
+                                      />
+                                    ) : (
+                                      <div
+                                        onClick={() =>
+                                          startEditMinute(fu.id, fu.title, fu.description ?? "")
+                                        }
+                                        className="cursor-text rounded px-1 py-0.5 text-brand-blue hover:bg-blue-100"
+                                        title="Click to edit this note"
+                                      >
+                                        {fu.description?.trim() || (
+                                          <span className="italic text-slate-400">(empty — click to add a note)</span>
+                                        )}
+                                      </div>
+                                    )}
+                                  </div>
                                 ))}
                               </div>
                             )}
@@ -1072,6 +1100,10 @@ export default function BrowseClient({
                                     const subStatus = sub.editable ? (edits[sub.entryId!]?.status ?? sub.status) : sub.status;
                                     const subType = sub.editable ? (edits[sub.childRootId]?.type ?? sub.type) : sub.type;
                                     const subDone = subStatus === "Completed" || subStatus === "Cancelled";
+                                    const subTitle = (sub.editable ? edits[sub.childRootId]?.title : undefined) ?? sub.title;
+                                    const subDescription =
+                                      (sub.editable ? edits[sub.childRootId]?.description : undefined) ?? sub.description;
+                                    const subEditing = sub.editable && editingId === sub.childRootId;
                                     return (
                                       <div
                                         key={sub.key}
@@ -1094,13 +1126,76 @@ export default function BrowseClient({
                                               {subType}
                                             </span>
                                           )}
-                                          <div className="min-w-0 flex-1">
-                                            <div className={`text-sm font-medium ${subDone ? "text-slate-400 line-through" : "text-slate-800"}`}>
-                                              {sub.title}
-                                            </div>
-                                            {sub.description && (
-                                              <p className="mt-0.5 text-xs text-slate-500">{sub.description}</p>
+                                          <div
+                                            className="min-w-0 flex-1"
+                                            onBlur={
+                                              sub.editable
+                                                ? (e) => {
+                                                    if (subEditing && !e.currentTarget.contains(e.relatedTarget as Node))
+                                                      commitEditMinute();
+                                                  }
+                                                : undefined
+                                            }
+                                            onKeyDown={
+                                              sub.editable
+                                                ? (e) => {
+                                                    if (subEditing && e.key === "Escape") setEditingId(null);
+                                                  }
+                                                : undefined
+                                            }
+                                          >
+                                            {subEditing ? (
+                                              <input
+                                                autoFocus
+                                                value={draft.title}
+                                                onChange={(e) => setDraft((d) => ({ ...d, title: e.target.value }))}
+                                                className="w-full rounded border border-brand-blue px-1 py-0.5 text-sm font-medium"
+                                              />
+                                            ) : (
+                                              <div
+                                                onClick={
+                                                  sub.editable
+                                                    ? () => startEditMinute(sub.childRootId, subTitle, subDescription ?? "")
+                                                    : undefined
+                                                }
+                                                className={`text-sm font-medium ${subDone ? "text-slate-400 line-through" : "text-slate-800"} ${sub.editable ? "cursor-text hover:underline" : ""}`}
+                                                title={sub.editable ? "Click to edit" : undefined}
+                                              >
+                                                {subTitle}
+                                                {savedFlash === sub.childRootId && (
+                                                  <span className="ml-2 text-[10px] font-medium text-emerald-600">Saved ✓</span>
+                                                )}
+                                              </div>
                                             )}
+                                            {subEditing ? (
+                                              <textarea
+                                                value={draft.description}
+                                                onChange={(e) =>
+                                                  setDraft((d) => ({ ...d, description: e.target.value }))
+                                                }
+                                                rows={2}
+                                                placeholder="Description…"
+                                                className="mt-1 w-full rounded border border-brand-blue p-1.5 text-xs text-slate-700"
+                                              />
+                                            ) : subDescription ? (
+                                              <p
+                                                onClick={
+                                                  sub.editable
+                                                    ? () => startEditMinute(sub.childRootId, subTitle, subDescription ?? "")
+                                                    : undefined
+                                                }
+                                                className={`mt-0.5 text-xs text-slate-500 ${sub.editable ? "cursor-text hover:text-slate-700" : ""}`}
+                                              >
+                                                {subDescription}
+                                              </p>
+                                            ) : sub.editable ? (
+                                              <p
+                                                onClick={() => startEditMinute(sub.childRootId, subTitle, "")}
+                                                className="mt-0.5 cursor-text text-xs italic text-slate-400 hover:text-slate-600"
+                                              >
+                                                (click to add a description)
+                                              </p>
+                                            ) : null}
                                             <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
                                               <TagBadges tags={sub.tags} />
                                               {sub.devopsItemId && (
