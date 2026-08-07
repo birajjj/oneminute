@@ -348,7 +348,31 @@ export default function FollowUpClient({
 
   // Tabbed review: only the active area's items are shown, like Browse.
   const [activeArea, setActiveArea] = useState<string>(() => data.areas[0] ?? "General");
-  const currentArea = data.areas.includes(activeArea) ? activeArea : (data.areas[0] ?? "General");
+  // Locally-added empty tabs (an area with no items yet). Filing a new minute
+  // under one commits it for real; a name that matches an existing area just
+  // reuses that tab rather than creating a duplicate.
+  const [extraAreas, setExtraAreas] = useState<string[]>([]);
+  const allAreas = useMemo(
+    () => [...new Set([...data.areas, ...extraAreas])],
+    [data.areas, extraAreas]
+  );
+  const currentArea = allAreas.includes(activeArea) ? activeArea : (allAreas[0] ?? "General");
+
+  const [addingTab, setAddingTab] = useState(false);
+  const [newTabName, setNewTabName] = useState("");
+  function addTab() {
+    const name = newTabName.trim();
+    setNewTabName("");
+    setAddingTab(false);
+    if (!name) return;
+    const existing = allAreas.find((a) => a.toLowerCase() === name.toLowerCase());
+    if (existing) {
+      setActiveArea(existing); // reuse the existing tab (and its items)
+      return;
+    }
+    setExtraAreas((prev) => [...prev, name]);
+    setActiveArea(name);
+  }
 
   function setUpdate(id: string, patch: Partial<ItemUpdate>) {
     setUpdates((prev) => ({ ...prev, [id]: { ...prev[id], ...patch } }));
@@ -848,46 +872,69 @@ export default function FollowUpClient({
         ) : (
           <>
           {/* Area tabs — click to jump to a group without scrolling. */}
-          {data.areas.length > 1 && (
-            <div className="mb-4 flex flex-wrap gap-2 border-b border-slate-200 pb-2">
-              {data.areas.map((area) => {
-                const count =
-                  (byArea[area] ?? []).length +
-                  (orphanGroupsByArea[area] ?? []).reduce((n, g) => n + g.children.length, 0);
-                const active = area === currentArea;
-                return (
-                  <button
-                    key={area}
-                    onClick={() => setActiveArea(area)}
-                    onDragOver={(e) => {
-                      if (dragItem) {
-                        e.preventDefault();
-                        setDragOverArea(area);
-                      }
-                    }}
-                    onDragLeave={() => setDragOverArea((a) => (a === area ? null : a))}
-                    onDrop={(e) => {
+          <div className="mb-4 flex flex-wrap items-center gap-2 border-b border-slate-200 pb-2">
+            {allAreas.map((area) => {
+              const count =
+                (byArea[area] ?? []).length +
+                (orphanGroupsByArea[area] ?? []).reduce((n, g) => n + g.children.length, 0);
+              const active = area === currentArea;
+              return (
+                <button
+                  key={area}
+                  onClick={() => setActiveArea(area)}
+                  onDragOver={(e) => {
+                    if (dragItem) {
                       e.preventDefault();
-                      onDropOnTab(area);
-                    }}
-                    className={`rounded-t px-3 py-1.5 text-sm font-medium ${
-                      active
-                        ? "bg-brand-blue/10 text-brand-blue"
-                        : "text-slate-500 hover:bg-slate-100"
-                    } ${dragOverArea === area ? "ring-2 ring-brand-blue ring-inset" : ""}`}
-                  >
-                    {area}
-                    {count > 0 && <span className="ml-1 text-xs text-slate-400">({count})</span>}
-                  </button>
-                );
-              })}
-            </div>
-          )}
+                      setDragOverArea(area);
+                    }
+                  }}
+                  onDragLeave={() => setDragOverArea((a) => (a === area ? null : a))}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    onDropOnTab(area);
+                  }}
+                  className={`rounded-t px-3 py-1.5 text-sm font-medium ${
+                    active
+                      ? "bg-brand-blue/10 text-brand-blue"
+                      : "text-slate-500 hover:bg-slate-100"
+                  } ${dragOverArea === area ? "ring-2 ring-brand-blue ring-inset" : ""}`}
+                >
+                  {area}
+                  {count > 0 && <span className="ml-1 text-xs text-slate-400">({count})</span>}
+                </button>
+              );
+            })}
+            {addingTab ? (
+              <input
+                autoFocus
+                value={newTabName}
+                onChange={(e) => setNewTabName(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") addTab();
+                  if (e.key === "Escape") {
+                    setAddingTab(false);
+                    setNewTabName("");
+                  }
+                }}
+                onBlur={addTab}
+                placeholder="Tab name…"
+                className="w-32 rounded border border-brand-blue px-2 py-1 text-sm"
+              />
+            ) : (
+              <button
+                onClick={() => setAddingTab(true)}
+                className="rounded px-2 py-1.5 text-sm font-medium text-brand-blue hover:bg-blue-50"
+                title="Add a tab — reuses an existing area if the name matches"
+              >
+                + Add tab
+              </button>
+            )}
+          </div>
           <p className="mb-3 text-xs text-slate-400">
             Tip: drag an item&apos;s <span className="text-slate-500">⠿</span> grip onto a tab to re-file it, or
             onto another item to nest it underneath.
           </p>
-          {data.areas.map((area) =>
+          {allAreas.map((area) =>
             area !== currentArea ? null : (
             <div key={area} className="mb-4">
               <div className="space-y-5">
@@ -1188,9 +1235,9 @@ export default function FollowUpClient({
           </button>
         </div>
 
-        {newMinutes.some((m) => !data.areas.includes(m.area)) ? (
+        {newMinutes.some((m) => !allAreas.includes(m.area)) ? (
           <div className="space-y-2">
-            {newMinutes.map((m, i) => (!data.areas.includes(m.area) ? renderNewMinuteEditor(m, i) : null))}
+            {newMinutes.map((m, i) => (!allAreas.includes(m.area) ? renderNewMinuteEditor(m, i) : null))}
           </div>
         ) : (
           <p className="text-sm text-slate-400">

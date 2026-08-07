@@ -425,7 +425,30 @@ export default function BrowseClient({
   }, [selected, filterActive, q, textActive, flagActive, tagFilter, edits, selectedTitleMatched]);
 
   const [activeArea, setActiveArea] = useState<string>("General");
-  const currentArea = areas.includes(activeArea) ? activeArea : areas[0] ?? "General";
+  // Locally-added empty tabs; dropping/filing a minute into one persists it
+  // (the minute re-file already creates the tab). Cleared when the meeting changes.
+  const [extraAreas, setExtraAreas] = useState<string[]>([]);
+  const allAreas = useMemo(() => [...new Set([...areas, ...extraAreas])], [areas, extraAreas]);
+  const currentArea = allAreas.includes(activeArea) ? activeArea : allAreas[0] ?? "General";
+  useEffect(() => {
+    setExtraAreas([]);
+  }, [selected?.id]);
+
+  const [addingTab, setAddingTab] = useState(false);
+  const [newTabName, setNewTabName] = useState("");
+  function addTab() {
+    const name = newTabName.trim();
+    setNewTabName("");
+    setAddingTab(false);
+    if (!name) return;
+    const existing = allAreas.find((a) => a.toLowerCase() === name.toLowerCase());
+    if (existing) {
+      setActiveArea(existing);
+      return;
+    }
+    setExtraAreas((prev) => [...prev, name]);
+    setActiveArea(name);
+  }
 
   // A parent card ALWAYS shows its whole sub-tree, in every meeting from when each
   // sub-item was raised — each sub-item at its status AS OF the viewed meeting
@@ -788,7 +811,7 @@ export default function BrowseClient({
                   Double-click a tab to rename it. */}
               <div className="sticky top-0 z-20 -mx-4 mb-4 border-b border-slate-200 bg-slate-50/95 px-4 py-2 backdrop-blur sm:-mx-6 sm:px-6">
                 <div className="flex flex-wrap items-center gap-2">
-                  {areas.map((a) =>
+                  {allAreas.map((a) =>
                     renamingArea === a ? (
                       <input
                         key={a}
@@ -827,6 +850,31 @@ export default function BrowseClient({
                         {a}
                       </button>
                     )
+                  )}
+                  {addingTab ? (
+                    <input
+                      autoFocus
+                      value={newTabName}
+                      onChange={(e) => setNewTabName(e.target.value)}
+                      onBlur={addTab}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") addTab();
+                        if (e.key === "Escape") {
+                          setAddingTab(false);
+                          setNewTabName("");
+                        }
+                      }}
+                      placeholder="Tab name…"
+                      className="w-36 rounded border border-brand-blue px-2 py-1 text-sm"
+                    />
+                  ) : (
+                    <button
+                      onClick={() => setAddingTab(true)}
+                      className="rounded px-3 py-1.5 text-sm font-medium text-brand-blue hover:bg-blue-50"
+                      title="Add a tab — reuses an existing area if the name matches. Drop a minute on it to fill it."
+                    >
+                      + Add tab
+                    </button>
                   )}
                   <span className="ml-1 text-[11px] text-slate-400">
                     Drag a minute onto a tab to move it · double-click a tab to rename it across the project
@@ -1257,7 +1305,7 @@ export default function BrowseClient({
                           {/* Click-based alternative to dragging (touch / precise
                               moves) — only useful when there's another area to
                               move to, so hidden when the meeting has a single tab. */}
-                          {areas.length > 1 && (
+                          {allAreas.length > 1 && (
                             <select
                               value=""
                               onChange={(e) => { if (e.target.value) moveMinuteToArea(mn.id, e.target.value); }}
@@ -1265,7 +1313,7 @@ export default function BrowseClient({
                               title="Move this minute to another area"
                             >
                               <option value="">Move to…</option>
-                              {areas.filter((a) => a !== (mn.area || "General")).map((a) => (
+                              {allAreas.filter((a) => a !== (mn.area || "General")).map((a) => (
                                 <option key={a} value={a}>{a}</option>
                               ))}
                             </select>
@@ -1420,7 +1468,7 @@ export default function BrowseClient({
         <div className="fixed inset-x-0 bottom-0 z-50 border-t border-slate-300 bg-white/95 px-6 py-3 shadow-[0_-4px_12px_rgba(0,0,0,0.08)] backdrop-blur">
           <div className="flex flex-wrap items-center gap-2">
             <span className="text-sm font-medium text-slate-600">Drop into area:</span>
-            {areas.map((a) => (
+            {allAreas.map((a) => (
               <button
                 key={a}
                 onDragOver={(e) => { e.preventDefault(); setDragOverArea(a); }}
