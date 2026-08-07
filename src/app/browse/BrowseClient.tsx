@@ -66,6 +66,27 @@ interface NestedSub {
 }
 
 const STATUS_OPTIONS = ["New", "Initiated", "In Progress", "Completed", "Cancelled"];
+const TYPE_OPTIONS = ["Note", "To-Do", "Action", "Devops"];
+
+// A fresh, hand-entered minute (Browse "+ Add minute"), before it's saved.
+type MinuteDraft = {
+  title: string;
+  description: string;
+  type: string;
+  status: string;
+  assignedTo: string;
+  dueDate: string;
+  tags: string[];
+};
+const blankMinute = (): MinuteDraft => ({
+  title: "",
+  description: "",
+  type: "Note",
+  status: "New",
+  assignedTo: "",
+  dueDate: "",
+  tags: []
+});
 
 // Colour per minute type, for the small type badge on raised sub-minutes.
 const TYPE_BADGE: Record<string, string> = {
@@ -492,6 +513,53 @@ export default function BrowseClient({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name })
       }).catch(() => {});
+    }
+  }
+
+  // Add a minute by hand to the viewed meeting, under the current tab — same as
+  // the follow-up page's "+ Add minute", but this writes to the DB immediately
+  // (the meeting isn't a draft) and refreshes.
+  const [addingMinute, setAddingMinute] = useState(false);
+  const [savingMinute, setSavingMinute] = useState(false);
+  const [minuteDraft, setMinuteDraft] = useState<MinuteDraft>(blankMinute);
+  const patchDraft = (patch: Partial<MinuteDraft>) =>
+    setMinuteDraft((prev) => ({ ...prev, ...patch }));
+  // Close/reset the editor when the meeting or tab changes.
+  useEffect(() => {
+    setAddingMinute(false);
+    setMinuteDraft(blankMinute());
+  }, [selected?.id, currentArea]);
+  async function createMinute() {
+    if (!selected) return;
+    const title = minuteDraft.title.trim();
+    if (!title) return;
+    setSavingMinute(true);
+    try {
+      const res = await fetch(`/api/meetings/${selected.id}/minutes`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          area: currentArea,
+          title,
+          description: minuteDraft.description,
+          type: minuteDraft.type,
+          status: minuteDraft.status,
+          assignedTo: minuteDraft.assignedTo,
+          dueDate: minuteDraft.dueDate,
+          tags: minuteDraft.tags
+        })
+      });
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}));
+        throw new Error(j.error || "failed");
+      }
+      setAddingMinute(false);
+      setMinuteDraft(blankMinute());
+      router.refresh();
+    } catch (e) {
+      alert(e instanceof Error ? e.message : "Could not add minute");
+    } finally {
+      setSavingMinute(false);
     }
   }
 
@@ -1411,6 +1479,124 @@ export default function BrowseClient({
                   })}
                 </div>
               )}
+
+              {/* Add a minute by hand to this meeting, under the current tab. */}
+              <div className="mt-6">
+                {addingMinute ? (
+                  <div className="rounded border-l-4 border-l-brand-blue bg-blue-50 p-3">
+                    <input
+                      value={minuteDraft.title}
+                      onChange={(e) => patchDraft({ title: e.target.value })}
+                      placeholder="Title"
+                      autoFocus
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) createMinute();
+                      }}
+                      className="w-full rounded border border-slate-300 p-1.5 text-sm"
+                    />
+                    <textarea
+                      value={minuteDraft.description}
+                      onChange={(e) => patchDraft({ description: e.target.value })}
+                      rows={2}
+                      placeholder="Description"
+                      className="mt-2 w-full rounded border border-slate-300 p-1.5 text-sm"
+                    />
+                    <div className="mt-2">
+                      <TagChips value={minuteDraft.tags} onChange={(tags) => patchDraft({ tags })} />
+                    </div>
+                    <div className="mt-2 grid grid-cols-2 gap-2 text-xs">
+                      <label className="flex flex-col gap-1">
+                        <span className="text-slate-500">Type</span>
+                        <select
+                          value={minuteDraft.type}
+                          onChange={(e) => patchDraft({ type: e.target.value })}
+                          className="rounded border border-slate-300 p-1.5"
+                        >
+                          {TYPE_OPTIONS.map((t) => (
+                            <option key={t} value={t}>{t}</option>
+                          ))}
+                        </select>
+                      </label>
+                      <label className="flex flex-col gap-1">
+                        <span className="text-slate-500">Tab</span>
+                        <input
+                          value={currentArea}
+                          readOnly
+                          className="rounded border border-slate-200 bg-slate-100 p-1.5 text-slate-500"
+                        />
+                      </label>
+                    </div>
+                    {/* Status/owner/due only matter for a To-Do/Action/DevOps. */}
+                    {minuteDraft.type !== "Note" && (
+                      <div className="mt-2 grid grid-cols-1 gap-2 text-xs sm:grid-cols-3">
+                        <label className="flex flex-col gap-1">
+                          <span className="text-slate-500">Status</span>
+                          <select
+                            value={minuteDraft.status}
+                            onChange={(e) => patchDraft({ status: e.target.value })}
+                            className="rounded border border-slate-300 p-1.5"
+                          >
+                            {STATUS_OPTIONS.map((s) => (
+                              <option key={s} value={s}>{s}</option>
+                            ))}
+                          </select>
+                        </label>
+                        <label className="flex flex-col gap-1">
+                          <span className="text-slate-500">Owner</span>
+                          <select
+                            value={minuteDraft.assignedTo}
+                            onChange={(e) => patchDraft({ assignedTo: e.target.value })}
+                            className="rounded border border-slate-300 p-1.5"
+                          >
+                            <option value="">— Unassigned —</option>
+                            {members.map((m) => (
+                              <option key={m.id} value={m.displayName}>{m.displayName}</option>
+                            ))}
+                          </select>
+                        </label>
+                        <label className="flex flex-col gap-1">
+                          <span className="text-slate-500">Due</span>
+                          <input
+                            type="date"
+                            value={minuteDraft.dueDate}
+                            onChange={(e) => patchDraft({ dueDate: e.target.value })}
+                            className="rounded border border-slate-300 p-1.5"
+                          />
+                        </label>
+                      </div>
+                    )}
+                    <div className="mt-3 flex items-center gap-2">
+                      <button
+                        onClick={createMinute}
+                        disabled={savingMinute || !minuteDraft.title.trim()}
+                        className="rounded bg-brand-blue px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50"
+                      >
+                        {savingMinute ? "Adding…" : "Add minute"}
+                      </button>
+                      <button
+                        onClick={() => {
+                          setAddingMinute(false);
+                          setMinuteDraft(blankMinute());
+                        }}
+                        disabled={savingMinute}
+                        className="rounded px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-100"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <button
+                    onClick={() => {
+                      setMinuteDraft(blankMinute());
+                      setAddingMinute(true);
+                    }}
+                    className="rounded border border-dashed border-brand-blue px-3 py-2 text-sm font-medium text-brand-blue hover:bg-blue-50"
+                  >
+                    + Add minute in {currentArea}
+                  </button>
+                )}
+              </div>
             </>
           )}
         </main>
