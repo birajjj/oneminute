@@ -868,29 +868,40 @@ export default function BrowseClient({
                         className="w-40 rounded border border-brand-blue px-2 py-1 text-sm"
                       />
                     ) : (
-                      <button
-                        key={a}
-                        onClick={() => setActiveArea(a)}
-                        onDoubleClick={() => { setRenamingArea(a); setRenameDraft(a); }}
-                        onDragOver={(e) => { e.preventDefault(); setDragOverArea(a); }}
-                        onDragLeave={() => setDragOverArea((c) => (c === a ? null : c))}
-                        onDrop={(e) => {
-                          e.preventDefault();
-                          setDragOverArea(null);
-                          if (draggingId) moveMinuteToArea(draggingId, a);
-                          setDraggingId(null);
-                        }}
-                        title="Click to open · Double-click to rename (applies across the project) · Drop a minute here to move it"
-                        className={`rounded px-4 py-1.5 text-sm font-medium transition ${
-                          dragOverArea === a
-                            ? "bg-emerald-100 text-emerald-700 ring-2 ring-emerald-400"
-                            : currentArea === a
-                              ? "bg-blue-100 text-brand-blue"
-                              : "bg-slate-100 text-slate-600 hover:bg-slate-200"
-                        }`}
-                      >
-                        {a}
-                      </button>
+                      <span key={a} className="group relative inline-flex">
+                        <button
+                          onClick={() => setActiveArea(a)}
+                          onDoubleClick={() => { setRenamingArea(a); setRenameDraft(a); }}
+                          onDragOver={(e) => { e.preventDefault(); setDragOverArea(a); }}
+                          onDragLeave={() => setDragOverArea((c) => (c === a ? null : c))}
+                          onDrop={(e) => {
+                            e.preventDefault();
+                            setDragOverArea(null);
+                            if (draggingId) moveMinuteToArea(draggingId, a);
+                            setDraggingId(null);
+                          }}
+                          title="Click to open · Double-click to rename (applies across the project) · Drop a minute here to move it"
+                          className={`rounded px-4 py-1.5 text-sm font-medium transition ${
+                            dragOverArea === a
+                              ? "bg-emerald-100 text-emerald-700 ring-2 ring-emerald-400"
+                              : currentArea === a
+                                ? "bg-blue-100 text-brand-blue"
+                                : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                          }`}
+                        >
+                          {a}
+                        </button>
+                        {allAreas.length > 1 && (
+                          <button
+                            onClick={(e) => { e.stopPropagation(); deleteTab(a); }}
+                            className="absolute -right-1.5 -top-1.5 hidden h-4 w-4 items-center justify-center rounded-full bg-slate-400 text-[10px] font-bold leading-none text-white shadow hover:bg-red-500 group-hover:flex"
+                            title={`Delete "${a}" tab`}
+                            aria-label={`Delete ${a} tab`}
+                          >
+                            ×
+                          </button>
+                        )}
+                      </span>
                     )
                   )}
                   {addingTab ? (
@@ -918,17 +929,8 @@ export default function BrowseClient({
                       + Add tab
                     </button>
                   )}
-                  {allAreas.length > 1 && (
-                    <button
-                      onClick={() => deleteTab(currentArea)}
-                      className="rounded px-2 py-1.5 text-sm font-medium text-red-500 hover:bg-red-50"
-                      title={`Delete the "${currentArea}" tab (empty tabs go straight away; otherwise you'll pick where to move its items)`}
-                    >
-                      🗑 Delete “{currentArea}”
-                    </button>
-                  )}
                   <span className="ml-1 text-[11px] text-slate-400">
-                    Drag a minute onto a tab to move it · double-click a tab to rename it across the project
+                    Drag a minute onto a tab to move it · double-click to rename · hover a tab and click ✕ to delete it
                   </span>
                 </div>
               </div>
