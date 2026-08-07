@@ -300,6 +300,36 @@ export default function BrowseClient({
     }
   }
 
+  // Delete a tab. Empty → gone immediately; has items → prompt to move/merge them
+  // into another tab first (reuses the rename, which re-files + merges).
+  const [deleteTabPrompt, setDeleteTabPrompt] = useState<{ name: string; count: number } | null>(
+    null
+  );
+  const [moveTabTarget, setMoveTabTarget] = useState("");
+  async function deleteTab(name: string) {
+    if (!selected) return;
+    setSaveError("");
+    try {
+      const res = await fetch(`/api/meetings/${selected.id}/areas`, {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name })
+      });
+      if (res.status === 409) {
+        const data = await res.json().catch(() => ({ count: 0 }));
+        setMoveTabTarget("");
+        setDeleteTabPrompt({ name, count: data.count ?? 0 });
+        return;
+      }
+      if (!res.ok) throw new Error(await res.text());
+      setExtraAreas((prev) => prev.filter((a) => a !== name));
+      if (activeArea === name) setActiveArea("General");
+      router.refresh();
+    } catch (err) {
+      setSaveError("Couldn't delete tab: " + (err instanceof Error ? err.message : "error"));
+    }
+  }
+
   function startEditMinute(id: string, title: string, description: string) {
     setEditingId(id);
     setDraft({ title, description, origTitle: title, origDescription: description });
@@ -888,6 +918,15 @@ export default function BrowseClient({
                       + Add tab
                     </button>
                   )}
+                  {allAreas.length > 1 && (
+                    <button
+                      onClick={() => deleteTab(currentArea)}
+                      className="rounded px-2 py-1.5 text-sm font-medium text-red-500 hover:bg-red-50"
+                      title={`Delete the "${currentArea}" tab (empty tabs go straight away; otherwise you'll pick where to move its items)`}
+                    >
+                      🗑 Delete “{currentArea}”
+                    </button>
+                  )}
                   <span className="ml-1 text-[11px] text-slate-400">
                     Drag a minute onto a tab to move it · double-click a tab to rename it across the project
                   </span>
@@ -1374,6 +1413,60 @@ export default function BrowseClient({
           onSaved={() => router.refresh()}
           onClose={() => setOpenEntry(null)}
         />
+      )}
+
+      {/* Move-then-delete a tab that still has items (also the "merge" path). */}
+      {deleteTabPrompt && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+          onClick={() => setDeleteTabPrompt(null)}
+        >
+          <div
+            className="w-full max-w-md rounded-lg bg-white p-6 shadow-xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className="text-lg font-bold text-slate-900">Delete “{deleteTabPrompt.name}” tab</h3>
+            <p className="mt-2 text-sm text-slate-600">
+              This tab still has <span className="font-semibold">{deleteTabPrompt.count}</span>{" "}
+              item{deleteTabPrompt.count === 1 ? "" : "s"}. Pick a tab to move them into — “
+              {deleteTabPrompt.name}” is then <span className="font-medium">merged</span> into it.
+            </p>
+            <select
+              value={moveTabTarget}
+              onChange={(e) => setMoveTabTarget(e.target.value)}
+              className="mt-3 w-full rounded border border-slate-300 px-2 py-2 text-sm"
+            >
+              <option value="">Move items to…</option>
+              {allAreas
+                .filter((a) => a !== deleteTabPrompt.name)
+                .map((a) => (
+                  <option key={a} value={a}>
+                    {a}
+                  </option>
+                ))}
+            </select>
+            <div className="mt-5 flex justify-end gap-2">
+              <button
+                onClick={() => setDeleteTabPrompt(null)}
+                className="rounded border border-slate-300 px-4 py-2 text-sm"
+              >
+                Cancel
+              </button>
+              <button
+                disabled={!moveTabTarget}
+                onClick={() => {
+                  const target = moveTabTarget;
+                  const from = deleteTabPrompt.name;
+                  setDeleteTabPrompt(null);
+                  if (target) renameArea(from, target); // re-files + merges + refreshes
+                }}
+                className="rounded bg-brand-blue px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+              >
+                Move &amp; delete
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Delete confirmation — shows exactly what will go, and refuses while

@@ -53,6 +53,55 @@ export async function POST(
   }
 }
 
+// Delete a tab/area. Project-wide (areas recur across a project's meetings) and
+// only when EMPTY — if any minute in the project still uses it, return 409 with
+// the count so the caller can offer to move them (merge) into another tab first.
+export async function DELETE(
+  req: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const { id } = await params;
+    const parsed = z.object({ name: z.string().min(1) }).safeParse(await req.json());
+    if (!parsed.success) {
+      return NextResponse.json({ error: "name is required" }, { status: 400 });
+    }
+    const user = await requireUser();
+    const meeting = await db.meeting.findFirst({
+      where: { id, orgId: user.orgId },
+      select: { id: true, projectId: true }
+    });
+    if (!meeting) return NextResponse.json({ error: "meeting not found" }, { status: 404 });
+
+    const name = parsed.data.name.trim();
+    const projectMeetings = await db.meeting.findMany({
+      where: { orgId: user.orgId, projectId: meeting.projectId },
+      select: { id: true }
+    });
+    const meetingIds = projectMeetings.map((m) => m.id);
+
+    const count = await db.minute.count({
+      where: { orgId: user.orgId, meetingId: { in: meetingIds }, area: name }
+    });
+    if (count > 0) {
+      // Not empty — caller must move/merge the items first.
+      return NextResponse.json({ error: "has_minutes", count }, { status: 409 });
+    }
+
+    await db.meetingArea.deleteMany({
+      where: { orgId: user.orgId, meetingId: { in: meetingIds }, areaName: name }
+    });
+    return NextResponse.json({ ok: true });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : "unknown error";
+    if (msg === "UNAUTHENTICATED") {
+      return NextResponse.json({ error: "Not signed in" }, { status: 401 });
+    }
+    console.error("area delete error:", msg);
+    return NextResponse.json({ error: msg }, { status: 500 });
+  }
+}
+
 export async function PATCH(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
