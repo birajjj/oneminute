@@ -1158,7 +1158,7 @@ export default function BrowseClient({
                                                     ? () => startEditMinute(sub.childRootId, subTitle, subDescription ?? "")
                                                     : undefined
                                                 }
-                                                className={`text-sm font-medium ${subDone ? "text-slate-400 line-through" : "text-slate-800"} ${sub.editable ? "cursor-text hover:underline" : ""}`}
+                                                className={`text-sm font-medium ${subDone ? "text-slate-500" : "text-slate-800"} ${sub.editable ? "cursor-text hover:underline" : ""}`}
                                                 title={sub.editable ? "Click to edit" : undefined}
                                               >
                                                 {subTitle}

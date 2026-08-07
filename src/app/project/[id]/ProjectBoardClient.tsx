@@ -452,7 +452,7 @@ export default function ProjectBoardClient({
                         <div className="min-w-0">
                           <div
                             className={`font-medium ${
-                              done ? "text-slate-400 line-through" : "text-slate-800"
+                              done ? "text-slate-500" : "text-slate-800"
                             }`}
                           >
                             {it.title || <span className="italic text-slate-400">Untitled</span>}
