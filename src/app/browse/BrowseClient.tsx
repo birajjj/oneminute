@@ -714,6 +714,12 @@ export default function BrowseClient({
             )}
           </div>
           <a
+            href="/dashboard"
+            className="rounded border border-slate-300 px-3 py-1.5 text-sm hover:bg-slate-100"
+          >
+            ★ My Dashboard
+          </a>
+          <a
             href="/auto"
             className="rounded bg-gradient-to-r from-brand-pink to-brand-purple px-3 py-1.5 text-sm font-medium text-white"
           >

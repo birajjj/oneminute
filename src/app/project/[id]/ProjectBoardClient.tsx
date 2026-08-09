@@ -87,6 +87,83 @@ function toDateInput(value: string | null) {
   return value ? value.slice(0, 10) : "";
 }
 
+// A filter dropdown that allows picking several values at once (checkboxes),
+// so the board can be narrowed to e.g. To-Do + Action, or two owners together.
+// Empty selection = no filter (shows the neutral label).
+function MultiSelectDropdown({
+  label,
+  options,
+  selected,
+  onChange
+}: {
+  label: string;
+  options: { value: string; label: string }[];
+  selected: string[];
+  onChange: (next: string[]) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const toggle = (v: string) =>
+    onChange(selected.includes(v) ? selected.filter((s) => s !== v) : [...selected, v]);
+  const summary =
+    selected.length === 0
+      ? label
+      : selected.length === 1
+        ? options.find((o) => o.value === selected[0])?.label ?? selected[0]
+        : `${label} · ${selected.length}`;
+  return (
+    <div className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        className={`flex items-center gap-1 rounded-md border px-2 py-1 text-sm ${
+          selected.length
+            ? "border-brand-blue bg-blue-50 text-brand-blue"
+            : "border-slate-300 text-slate-700 hover:bg-slate-50"
+        }`}
+      >
+        {summary}
+        <span className="text-[10px] text-slate-400">▾</span>
+      </button>
+      {open && (
+        <>
+          {/* Click-away backdrop. */}
+          <button
+            type="button"
+            aria-hidden
+            tabIndex={-1}
+            onClick={() => setOpen(false)}
+            className="fixed inset-0 z-10 cursor-default"
+          />
+          <div className="absolute left-0 z-20 mt-1 max-h-64 min-w-[190px] overflow-y-auto rounded-md border border-slate-200 bg-white p-1 shadow-lg">
+            {selected.length > 0 && (
+              <button
+                type="button"
+                onClick={() => onChange([])}
+                className="mb-1 w-full rounded px-2 py-1 text-left text-xs text-slate-500 hover:bg-slate-100"
+              >
+                Clear selection
+              </button>
+            )}
+            {options.map((o) => (
+              <label
+                key={o.value}
+                className="flex cursor-pointer items-center gap-2 rounded px-2 py-1 text-sm text-slate-700 hover:bg-slate-50"
+              >
+                <input
+                  type="checkbox"
+                  checked={selected.includes(o.value)}
+                  onChange={() => toggle(o.value)}
+                />
+                {o.label}
+              </label>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 function isOverdue(item: BoardItem) {
   if (!item.dueDate || !isOpen(item.status)) return false;
   const due = new Date(item.dueDate);
@@ -112,8 +189,10 @@ export default function ProjectBoardClient({
 }) {
   const [activeTab, setActiveTab] = useState<string>("All");
   const [statusFilter, setStatusFilter] = useState<"open" | "completed" | "all">("open");
-  const [typeFilter, setTypeFilter] = useState<string>("All");
-  const [assigneeFilter, setAssigneeFilter] = useState<string>("All");
+  // Multi-select: empty = no filter. Type holds labels; assignee holds display
+  // names plus the sentinel "__unassigned".
+  const [typeFilter, setTypeFilter] = useState<string[]>([]);
+  const [assigneeFilter, setAssigneeFilter] = useState<string[]>([]);
   const [meetingFilter, setMeetingFilter] = useState<string>("all");
   const [flagFilter, setFlagFilter] = useState<string[]>([]);
   const [search, setSearch] = useState("");
@@ -191,11 +270,12 @@ export default function ProjectBoardClient({
       if (activeTab !== "All" && it.area !== activeTab) return false;
       if (statusFilter === "open" && !isOpen(it.status)) return false;
       if (statusFilter === "completed" && it.status !== "Completed") return false;
-      if (typeFilter !== "All" && it.type !== typeFilter) return false;
-      if (assigneeFilter !== "All") {
-        if (assigneeFilter === "__unassigned") {
-          if (it.assignedTo) return false;
-        } else if (it.assignedTo !== assigneeFilter) return false;
+      if (typeFilter.length && !typeFilter.includes(it.type)) return false;
+      if (assigneeFilter.length) {
+        const matches =
+          (it.assignedTo && assigneeFilter.includes(it.assignedTo)) ||
+          (!it.assignedTo && assigneeFilter.includes("__unassigned"));
+        if (!matches) return false;
       }
       // Meeting filter: show items whose thread was touched in the chosen meeting.
       if (meetingFilter !== "all" && !it.meetingIds.includes(meetingFilter)) return false;
@@ -251,16 +331,16 @@ export default function ProjectBoardClient({
 
   const activeFilterCount =
     (statusFilter !== "open" ? 1 : 0) +
-    (typeFilter !== "All" ? 1 : 0) +
-    (assigneeFilter !== "All" ? 1 : 0) +
+    (typeFilter.length ? 1 : 0) +
+    (assigneeFilter.length ? 1 : 0) +
     (meetingFilter !== "all" ? 1 : 0) +
     flagFilter.length +
     (search.trim() ? 1 : 0);
 
   function clearFilters() {
     setStatusFilter("open");
-    setTypeFilter("All");
-    setAssigneeFilter("All");
+    setTypeFilter([]);
+    setAssigneeFilter([]);
     setMeetingFilter("all");
     setFlagFilter([]);
     setSearch("");
@@ -278,6 +358,12 @@ export default function ProjectBoardClient({
           {project.name}
         </span>
         <div className="ml-auto flex flex-wrap items-center gap-2">
+          <a
+            href="/dashboard"
+            className="rounded border border-slate-300 px-3 py-1.5 text-sm hover:bg-slate-100"
+          >
+            ★ My Dashboard
+          </a>
           <a
             href="/browse"
             className="rounded border border-slate-300 px-3 py-1.5 text-sm hover:bg-slate-100"
@@ -372,32 +458,22 @@ export default function ProjectBoardClient({
                 ))}
               </div>
 
-              <select
-                value={typeFilter}
-                onChange={(e) => setTypeFilter(e.target.value)}
-                className="rounded-md border border-slate-300 px-2 py-1 text-sm text-slate-700"
-              >
-                <option value="All">All types</option>
-                {TYPE_OPTIONS.map((t) => (
-                  <option key={t} value={t}>
-                    {t}
-                  </option>
-                ))}
-              </select>
+              <MultiSelectDropdown
+                label="All types"
+                options={TYPE_OPTIONS.map((t) => ({ value: t, label: t }))}
+                selected={typeFilter}
+                onChange={setTypeFilter}
+              />
 
-              <select
-                value={assigneeFilter}
-                onChange={(e) => setAssigneeFilter(e.target.value)}
-                className="rounded-md border border-slate-300 px-2 py-1 text-sm text-slate-700"
-              >
-                <option value="All">Anyone</option>
-                <option value="__unassigned">Unassigned</option>
-                {members.map((m) => (
-                  <option key={m} value={m}>
-                    {m}
-                  </option>
-                ))}
-              </select>
+              <MultiSelectDropdown
+                label="Anyone"
+                options={[
+                  { value: "__unassigned", label: "Unassigned" },
+                  ...members.map((m) => ({ value: m, label: m }))
+                ]}
+                selected={assigneeFilter}
+                onChange={setAssigneeFilter}
+              />
 
               {meetings.length > 0 && (
                 <select
