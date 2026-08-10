@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/auth";
 import { db } from "@/lib/db";
-import DashboardClient, { DashItem } from "./DashboardClient";
+import DashboardClient, { DashItem, RosterMember } from "./DashboardClient";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "My Dashboard" };
@@ -20,12 +20,46 @@ const STATUS_LABEL: Record<string, string> = {
   Cancelled: "Cancelled"
 };
 
+// Best-effort "which roster person is this login account?" A login ("biraj.josi",
+// biraj.josi@gmail.com) and the roster row it represents ("Biraj Joshi") are
+// separate records with no hard link, so we match on shared name tokens and let
+// the user correct it. Returns the roster id to default the picker to.
+function guessMe(
+  login: { displayName: string; email: string },
+  members: { id: string; displayName: string }[]
+): string | null {
+  const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+  const loginTokens = new Set(
+    [...norm(login.displayName).split(" "), ...norm(login.email.split("@")[0]).split(" ")].filter(
+      Boolean
+    )
+  );
+  let bestId: string | null = null;
+  let bestScore = 0;
+  for (const m of members) {
+    const tokens = norm(m.displayName).split(" ").filter(Boolean);
+    const score = tokens.reduce((n, t) => n + (loginTokens.has(t) ? 1 : 0), 0);
+    if (score > bestScore) {
+      bestScore = score;
+      bestId = m.id;
+    }
+  }
+  return bestId ?? members[0]?.id ?? null;
+}
+
 export default async function DashboardPage() {
   const user = await getCurrentUser();
   if (!user) redirect("/login?next=/dashboard");
 
+  // Assignable team members (the roster) — the people a dashboard can be about.
+  const members: RosterMember[] = await db.user.findMany({
+    where: { orgId: user.orgId, isRoster: true },
+    orderBy: { displayName: "asc" },
+    select: { id: true, displayName: true }
+  });
+
   // Everything in the org, so we can rebuild each item's thread and know its
-  // CURRENT state — then keep only the items this user owns.
+  // CURRENT state — then keep only the items that have an owner.
   const minutes = await db.minute.findMany({
     where: { orgId: user.orgId },
     orderBy: { createdAt: "asc" },
@@ -53,8 +87,9 @@ export default async function DashboardPage() {
   for (const [rootId, entries] of Object.entries(threads)) {
     const root = rootById.get(rootId);
     if (!root) continue;
-    // Ownership is the item's identity → the root's assignee.
-    if (root.assignedToUserId !== user.id) continue;
+    // Ownership is the item's identity → the root's assignee. Keep every owned
+    // item; the client filters to the selected person.
+    if (!root.assignedToUserId) continue;
 
     // Latest entry by meeting date then creation — the item's current state.
     let latest = entries[0];
@@ -66,6 +101,7 @@ export default async function DashboardPage() {
 
     items.push({
       id: rootId,
+      assigneeId: root.assignedToUserId,
       latestEntryId: latest.id,
       title: root.title,
       type: TYPE_LABEL[root.type] ?? root.type,
@@ -80,5 +116,18 @@ export default async function DashboardPage() {
     });
   }
 
-  return <DashboardClient items={items} userName={user.displayName} />;
+  const defaultAssigneeId = guessMe(
+    { displayName: user.displayName, email: user.email },
+    members
+  );
+
+  return (
+    <DashboardClient
+      items={items}
+      members={members}
+      defaultAssigneeId={defaultAssigneeId}
+      userId={user.id}
+      userName={user.displayName}
+    />
+  );
 }

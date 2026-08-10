@@ -4,8 +4,14 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { TagBadges } from "@/components/TagChips";
 
+export interface RosterMember {
+  id: string;
+  displayName: string;
+}
+
 export interface DashItem {
   id: string;
+  assigneeId: string; // the roster person this item belongs to
   latestEntryId: string; // status edits target this (the item's current state)
   title: string;
   type: string; // label
@@ -86,9 +92,15 @@ const BUCKET_META: Record<Bucket, { title: string; accent: string; hint: string 
 
 export default function DashboardClient({
   items: initialItems,
+  members,
+  defaultAssigneeId,
+  userId,
   userName
 }: {
   items: DashItem[];
+  members: RosterMember[];
+  defaultAssigneeId: string | null;
+  userId: string;
   userName: string;
 }) {
   const router = useRouter();
@@ -96,17 +108,45 @@ export default function DashboardClient({
   // Re-sync when the server sends fresh data (after a router.refresh()).
   useEffect(() => setItems(initialItems), [initialItems]);
 
+  // Which roster person's tasks we're showing. Defaults to the server's best
+  // guess for "me"; the choice is remembered per login in this browser.
+  const storageKey = `dash.me:${userId}`;
+  const [selectedId, setSelectedId] = useState<string | null>(defaultAssigneeId);
+  useEffect(() => {
+    const saved = typeof window !== "undefined" ? window.localStorage.getItem(storageKey) : null;
+    if (saved && members.some((m) => m.id === saved)) setSelectedId(saved);
+  }, [storageKey, members]);
+  function chooseMe(id: string) {
+    setSelectedId(id);
+    try {
+      window.localStorage.setItem(storageKey, id);
+    } catch {
+      /* ignore */
+    }
+  }
+
   const [projectFilter, setProjectFilter] = useState<string[]>([]); // ids; empty = all
   const [showDone, setShowDone] = useState(false);
   const [savingId, setSavingId] = useState<string | null>(null);
+  // A different person's projects → reset the project chips.
+  useEffect(() => setProjectFilter([]), [selectedId]);
+
+  const selectedName = members.find((m) => m.id === selectedId)?.displayName ?? userName;
+  const firstName = selectedName.split(" ")[0] || selectedName;
+
+  // Just this person's items.
+  const mine = useMemo(
+    () => items.filter((it) => it.assigneeId === selectedId),
+    [items, selectedId]
+  );
 
   const projects = useMemo(() => {
     const map = new Map<string, string>();
-    for (const it of initialItems) map.set(it.projectId, it.projectName);
+    for (const it of mine) map.set(it.projectId, it.projectName);
     return [...map.entries()]
       .map(([id, name]) => ({ id, name }))
       .sort((a, b) => a.name.localeCompare(b.name));
-  }, [initialItems]);
+  }, [mine]);
 
   async function setDone(item: DashItem, done: boolean) {
     // Optimistic — flip it locally, then persist to the item's current entry.
@@ -129,11 +169,10 @@ export default function DashboardClient({
     }
   }
 
-  const visible = useMemo(() => {
-    return items.filter(
-      (it) => projectFilter.length === 0 || projectFilter.includes(it.projectId)
-    );
-  }, [items, projectFilter]);
+  const visible = useMemo(
+    () => mine.filter((it) => projectFilter.length === 0 || projectFilter.includes(it.projectId)),
+    [mine, projectFilter]
+  );
 
   const open = visible.filter((it) => isOpen(it.status));
   const done = visible.filter((it) => it.status === "Completed");
@@ -171,8 +210,8 @@ export default function DashboardClient({
   }
 
   function card(it: DashItem) {
-    const open = isOpen(it.status);
-    const dm = dueMeta(it.dueDate, open);
+    const itemOpen = isOpen(it.status);
+    const dm = dueMeta(it.dueDate, itemOpen);
     return (
       <li
         key={it.id}
@@ -187,7 +226,7 @@ export default function DashboardClient({
           title={it.status === "Completed" ? "Reopen" : "Mark complete"}
         />
         <div className="min-w-0 flex-1">
-          <div className={`font-medium ${open ? "text-slate-800" : "text-slate-500"}`}>
+          <div className={`font-medium ${itemOpen ? "text-slate-800" : "text-slate-500"}`}>
             {it.title || <span className="italic text-slate-400">Untitled</span>}
           </div>
           <div className="mt-1 flex flex-wrap items-center gap-x-2.5 gap-y-1 text-xs text-slate-500">
@@ -270,104 +309,128 @@ export default function DashboardClient({
 
       <main className="min-h-0 flex-1 overflow-y-auto">
         <div className="mx-auto max-w-3xl px-4 py-6 sm:px-6">
-          {/* Greeting + summary */}
-          <div className="mb-5">
-            <h1 className="text-xl font-bold text-slate-800 sm:text-2xl">
-              Hi {userName.split(" ")[0]} 👋
-            </h1>
-            <p className="mt-1 text-sm text-slate-500">
-              Everything assigned to you, across every project.
-            </p>
-            <div className="mt-3 flex flex-wrap gap-2 text-sm">
-              <span className="rounded-full bg-slate-100 px-3 py-1 font-medium text-slate-700">
-                {counts.open} open
-              </span>
-              {counts.overdue > 0 && (
-                <span className="rounded-full bg-red-50 px-3 py-1 font-medium text-red-600">
-                  {counts.overdue} overdue
-                </span>
-              )}
-              {counts.week > 0 && (
-                <span className="rounded-full bg-amber-50 px-3 py-1 font-medium text-amber-700">
-                  {counts.week} due this week
-                </span>
-              )}
-              <span className="rounded-full bg-emerald-50 px-3 py-1 font-medium text-emerald-700">
-                {counts.done} completed
-              </span>
-            </div>
-          </div>
-
-          {/* Project filter (only if the user has items in more than one project) */}
-          {projects.length > 1 && (
-            <div className="mb-5 flex flex-wrap items-center gap-1.5">
-              <span className="mr-1 text-xs text-slate-400">Projects:</span>
-              {projects.map((p) => {
-                const on = projectFilter.includes(p.id);
-                return (
-                  <button
-                    key={p.id}
-                    onClick={() => toggleProject(p.id)}
-                    className={`rounded-full border px-2.5 py-0.5 text-xs font-medium ${
-                      on
-                        ? "border-brand-blue bg-blue-50 text-brand-blue"
-                        : "border-slate-200 bg-white text-slate-500 hover:bg-slate-50"
-                    }`}
-                  >
-                    {p.name}
-                  </button>
-                );
-              })}
-              {projectFilter.length > 0 && (
-                <button
-                  onClick={() => setProjectFilter([])}
-                  className="ml-1 rounded px-2 py-0.5 text-xs text-slate-400 hover:bg-slate-100 hover:text-slate-600"
-                >
-                  Clear
-                </button>
-              )}
-            </div>
-          )}
-
-          {items.length === 0 ? (
+          {members.length === 0 ? (
             <div className="rounded-lg border border-dashed border-slate-300 bg-white py-16 text-center text-sm text-slate-400">
-              Nothing is assigned to you yet. Items become yours when you&apos;re set as
-              the owner on a minute.
+              No team members on the roster yet — add people so work can be assigned.
             </div>
           ) : (
             <>
-              {open.length === 0 && (
-                <div className="mb-6 rounded-lg border border-dashed border-emerald-300 bg-emerald-50/50 py-10 text-center text-sm text-emerald-700">
-                  🎉 You&apos;re all caught up — no open items.
+              {/* Greeting + whose-tasks picker */}
+              <div className="mb-5">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <h1 className="text-xl font-bold text-slate-800 sm:text-2xl">
+                    Hi {firstName} 👋
+                  </h1>
+                  <label className="flex items-center gap-1.5 text-xs text-slate-500">
+                    Showing tasks for
+                    <select
+                      value={selectedId ?? ""}
+                      onChange={(e) => chooseMe(e.target.value)}
+                      className="rounded-md border border-slate-300 px-2 py-1 text-sm text-slate-700"
+                    >
+                      {members.map((m) => (
+                        <option key={m.id} value={m.id}>
+                          {m.displayName}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                </div>
+                <p className="mt-1 text-sm text-slate-500">
+                  Everything assigned to {selectedName}, across every project.
+                </p>
+                <div className="mt-3 flex flex-wrap gap-2 text-sm">
+                  <span className="rounded-full bg-slate-100 px-3 py-1 font-medium text-slate-700">
+                    {counts.open} open
+                  </span>
+                  {counts.overdue > 0 && (
+                    <span className="rounded-full bg-red-50 px-3 py-1 font-medium text-red-600">
+                      {counts.overdue} overdue
+                    </span>
+                  )}
+                  {counts.week > 0 && (
+                    <span className="rounded-full bg-amber-50 px-3 py-1 font-medium text-amber-700">
+                      {counts.week} due this week
+                    </span>
+                  )}
+                  <span className="rounded-full bg-emerald-50 px-3 py-1 font-medium text-emerald-700">
+                    {counts.done} completed
+                  </span>
+                </div>
+              </div>
+
+              {/* Project filter (only if this person has items in >1 project) */}
+              {projects.length > 1 && (
+                <div className="mb-5 flex flex-wrap items-center gap-1.5">
+                  <span className="mr-1 text-xs text-slate-400">Projects:</span>
+                  {projects.map((p) => {
+                    const on = projectFilter.includes(p.id);
+                    return (
+                      <button
+                        key={p.id}
+                        onClick={() => toggleProject(p.id)}
+                        className={`rounded-full border px-2.5 py-0.5 text-xs font-medium ${
+                          on
+                            ? "border-brand-blue bg-blue-50 text-brand-blue"
+                            : "border-slate-200 bg-white text-slate-500 hover:bg-slate-50"
+                        }`}
+                      >
+                        {p.name}
+                      </button>
+                    );
+                  })}
+                  {projectFilter.length > 0 && (
+                    <button
+                      onClick={() => setProjectFilter([])}
+                      className="ml-1 rounded px-2 py-0.5 text-xs text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+                    >
+                      Clear
+                    </button>
+                  )}
                 </div>
               )}
-              {section("overdue")}
-              {section("week")}
-              {section("later")}
 
-              {/* Completed — tucked behind a toggle so it doesn't crowd the view. */}
-              {done.length > 0 && (
-                <section className="mt-2">
-                  <button
-                    onClick={() => setShowDone((s) => !s)}
-                    className="mb-2 flex items-center gap-1 text-sm font-semibold uppercase tracking-wide text-emerald-700"
-                  >
-                    <span className="text-xs">{showDone ? "▾" : "▸"}</span>
-                    Completed ({done.length})
-                  </button>
-                  {showDone && (
-                    <ul className="space-y-2">
-                      {done
-                        .slice()
-                        .sort(
-                          (a, b) =>
-                            new Date(b.lastActivity).getTime() -
-                            new Date(a.lastActivity).getTime()
-                        )
-                        .map(card)}
-                    </ul>
+              {mine.length === 0 ? (
+                <div className="rounded-lg border border-dashed border-slate-300 bg-white py-16 text-center text-sm text-slate-400">
+                  Nothing is assigned to {selectedName} yet. Set them as the owner on a
+                  minute (from a meeting or a project board) and it&apos;ll show up here.
+                </div>
+              ) : (
+                <>
+                  {open.length === 0 && (
+                    <div className="mb-6 rounded-lg border border-dashed border-emerald-300 bg-emerald-50/50 py-10 text-center text-sm text-emerald-700">
+                      🎉 All caught up — no open items.
+                    </div>
                   )}
-                </section>
+                  {section("overdue")}
+                  {section("week")}
+                  {section("later")}
+
+                  {/* Completed — behind a toggle so it doesn't crowd the view. */}
+                  {done.length > 0 && (
+                    <section className="mt-2">
+                      <button
+                        onClick={() => setShowDone((s) => !s)}
+                        className="mb-2 flex items-center gap-1 text-sm font-semibold uppercase tracking-wide text-emerald-700"
+                      >
+                        <span className="text-xs">{showDone ? "▾" : "▸"}</span>
+                        Completed ({done.length})
+                      </button>
+                      {showDone && (
+                        <ul className="space-y-2">
+                          {done
+                            .slice()
+                            .sort(
+                              (a, b) =>
+                                new Date(b.lastActivity).getTime() -
+                                new Date(a.lastActivity).getTime()
+                            )
+                            .map(card)}
+                        </ul>
+                      )}
+                    </section>
+                  )}
+                </>
               )}
             </>
           )}
