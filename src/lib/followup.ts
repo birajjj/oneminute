@@ -62,6 +62,13 @@ export interface FollowUpData {
     date: string;
     projectId: string;
     projectName: string;
+    attachments: {
+      id: string;
+      fileName: string;
+      contentType: string;
+      size: number;
+      createdAt: string;
+    }[];
   };
   areas: string[];
   openItems: OpenItem[];
@@ -77,7 +84,13 @@ export async function loadFollowUpData(
 ): Promise<FollowUpData | null> {
   const parent = await db.meeting.findFirst({
     where: { id: parentMeetingId, orgId },
-    include: { project: { select: { id: true, name: true } } }
+    include: {
+      project: { select: { id: true, name: true } },
+      attachments: {
+        orderBy: { createdAt: "asc" },
+        select: { id: true, fileName: true, contentType: true, size: true, createdAt: true }
+      }
+    }
   });
   if (!parent) return null;
 
@@ -180,7 +193,14 @@ export async function loadFollowUpData(
       title: parent.title,
       date: parent.meetingDate.toISOString(),
       projectId: parent.project.id,
-      projectName: parent.project.name
+      projectName: parent.project.name,
+      attachments: parent.attachments.map((a) => ({
+        id: a.id,
+        fileName: a.fileName,
+        contentType: a.contentType,
+        size: a.size,
+        createdAt: a.createdAt.toISOString()
+      }))
     },
     areas,
     openItems,

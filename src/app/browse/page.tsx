@@ -54,6 +54,11 @@ export default async function BrowsePage({
     include: {
       project: { select: { id: true, name: true } },
       areas: { select: { areaName: true } },
+      // Metadata only — never load the file bytes into a list query.
+      attachments: {
+        orderBy: { createdAt: "asc" },
+        select: { id: true, fileName: true, contentType: true, size: true, createdAt: true }
+      },
       minutes: {
         orderBy: [{ area: "asc" }, { createdAt: "asc" }],
         include: { assignedTo: { select: { displayName: true } } }
@@ -144,6 +149,13 @@ export default async function BrowsePage({
       followUpFrom,
       // Registered tabs on this meeting — so a manually-added empty tab persists.
       areaNames: m.areas.map((a) => a.areaName),
+      attachments: m.attachments.map((a) => ({
+        id: a.id,
+        fileName: a.fileName,
+        contentType: a.contentType,
+        size: a.size,
+        createdAt: a.createdAt.toISOString()
+      })),
       minutes: m.minutes.map((mn) => {
         const rootId = mn.parentMinuteId ?? mn.id;
         return {

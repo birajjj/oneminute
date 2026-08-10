@@ -7,6 +7,7 @@ import { analyzeFollowupChunked } from "@/lib/chunk-analyze";
 import { TagChips } from "@/components/TagChips";
 import { normalizeTags } from "@/lib/tags";
 import BusyOverlay from "@/components/BusyOverlay";
+import MeetingAttachments from "@/components/MeetingAttachments";
 
 const TYPE_OPTIONS = ["Note", "To-Do", "Action", "Devops"];
 // Types allowed for extra minutes raised under an open item (boss: note/todo/
@@ -763,6 +764,15 @@ export default function FollowUpClient({
           Following up on <span className="font-medium">{parentDisplayTitle}</span> · {data.parent.projectName} ·{" "}
           {fmtDate(data.parent.date)}
         </p>
+        {data.parent.attachments.length > 0 && (
+          <div className="mt-3 rounded-lg border border-slate-200 bg-white p-3">
+            <MeetingAttachments
+              meetingId={data.parent.id}
+              attachments={data.parent.attachments}
+              canEdit={false}
+            />
+          </div>
+        )}
       </div>
 
       {/* Optional: record the meeting and let AI pre-fill each item's update */}

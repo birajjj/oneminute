@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import ProjectFilterDropdown from "@/components/ProjectFilterDropdown";
 import { TagChips, TagBadges } from "@/components/TagChips";
+import MeetingAttachments, { type AttachmentMeta } from "@/components/MeetingAttachments";
 
 const DESKTOP_SIDEBAR_COLLAPSED_KEY = "oneminute:desktop-sidebar-collapsed";
 
@@ -106,6 +107,7 @@ export interface BrowseMeeting {
   attendee: string | null;
   followUpFrom: { title: string; date: string } | null;
   areaNames: string[];
+  attachments: AttachmentMeta[];
   minutes: BrowseMinute[];
 }
 
@@ -911,6 +913,14 @@ export default function BrowseClient({
                     </span>
                   </div>
                 )}
+
+                <div className="mt-4 border-t border-slate-100 pt-3">
+                  <MeetingAttachments
+                    meetingId={selected.id}
+                    attachments={selected.attachments}
+                    canEdit
+                  />
+                </div>
 
                 <div className="mt-4 flex items-center gap-2">
                   <a
