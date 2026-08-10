@@ -20,7 +20,7 @@ export interface Member {
 
 // Reference data (mirrors on-prem dbo.Type and dbo.Status).
 const TYPE_OPTIONS = ["Note", "To-Do", "Action", "Devops"];
-const STATUS_OPTIONS = ["New", "Initiated", "In Progress", "Completed", "Cancelled"];
+const STATUS_OPTIONS = ["New", "Initiated", "In Progress", "Resolved", "Closed", "Cancelled"];
 
 // Today's date in the USER's timezone (not UTC). `toISOString()` would give the
 // UTC date, which is a day behind for +hours zones in the morning.

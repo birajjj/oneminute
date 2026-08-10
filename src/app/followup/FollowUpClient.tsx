@@ -14,7 +14,7 @@ const TYPE_OPTIONS = ["Note", "To-Do", "Action", "Devops"];
 // Sub-entries are actionable items raised under a review item. A plain note is
 // redundant — the "What happened with this item?" box already captures that.
 const SUB_TYPE_OPTIONS = ["To-Do", "Devops"];
-const STATUS_OPTIONS = ["New", "Initiated", "In Progress", "Completed", "Cancelled"];
+const STATUS_OPTIONS = ["New", "Initiated", "In Progress", "Resolved", "Closed", "Cancelled"];
 
 interface Member {
   id: string;
@@ -861,8 +861,9 @@ export default function FollowUpClient({
           Open items to review ({totalOpen})
         </h2>
         <p className="mb-3 text-xs text-slate-500">
-          Go through each item and record what happened. Set status to <em>Completed</em> to close it.
-          Leave one as “No update” to carry it forward unchanged.
+          Go through each item and record what happened. Set status to <em>Closed</em> to close it
+          (or <em>Resolved</em> to mark it done but keep tracking it in follow-ups). Leave one as
+          “No update” to carry it forward unchanged.
         </p>
 
         {totalOpen === 0 ? (
@@ -1048,7 +1049,7 @@ export default function FollowUpClient({
 
                       {/* Update controls — the item's own update is just a note.
                           Its state (type/status/owner/due) is edited on the header
-                          above; set Status → Completed there to close it. */}
+                          above; set Status → Closed there to close it. */}
                       <div className="mt-2 rounded border border-amber-200 bg-white p-2">
                         <label className="flex items-center gap-1 text-xs text-slate-600">
                           <input

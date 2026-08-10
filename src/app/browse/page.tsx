@@ -21,7 +21,8 @@ const STATUS_LABEL: Record<string, string> = {
   New: "New",
   Initiated: "Initiated",
   InProgress: "In Progress",
-  Completed: "Completed",
+  Resolved: "Resolved",
+  Completed: "Closed",
   Cancelled: "Cancelled"
 };
 

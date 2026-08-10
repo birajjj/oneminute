@@ -27,6 +27,8 @@ const STATUS_MAP: Record<string, MinuteStatus> = {
   New: "New",
   Initiated: "Initiated",
   "In Progress": "InProgress",
+  Resolved: "Resolved",
+  Closed: "Completed",
   Completed: "Completed",
   Cancelled: "Cancelled"
 };

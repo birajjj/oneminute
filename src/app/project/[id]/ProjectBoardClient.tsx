@@ -46,7 +46,8 @@ const STATUS_BADGE: Record<string, string> = {
   New: "bg-slate-100 text-slate-600",
   Initiated: "bg-indigo-100 text-indigo-700",
   "In Progress": "bg-blue-100 text-blue-700",
-  Completed: "bg-emerald-100 text-emerald-700",
+  Resolved: "bg-teal-100 text-teal-700",
+  Closed: "bg-emerald-100 text-emerald-700",
   Cancelled: "bg-slate-200 text-slate-500"
 };
 
@@ -55,7 +56,8 @@ const STATUS_ACCENT: Record<string, string> = {
   New: "border-l-slate-300",
   Initiated: "border-l-indigo-400",
   "In Progress": "border-l-blue-500",
-  Completed: "border-l-emerald-500",
+  Resolved: "border-l-teal-500",
+  Closed: "border-l-emerald-500",
   Cancelled: "border-l-slate-300"
 };
 
@@ -65,15 +67,16 @@ const STATUS_RANK: Record<string, number> = {
   New: 0,
   Initiated: 1,
   "In Progress": 2,
-  Completed: 3,
-  Cancelled: 4
+  Resolved: 3,
+  Closed: 4,
+  Cancelled: 5
 };
 
 const TYPE_OPTIONS = ["To-Do", "Devops", "Action", "Note"];
-const STATUS_OPTIONS = ["New", "Initiated", "In Progress", "Completed", "Cancelled"];
+const STATUS_OPTIONS = ["New", "Initiated", "In Progress", "Resolved", "Closed", "Cancelled"];
 
 function isOpen(status: string) {
-  return status !== "Completed" && status !== "Cancelled";
+  return status !== "Closed" && status !== "Cancelled";
 }
 
 function fmtDate(iso: string) {
@@ -193,7 +196,7 @@ export default function ProjectBoardClient({
   const [items, setItems] = useState<BoardItem[]>(initialItems);
   useEffect(() => setItems(initialItems), [initialItems]);
   const [activeTab, setActiveTab] = useState<string>("All");
-  const [statusFilter, setStatusFilter] = useState<"open" | "completed" | "all">("open");
+  const [statusFilter, setStatusFilter] = useState<"open" | "closed" | "all">("open");
   // Multi-select: empty = no filter. Type holds labels; assignee holds display
   // names plus the sentinel "__unassigned".
   const [typeFilter, setTypeFilter] = useState<string[]>([]);
@@ -259,7 +262,7 @@ export default function ProjectBoardClient({
           ? true
           : statusFilter === "open"
             ? isOpen(it.status)
-            : it.status === "Completed";
+            : it.status === "Closed";
       if (!passStatus) continue;
       counts.All += 1;
       counts[it.area] = (counts[it.area] ?? 0) + 1;
@@ -272,7 +275,7 @@ export default function ProjectBoardClient({
     let list = items.filter((it) => {
       if (activeTab !== "All" && it.area !== activeTab) return false;
       if (statusFilter === "open" && !isOpen(it.status)) return false;
-      if (statusFilter === "completed" && it.status !== "Completed") return false;
+      if (statusFilter === "closed" && it.status !== "Closed") return false;
       if (typeFilter.length && !typeFilter.includes(it.type)) return false;
       if (assigneeFilter.length) {
         const matches =
@@ -325,7 +328,7 @@ export default function ProjectBoardClient({
       done = 0,
       cancelled = 0;
     for (const it of items) {
-      if (it.status === "Completed") done += 1;
+      if (it.status === "Closed") done += 1;
       else if (it.status === "Cancelled") cancelled += 1;
       else open += 1;
     }
@@ -452,7 +455,7 @@ export default function ProjectBoardClient({
             {/* Row 2: status + type + assignee + flags */}
             <div className="flex flex-wrap items-center gap-2">
               <div className="inline-flex overflow-hidden rounded-md border border-slate-300 text-sm">
-                {(["open", "completed", "all"] as const).map((s) => (
+                {(["open", "closed", "all"] as const).map((s) => (
                   <button
                     key={s}
                     onClick={() => setStatusFilter(s)}
@@ -567,7 +570,7 @@ export default function ProjectBoardClient({
             <ul className="space-y-2">
               {filtered.map((it) => {
                 const overdue = isOverdue(it);
-                const done = it.status === "Completed" || it.status === "Cancelled";
+                const done = it.status === "Closed" || it.status === "Cancelled";
                 return (
                   <li key={it.id}>
                     <div

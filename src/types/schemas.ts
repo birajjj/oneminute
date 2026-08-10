@@ -19,7 +19,9 @@ export const CreateMinuteSchema = z.object({
   title: z.string().min(1).max(200),
   description: z.string().optional(),
   type: z.enum(["Note", "To-Do", "Action", "Devops"]).default("Note"),
-  status: z.enum(["New", "Initiated", "In Progress", "Completed", "Cancelled"]).default("New"),
+  status: z
+    .enum(["New", "Initiated", "In Progress", "Resolved", "Closed", "Completed", "Cancelled"])
+    .default("New"),
   parentMinuteId: z.string().uuid().nullable().optional(),
   isPersistent: z.boolean().default(false),
   assignedToUserId: z.string().uuid().nullable().optional(),

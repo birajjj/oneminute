@@ -2,9 +2,10 @@
 // carry forward from a parent meeting's project, each with its update history.
 //
 // "Open item" = a THREAD ROOT (no parentMinuteId) that is persistent (a To-Do /
-// Action / Devops) and not yet Completed or Cancelled. In the option-A thread
-// model the root holds the item's live status, so these are exactly the things
-// still pending that a follow-up meeting needs to review one by one.
+// Action / Devops) and not yet Closed or Cancelled. NOTE: "Closed" is the DB
+// enum value `Completed` (relabelled in the UI); a Resolved item still carries
+// forward. In the option-A thread model the root holds the item's live status,
+// so these are exactly the things still pending that a follow-up reviews.
 //
 // SERVER-ONLY.
 
@@ -21,7 +22,8 @@ const STATUS_LABEL: Record<string, string> = {
   New: "New",
   Initiated: "Initiated",
   InProgress: "In Progress",
-  Completed: "Completed",
+  Resolved: "Resolved",
+  Completed: "Closed",
   Cancelled: "Cancelled"
 };
 

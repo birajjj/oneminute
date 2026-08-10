@@ -132,6 +132,10 @@ enum MinuteStatus {
   New
   Initiated
   InProgress  @map("In Progress")
+  Resolved
+  // Displayed as "Closed" in the UI. Kept as the DB value `Completed` so we only
+  // ADD an enum value (safe) rather than rename one (a destructive migration).
+  // Resolved carries into follow-ups; Completed/Closed and Cancelled do not.
   Completed
   Cancelled
 }

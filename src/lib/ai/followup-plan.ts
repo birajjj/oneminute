@@ -15,7 +15,14 @@ import { normalizeTags } from "@/lib/tags";
 import type { OpenItem } from "@/lib/followup";
 
 const TYPE_VALUES = ["Note", "To-Do", "Action", "Devops"] as const;
-const STATUS_VALUES = ["New", "Initiated", "In Progress", "Completed", "Cancelled"] as const;
+const STATUS_VALUES = [
+  "New",
+  "Initiated",
+  "In Progress",
+  "Resolved",
+  "Closed",
+  "Cancelled"
+] as const;
 
 export interface DevopsSuggestion {
   devopsAction: string; // "none" | "create" | "link"
@@ -181,7 +188,9 @@ export async function buildFollowUpPlan(
 }
 
 function normalizeStatus(s: string | undefined): string {
-  return s && (STATUS_VALUES as readonly string[]).includes(s) ? s : "";
+  if (!s) return "";
+  if (s === "Completed") return "Closed"; // old label -> new
+  return (STATUS_VALUES as readonly string[]).includes(s) ? s : "";
 }
 function normalizeType(t: string | undefined): string {
   return t && (TYPE_VALUES as readonly string[]).includes(t) ? t : "Note";
@@ -210,7 +219,7 @@ function buildPrompt(
   lines.push("- ref: the item's ref number below (1-based). Copy it exactly.");
   lines.push("- discussed: was this specific item discussed this meeting? (true/false)");
   lines.push("- note: a ONE-sentence update of what was said (empty string if not discussed).");
-  lines.push("- status: New | Initiated | In Progress | Completed | Cancelled. Keep the current status if unchanged or not discussed; use Completed only when the transcript clearly says it is done.");
+  lines.push("- status: New | Initiated | In Progress | Resolved | Closed | Cancelled. Keep the current status if unchanged or not discussed. Use Resolved when the work is done but should still be tracked in later follow-ups; use Closed only when it is fully finished and no longer needs to carry forward.");
   lines.push("");
   lines.push("TASK 2 — Capture NEW items. Return `newMinutes` with EVERY new to-do, action, decision,");
   lines.push("or note raised this meeting that is NOT one of the open items above. Whenever a new task is");

@@ -37,15 +37,16 @@ const STATUS_BADGE: Record<string, string> = {
   New: "bg-slate-100 text-slate-600",
   Initiated: "bg-indigo-100 text-indigo-700",
   "In Progress": "bg-blue-100 text-blue-700",
-  Completed: "bg-emerald-100 text-emerald-700",
+  Resolved: "bg-teal-100 text-teal-700",
+  Closed: "bg-emerald-100 text-emerald-700",
   Cancelled: "bg-slate-200 text-slate-500"
 };
 
 const TYPE_OPTIONS = ["Note", "To-Do", "Action", "Devops"];
-const STATUS_OPTIONS = ["New", "Initiated", "In Progress", "Completed", "Cancelled"];
+const STATUS_OPTIONS = ["New", "Initiated", "In Progress", "Resolved", "Closed", "Cancelled"];
 
 function isOpen(status: string) {
-  return status !== "Completed" && status !== "Cancelled";
+  return status !== "Closed" && status !== "Cancelled";
 }
 
 function startOfToday() {
@@ -176,7 +177,7 @@ export default function DashboardClient({
   );
 
   const open = visible.filter((it) => isOpen(it.status));
-  const done = visible.filter((it) => it.status === "Completed");
+  const done = visible.filter((it) => it.status === "Closed");
 
   const counts = useMemo(() => {
     let overdue = 0;

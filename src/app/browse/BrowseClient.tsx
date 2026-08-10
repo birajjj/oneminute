@@ -65,7 +65,7 @@ interface NestedSub {
   entryId: string | null; // this-meeting entry id when editable
 }
 
-const STATUS_OPTIONS = ["New", "Initiated", "In Progress", "Completed", "Cancelled"];
+const STATUS_OPTIONS = ["New", "Initiated", "In Progress", "Resolved", "Closed", "Cancelled"];
 const TYPE_OPTIONS = ["Note", "To-Do", "Action", "Devops"];
 
 // A fresh, hand-entered minute (Browse "+ Add minute"), before it's saved.
@@ -1093,7 +1093,7 @@ export default function BrowseClient({
                     const noteThreadCount = (threads[mn.rootId] ?? []).filter((e) => e.type === "Note").length;
 
                     const isOpenPending =
-                      mn.isPersistent && displayStatus !== "Completed" && displayStatus !== "Cancelled";
+                      mn.isPersistent && displayStatus !== "Closed" && displayStatus !== "Cancelled";
                     return (
                       <div
                         key={mn.id}
@@ -1300,7 +1300,7 @@ export default function BrowseClient({
                                     // "as-of" rows show the state at this meeting.
                                     const subStatus = sub.editable ? (edits[sub.entryId!]?.status ?? sub.status) : sub.status;
                                     const subType = sub.editable ? (edits[sub.childRootId]?.type ?? sub.type) : sub.type;
-                                    const subDone = subStatus === "Completed" || subStatus === "Cancelled";
+                                    const subDone = subStatus === "Closed" || subStatus === "Cancelled";
                                     const subTitle = (sub.editable ? edits[sub.childRootId]?.title : undefined) ?? sub.title;
                                     const subDescription =
                                       (sub.editable ? edits[sub.childRootId]?.description : undefined) ?? sub.description;
@@ -1464,19 +1464,19 @@ export default function BrowseClient({
                               ))}
                             </select>
                           )}
-                          {/* Mark As Complete only on follow-up minutes; new/root
+                          {/* Mark as Closed only on follow-up minutes; new/root
                               minutes (e.g. in a fresh meeting) use the status dropdown. */}
                           {mn.isFollowUp && (
                             <label className="ml-4 flex shrink-0 items-center gap-1 text-xs text-slate-500">
                               <input
                                 type="checkbox"
-                                checked={displayStatus === "Completed"}
+                                checked={displayStatus === "Closed"}
                                 onChange={(e) =>
                                   // Point-in-time: sets THIS entry's status (no duplicate entry).
-                                  saveMinute(entryId, { status: e.target.checked ? "Completed" : "New" })
+                                  saveMinute(entryId, { status: e.target.checked ? "Closed" : "New" })
                                 }
                               />
-                              Mark As Complete
+                              Mark as Closed
                             </label>
                           )}
                         </div>
