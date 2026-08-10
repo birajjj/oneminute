@@ -92,6 +92,7 @@ export default async function ProjectBoardPage({
       latestEntryId: latest.id,
       area: root.area || "General",
       title: root.title,
+      description: root.description,
       type: TYPE_LABEL[root.type] ?? root.type,
       status: STATUS_LABEL[latest.status] ?? latest.status,
       assignedTo: root.assignedTo?.displayName ?? null,

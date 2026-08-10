@@ -21,6 +21,7 @@ export interface BoardItem {
   latestEntryId: string;
   area: string;
   title: string;
+  description: string | null;
   type: string; // label
   status: string; // current, label
   assignedTo: string | null;
@@ -591,6 +592,12 @@ export default function ProjectBoardClient({
                           >
                             {it.title || <span className="italic text-slate-400">Untitled</span>}
                           </div>
+
+                          {it.description && (
+                            <p className="mt-0.5 line-clamp-2 text-sm font-normal text-slate-500">
+                              {it.description}
+                            </p>
+                          )}
 
                           <div className="mt-1 flex flex-wrap items-center gap-x-2.5 gap-y-1 text-xs text-slate-500">
                             <span

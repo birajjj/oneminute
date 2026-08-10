@@ -14,6 +14,7 @@ export interface DashItem {
   assigneeId: string; // the roster person this item belongs to
   latestEntryId: string; // status edits target this (the item's current state)
   title: string;
+  description: string | null;
   type: string; // label
   status: string; // current, label
   area: string;
@@ -219,6 +220,9 @@ export default function DashboardClient({
             <div className={`font-medium ${itemOpen ? "text-slate-800" : "text-slate-500"}`}>
               {it.title || <span className="italic text-slate-400">Untitled</span>}
             </div>
+            {it.description && (
+              <p className="mt-0.5 line-clamp-2 text-sm text-slate-500">{it.description}</p>
+            )}
             <div className="mt-1.5 flex flex-wrap items-center gap-1.5 text-xs">
               {/* Type — editable */}
               <select

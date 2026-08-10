@@ -104,6 +104,7 @@ export default async function DashboardPage() {
       assigneeId: root.assignedToUserId,
       latestEntryId: latest.id,
       title: root.title,
+      description: root.description,
       type: TYPE_LABEL[root.type] ?? root.type,
       status: STATUS_LABEL[latest.status] ?? latest.status,
       area: root.area || "General",
