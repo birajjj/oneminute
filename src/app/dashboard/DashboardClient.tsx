@@ -308,7 +308,7 @@ export default function DashboardClient({
       </header>
 
       <main className="min-h-0 flex-1 overflow-y-auto">
-        <div className="mx-auto max-w-3xl px-4 py-6 sm:px-6">
+        <div className="mx-auto max-w-[1440px] px-4 py-5 sm:px-6">
           {members.length === 0 ? (
             <div className="rounded-lg border border-dashed border-slate-300 bg-white py-16 text-center text-sm text-slate-400">
               No team members on the roster yet — add people so work can be assigned.
