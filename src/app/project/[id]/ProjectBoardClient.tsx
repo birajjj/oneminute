@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { TagBadges } from "@/components/TagChips";
 import { MINUTE_TAGS, TAG_STYLES } from "@/lib/tags";
@@ -175,7 +175,7 @@ function isOverdue(item: BoardItem) {
 
 export default function ProjectBoardClient({
   project,
-  items,
+  items: initialItems,
   areas,
   meetings,
   members,
@@ -188,6 +188,10 @@ export default function ProjectBoardClient({
   members: string[];
   userName: string;
 }) {
+  // Local copy so inline edits reflect immediately; re-synced whenever the
+  // server sends fresh data (after a router.refresh()).
+  const [items, setItems] = useState<BoardItem[]>(initialItems);
+  useEffect(() => setItems(initialItems), [initialItems]);
   const [activeTab, setActiveTab] = useState<string>("All");
   const [statusFilter, setStatusFilter] = useState<"open" | "completed" | "all">("open");
   // Multi-select: empty = no filter. Type holds labels; assignee holds display
@@ -199,12 +203,12 @@ export default function ProjectBoardClient({
   const [search, setSearch] = useState("");
   const [sort, setSort] = useState<"activity" | "due" | "title" | "status">("activity");
   const [openItem, setOpenItem] = useState<BoardItem | null>(null);
-  const [savingField, setSavingField] = useState<string | null>(null);
   const router = useRouter();
 
-  // Edit an item straight from the board's detail panel. Status is point-in-time
-  // (it's the latest entry's, which is what the board shows), so it saves to the
-  // latest entry; type/owner/due are the item's identity and save to the root.
+  // Edit an item inline on a row. Status is point-in-time (it's the latest
+  // entry's, which is what the board shows), so it saves to the latest entry;
+  // type/owner/due are the item's identity and save to the root. Optimistic,
+  // then re-synced from the server.
   async function editItem(
     item: BoardItem,
     field: "status" | "type" | "assignedTo" | "dueDate",
@@ -212,15 +216,15 @@ export default function ProjectBoardClient({
   ) {
     const targetId = field === "status" ? item.latestEntryId : item.id;
     const patch: Record<string, string> = { [field]: value };
-    // Optimistic: reflect it in the open panel right away.
-    setOpenItem((prev) => {
-      if (!prev || prev.id !== item.id) return prev;
-      if (field === "status") return { ...prev, status: value };
-      if (field === "type") return { ...prev, type: value };
-      if (field === "assignedTo") return { ...prev, assignedTo: value || null };
-      return { ...prev, dueDate: value || null };
-    });
-    setSavingField(field);
+    const apply = (i: BoardItem): BoardItem => {
+      if (field === "status") return { ...i, status: value };
+      if (field === "type") return { ...i, type: value };
+      if (field === "assignedTo") return { ...i, assignedTo: value || null };
+      return { ...i, dueDate: value || null };
+    };
+    // Optimistic: update the list (and the open panel if it's this item).
+    setItems((prev) => prev.map((i) => (i.id === item.id ? apply(i) : i)));
+    setOpenItem((prev) => (prev && prev.id === item.id ? apply(prev) : prev));
     try {
       const res = await fetch(`/api/minutes/${targetId}`, {
         method: "PATCH",
@@ -235,8 +239,6 @@ export default function ProjectBoardClient({
     } catch (e) {
       alert(e instanceof Error ? e.message : "Save failed");
       router.refresh(); // fall back to server truth
-    } finally {
-      setSavingField(null);
     }
   }
 
@@ -568,30 +570,37 @@ export default function ProjectBoardClient({
                 const done = it.status === "Completed" || it.status === "Cancelled";
                 return (
                   <li key={it.id}>
-                    <button
-                      onClick={() => setOpenItem(it)}
-                      className={`flex w-full items-start gap-3 rounded-lg border border-slate-200 border-l-4 bg-white p-3 text-left transition hover:bg-slate-50 hover:shadow-sm ${
+                    <div
+                      className={`flex items-start gap-3 rounded-lg border border-slate-200 border-l-4 bg-white p-3 ${
                         STATUS_ACCENT[it.status] ?? "border-l-slate-300"
                       }`}
                     >
-                      <span
-                        className={`mt-0.5 inline-flex w-[92px] shrink-0 justify-center whitespace-nowrap rounded px-2 py-0.5 text-xs font-semibold ${
+                      {/* Status — editable inline */}
+                      <select
+                        value={it.status}
+                        onChange={(e) => editItem(it, "status", e.target.value)}
+                        title="Status"
+                        className={`mt-0.5 w-[104px] shrink-0 cursor-pointer rounded border border-transparent px-1.5 py-0.5 text-xs font-semibold ${
                           STATUS_BADGE[it.status] ?? "bg-slate-100 text-slate-600"
                         }`}
                       >
-                        {it.status}
-                      </span>
+                        {STATUS_OPTIONS.map((s) => (
+                          <option key={s} value={s}>{s}</option>
+                        ))}
+                      </select>
 
                       <div className="flex min-w-0 flex-1 flex-col gap-1.5 md:flex-row md:items-start md:justify-between md:gap-4">
                         {/* Left: title + type/updates/flags */}
                         <div className="min-w-0">
-                          <div
-                            className={`font-medium ${
+                          <button
+                            onClick={() => setOpenItem(it)}
+                            title="View history"
+                            className={`text-left font-medium hover:underline ${
                               done ? "text-slate-500" : "text-slate-800"
                             }`}
                           >
                             {it.title || <span className="italic text-slate-400">Untitled</span>}
-                          </div>
+                          </button>
 
                           {it.description && (
                             <p className="mt-0.5 line-clamp-2 text-sm font-normal text-slate-500">
@@ -600,22 +609,32 @@ export default function ProjectBoardClient({
                           )}
 
                           <div className="mt-1 flex flex-wrap items-center gap-x-2.5 gap-y-1 text-xs text-slate-500">
-                            <span
-                              className={`rounded px-1.5 py-0.5 font-semibold ${
+                            {/* Type — editable inline */}
+                            <select
+                              value={it.type}
+                              onChange={(e) => editItem(it, "type", e.target.value)}
+                              title="Type"
+                              className={`cursor-pointer rounded border border-transparent px-1.5 py-0.5 font-semibold ${
                                 TYPE_BADGE[it.type] ?? "bg-slate-100 text-slate-600"
                               }`}
                             >
-                              {it.type}
-                            </span>
+                              {TYPE_OPTIONS.map((t) => (
+                                <option key={t} value={t}>{t}</option>
+                              ))}
+                            </select>
                             {it.devopsItemId && (
                               <span className="rounded bg-orange-50 px-1.5 py-0.5 text-orange-600">
                                 #{it.devopsItemId}
                               </span>
                             )}
                             {it.updateCount > 0 && (
-                              <span className="text-slate-400">
+                              <button
+                                onClick={() => setOpenItem(it)}
+                                title="View history"
+                                className="text-slate-400 hover:text-slate-600 hover:underline"
+                              >
                                 {it.updateCount} update{it.updateCount > 1 ? "s" : ""}
-                              </span>
+                              </button>
                             )}
                             {it.raisedFromTitle && (
                               <span className="text-slate-400" title="Raised under another item">
@@ -626,20 +645,35 @@ export default function ProjectBoardClient({
                           </div>
                         </div>
 
-                        {/* Right: owner · due · area — fills the row width on desktop,
-                            stacks under the title on mobile */}
-                        <div className="flex shrink-0 flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-500 md:justify-end">
-                          {it.assignedTo && <span className="whitespace-nowrap">👤 {it.assignedTo}</span>}
-                          {it.dueDate && (
-                            <span
-                              className={`whitespace-nowrap ${
-                                overdue ? "font-semibold text-red-600" : ""
-                              }`}
-                            >
-                              📅 {fmtDate(it.dueDate)}
-                              {overdue && " · overdue"}
-                            </span>
-                          )}
+                        {/* Right: owner · due · area — editable inline */}
+                        <div className="flex shrink-0 flex-wrap items-center gap-2 text-xs text-slate-500 md:justify-end">
+                          {/* Owner — editable */}
+                          <select
+                            value={it.assignedTo ?? ""}
+                            onChange={(e) => editItem(it, "assignedTo", e.target.value)}
+                            title="Owner"
+                            className="cursor-pointer rounded border border-slate-300 px-1.5 py-0.5 text-slate-600"
+                          >
+                            <option value="">Unassigned</option>
+                            {it.assignedTo && !members.includes(it.assignedTo) && (
+                              <option value={it.assignedTo}>{it.assignedTo}</option>
+                            )}
+                            {members.map((m) => (
+                              <option key={m} value={m}>{m}</option>
+                            ))}
+                          </select>
+                          {/* Due — editable */}
+                          <input
+                            type="date"
+                            value={toDateInput(it.dueDate)}
+                            onChange={(e) => editItem(it, "dueDate", e.target.value)}
+                            title="Due date"
+                            className={`cursor-pointer rounded border px-1.5 py-0.5 ${
+                              overdue
+                                ? "border-red-300 bg-red-50 text-red-600"
+                                : "border-slate-300 text-slate-600"
+                            }`}
+                          />
                           {activeTab === "All" && (
                             <span className="rounded bg-slate-100 px-2 py-0.5 text-[11px] text-slate-500">
                               {it.area}
@@ -647,7 +681,7 @@ export default function ProjectBoardClient({
                           )}
                         </div>
                       </div>
-                    </button>
+                    </div>
                   </li>
                 );
               })}
@@ -668,67 +702,33 @@ export default function ProjectBoardClient({
           >
             <div className="mb-3 flex items-start gap-2">
               <div className="min-w-0 flex-1">
-                <h2 className="text-base font-semibold text-slate-800">
-                  {openItem.title || "Untitled"}
-                </h2>
-                {/* Edit the item's state right here — changes save on the spot. */}
-                <div className="mt-3 grid grid-cols-2 gap-2 text-xs sm:grid-cols-4">
-                  <label className="flex flex-col gap-1">
-                    <span className="text-slate-500">Type</span>
-                    <select
-                      value={openItem.type}
-                      onChange={(e) => editItem(openItem, "type", e.target.value)}
-                      className="rounded border border-slate-300 px-2 py-1 text-slate-700"
-                    >
-                      {TYPE_OPTIONS.map((t) => (
-                        <option key={t} value={t}>{t}</option>
-                      ))}
-                    </select>
-                  </label>
-                  <label className="flex flex-col gap-1">
-                    <span className="text-slate-500">Status</span>
-                    <select
-                      value={openItem.status}
-                      onChange={(e) => editItem(openItem, "status", e.target.value)}
-                      className="rounded border border-slate-300 px-2 py-1 text-slate-700"
-                    >
-                      {STATUS_OPTIONS.map((s) => (
-                        <option key={s} value={s}>{s}</option>
-                      ))}
-                    </select>
-                  </label>
-                  <label className="flex flex-col gap-1">
-                    <span className="text-slate-500">Owner</span>
-                    <select
-                      value={openItem.assignedTo ?? ""}
-                      onChange={(e) => editItem(openItem, "assignedTo", e.target.value)}
-                      className="rounded border border-slate-300 px-2 py-1 text-slate-700"
-                    >
-                      <option value="">— Unassigned —</option>
-                      {openItem.assignedTo && !members.includes(openItem.assignedTo) && (
-                        <option value={openItem.assignedTo}>{openItem.assignedTo}</option>
-                      )}
-                      {members.map((m) => (
-                        <option key={m} value={m}>{m}</option>
-                      ))}
-                    </select>
-                  </label>
-                  <label className="flex flex-col gap-1">
-                    <span className="text-slate-500">Due date</span>
-                    <input
-                      type="date"
-                      value={toDateInput(openItem.dueDate)}
-                      onChange={(e) => editItem(openItem, "dueDate", e.target.value)}
-                      className="rounded border border-slate-300 px-2 py-1 text-slate-700"
-                    />
-                  </label>
-                </div>
-                <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-500">
+                {/* Read-only summary — edit these fields inline on the row. */}
+                <div className="flex flex-wrap items-center gap-2">
+                  <span
+                    className={`rounded px-1.5 py-0.5 text-xs font-semibold ${
+                      TYPE_BADGE[openItem.type] ?? "bg-slate-100 text-slate-600"
+                    }`}
+                  >
+                    {openItem.type}
+                  </span>
+                  <span
+                    className={`rounded px-1.5 py-0.5 text-xs font-semibold ${
+                      STATUS_BADGE[openItem.status] ?? "bg-slate-100 text-slate-600"
+                    }`}
+                  >
+                    {openItem.status}
+                  </span>
                   <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[11px] text-slate-500">
                     {openItem.area}
                   </span>
+                </div>
+                <h2 className="mt-2 text-base font-semibold text-slate-800">
+                  {openItem.title || "Untitled"}
+                </h2>
+                <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs text-slate-500">
+                  {openItem.assignedTo && <span>👤 {openItem.assignedTo}</span>}
+                  {openItem.dueDate && <span>📅 due {fmtDate(openItem.dueDate)}</span>}
                   {openItem.devopsItemId && <span>DevOps #{openItem.devopsItemId}</span>}
-                  {savingField && <span className="text-slate-400">Saving…</span>}
                 </div>
                 {openItem.tags.length > 0 && (
                   <div className="mt-2">

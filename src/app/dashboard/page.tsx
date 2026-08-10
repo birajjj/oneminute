@@ -99,12 +99,22 @@ export default async function DashboardPage() {
       if (et > lt || (et === lt && e.createdAt > latest.createdAt)) latest = e;
     }
 
+    // The note to surface: the most recent entry that has a description (latest
+    // update), falling back to the root's original.
+    const noteEntry = entries
+      .slice()
+      .sort((a, b) => {
+        const d = b.meeting.meetingDate.getTime() - a.meeting.meetingDate.getTime();
+        return d !== 0 ? d : b.createdAt.getTime() - a.createdAt.getTime();
+      })
+      .find((e) => e.description && e.description.trim());
+
     items.push({
       id: rootId,
       assigneeId: root.assignedToUserId,
       latestEntryId: latest.id,
       title: root.title,
-      description: root.description,
+      description: noteEntry?.description ?? root.description,
       type: TYPE_LABEL[root.type] ?? root.type,
       status: STATUS_LABEL[latest.status] ?? latest.status,
       area: root.area || "General",

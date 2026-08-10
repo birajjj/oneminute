@@ -73,6 +73,16 @@ export default async function ProjectBoardPage({
       if (et > lt || (et === lt && e.createdAt > latest.createdAt)) latest = e;
     }
 
+    // The note to surface on the card: the MOST RECENT entry that has a
+    // description (i.e. the latest update), falling back to the root's original.
+    const noteEntry = entries
+      .slice()
+      .sort((a, b) => {
+        const d = b.meeting.meetingDate.getTime() - a.meeting.meetingDate.getTime();
+        return d !== 0 ? d : b.createdAt.getTime() - a.createdAt.getTime();
+      })
+      .find((e) => e.description && e.description.trim());
+
     const thread: BoardThreadEntry[] = entries
       .slice()
       .sort((a, b) => (a.meeting.meetingDate < b.meeting.meetingDate ? 1 : -1))
@@ -92,7 +102,7 @@ export default async function ProjectBoardPage({
       latestEntryId: latest.id,
       area: root.area || "General",
       title: root.title,
-      description: root.description,
+      description: noteEntry?.description ?? root.description,
       type: TYPE_LABEL[root.type] ?? root.type,
       status: STATUS_LABEL[latest.status] ?? latest.status,
       assignedTo: root.assignedTo?.displayName ?? null,
