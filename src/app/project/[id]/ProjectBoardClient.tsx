@@ -359,6 +359,12 @@ export default function ProjectBoardClient({
         </span>
         <div className="ml-auto flex flex-wrap items-center gap-2">
           <a
+            href="/auto"
+            className="rounded bg-gradient-to-r from-brand-pink to-brand-purple px-3 py-1.5 text-sm font-medium text-white"
+          >
+            + New Meeting
+          </a>
+          <a
             href="/dashboard"
             className="rounded border border-slate-300 px-3 py-1.5 text-sm hover:bg-slate-100"
           >

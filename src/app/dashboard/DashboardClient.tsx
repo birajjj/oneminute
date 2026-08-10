@@ -40,6 +40,9 @@ const STATUS_BADGE: Record<string, string> = {
   Cancelled: "bg-slate-200 text-slate-500"
 };
 
+const TYPE_OPTIONS = ["Note", "To-Do", "Action", "Devops"];
+const STATUS_OPTIONS = ["New", "Initiated", "In Progress", "Completed", "Cancelled"];
+
 function isOpen(status: string) {
   return status !== "Completed" && status !== "Cancelled";
 }
@@ -50,26 +53,15 @@ function startOfToday() {
   return d;
 }
 
-function fmtDate(iso: string) {
-  return new Date(iso).toLocaleDateString(undefined, {
-    year: "numeric",
-    month: "short",
-    day: "numeric"
-  });
+// ISO (or "YYYY-MM-DD") -> the value an <input type="date"> expects. Due dates
+// are stored at UTC midnight, so the first 10 chars are the intended day.
+function toDateInput(value: string | null) {
+  return value ? value.slice(0, 10) : "";
 }
 
-// How a due date reads relative to today, for the little coloured pill.
-function dueMeta(iso: string | null, open: boolean) {
-  if (!iso) return null;
-  const due = new Date(iso);
-  const today = startOfToday();
-  const days = Math.round((due.getTime() - today.getTime()) / 86_400_000);
-  if (open && days < 0)
-    return { text: `Overdue · ${fmtDate(iso)}`, cls: "bg-red-50 text-red-600" };
-  if (open && days === 0) return { text: "Due today", cls: "bg-amber-50 text-amber-700" };
-  if (open && days <= 7)
-    return { text: `Due ${fmtDate(iso)}`, cls: "bg-amber-50 text-amber-700" };
-  return { text: `Due ${fmtDate(iso)}`, cls: "bg-slate-100 text-slate-500" };
+function isOverdue(iso: string | null, open: boolean) {
+  if (!iso || !open) return false;
+  return new Date(iso) < startOfToday();
 }
 
 // Which bucket an item falls into (open items only; done handled separately).
@@ -148,17 +140,25 @@ export default function DashboardClient({
       .sort((a, b) => a.name.localeCompare(b.name));
   }, [mine]);
 
-  async function setDone(item: DashItem, done: boolean) {
-    // Optimistic — flip it locally, then persist to the item's current entry.
+  // Edit a field on a card. Status is point-in-time (the item's current state) →
+  // saves to the latest entry; type and due date are the item's identity → the
+  // root. Optimistic, then re-sync from the server.
+  async function editItem(item: DashItem, field: "status" | "type" | "dueDate", value: string) {
+    const targetId = field === "status" ? item.latestEntryId : item.id;
     setItems((prev) =>
-      prev.map((i) => (i.id === item.id ? { ...i, status: done ? "Completed" : "New" } : i))
+      prev.map((i) => {
+        if (i.id !== item.id) return i;
+        if (field === "status") return { ...i, status: value };
+        if (field === "type") return { ...i, type: value };
+        return { ...i, dueDate: value || null };
+      })
     );
     setSavingId(item.id);
     try {
-      const res = await fetch(`/api/minutes/${item.latestEntryId}`, {
+      const res = await fetch(`/api/minutes/${targetId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status: done ? "Completed" : "New" })
+        body: JSON.stringify({ [field]: value })
       });
       if (!res.ok) throw new Error("Save failed");
       router.refresh();
@@ -211,56 +211,75 @@ export default function DashboardClient({
 
   function card(it: DashItem) {
     const itemOpen = isOpen(it.status);
-    const dm = dueMeta(it.dueDate, itemOpen);
+    const overdue = isOverdue(it.dueDate, itemOpen);
     return (
-      <li
-        key={it.id}
-        className="flex items-start gap-3 rounded-lg border border-slate-200 bg-white p-3"
-      >
-        <input
-          type="checkbox"
-          checked={it.status === "Completed"}
-          disabled={savingId === it.id}
-          onChange={(e) => setDone(it, e.target.checked)}
-          className="mt-1 h-4 w-4 shrink-0"
-          title={it.status === "Completed" ? "Reopen" : "Mark complete"}
-        />
-        <div className="min-w-0 flex-1">
-          <div className={`font-medium ${itemOpen ? "text-slate-800" : "text-slate-500"}`}>
-            {it.title || <span className="italic text-slate-400">Untitled</span>}
-          </div>
-          <div className="mt-1 flex flex-wrap items-center gap-x-2.5 gap-y-1 text-xs text-slate-500">
-            <span
-              className={`rounded px-1.5 py-0.5 font-semibold ${
-                TYPE_BADGE[it.type] ?? "bg-slate-100 text-slate-600"
-              }`}
-            >
-              {it.type}
-            </span>
-            <span
-              className={`rounded px-1.5 py-0.5 font-semibold ${
-                STATUS_BADGE[it.status] ?? "bg-slate-100 text-slate-600"
-              }`}
-            >
-              {it.status}
-            </span>
-            {dm && <span className={`rounded px-1.5 py-0.5 font-medium ${dm.cls}`}>{dm.text}</span>}
-            {it.devopsItemId && (
-              <span className="rounded bg-orange-50 px-1.5 py-0.5 text-orange-600">
-                #{it.devopsItemId}
+      <li key={it.id} className="rounded-lg border border-slate-200 bg-white p-3">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0 flex-1">
+            <div className={`font-medium ${itemOpen ? "text-slate-800" : "text-slate-500"}`}>
+              {it.title || <span className="italic text-slate-400">Untitled</span>}
+            </div>
+            <div className="mt-1.5 flex flex-wrap items-center gap-1.5 text-xs">
+              {/* Type — editable */}
+              <select
+                value={it.type}
+                onChange={(e) => editItem(it, "type", e.target.value)}
+                title="Type"
+                className={`cursor-pointer rounded border border-transparent px-1.5 py-0.5 font-semibold ${
+                  TYPE_BADGE[it.type] ?? "bg-slate-100 text-slate-600"
+                }`}
+              >
+                {TYPE_OPTIONS.map((t) => (
+                  <option key={t} value={t}>{t}</option>
+                ))}
+              </select>
+              {/* Status — editable (replaces the old complete checkbox) */}
+              <select
+                value={it.status}
+                onChange={(e) => editItem(it, "status", e.target.value)}
+                title="Status"
+                className={`cursor-pointer rounded border border-transparent px-1.5 py-0.5 font-semibold ${
+                  STATUS_BADGE[it.status] ?? "bg-slate-100 text-slate-600"
+                }`}
+              >
+                {STATUS_OPTIONS.map((s) => (
+                  <option key={s} value={s}>{s}</option>
+                ))}
+              </select>
+              {/* Due date — editable */}
+              <span className="inline-flex items-center gap-1 text-slate-400">
+                Due
+                <input
+                  type="date"
+                  value={toDateInput(it.dueDate)}
+                  onChange={(e) => editItem(it, "dueDate", e.target.value)}
+                  title="Due date"
+                  className={`cursor-pointer rounded border px-1.5 py-0.5 ${
+                    overdue
+                      ? "border-red-300 bg-red-50 text-red-600"
+                      : "border-slate-300 text-slate-600"
+                  }`}
+                />
               </span>
-            )}
-            {it.tags.length > 0 && <TagBadges tags={it.tags} />}
+              {overdue && <span className="font-medium text-red-600">overdue</span>}
+              {savingId === it.id && <span className="text-slate-400">saving…</span>}
+              {it.devopsItemId && (
+                <span className="rounded bg-orange-50 px-1.5 py-0.5 text-orange-600">
+                  #{it.devopsItemId}
+                </span>
+              )}
+              {it.tags.length > 0 && <TagBadges tags={it.tags} />}
+            </div>
           </div>
+          <a
+            href={`/project/${it.projectId}`}
+            className="shrink-0 whitespace-nowrap rounded bg-slate-100 px-2 py-1 text-[11px] font-medium text-slate-600 hover:bg-slate-200"
+            title={`Open ${it.projectName} board`}
+          >
+            {it.projectName}
+            <span className="ml-1 text-slate-400">· {it.area}</span>
+          </a>
         </div>
-        <a
-          href={`/project/${it.projectId}`}
-          className="shrink-0 whitespace-nowrap rounded bg-slate-100 px-2 py-1 text-[11px] font-medium text-slate-600 hover:bg-slate-200"
-          title={`Open ${it.projectName} board`}
-        >
-          {it.projectName}
-          <span className="ml-1 text-slate-400">· {it.area}</span>
-        </a>
       </li>
     );
   }
@@ -294,6 +313,12 @@ export default function DashboardClient({
         <span className="text-slate-300">/</span>
         <span className="text-sm font-medium text-slate-600 sm:text-base">My Dashboard</span>
         <div className="ml-auto flex flex-wrap items-center gap-2">
+          <a
+            href="/auto"
+            className="rounded bg-gradient-to-r from-brand-pink to-brand-purple px-3 py-1.5 text-sm font-medium text-white"
+          >
+            + New Meeting
+          </a>
           <a
             href="/browse"
             className="rounded border border-slate-300 px-3 py-1.5 text-sm hover:bg-slate-100"
