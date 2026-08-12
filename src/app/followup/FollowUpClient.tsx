@@ -1047,9 +1047,7 @@ export default function FollowUpClient({
                           <ul className="mt-1 space-y-1 border-l-2 border-slate-200 pl-3">
                             {it.history.map((h, i) => (
                               <li key={i} className="text-slate-600">
-                                <span className="text-slate-400">{fmtDate(h.date)} · {h.meetingTitle}</span>
-                                <span className="ml-1 rounded bg-slate-100 px-1 text-[10px] font-medium text-slate-500">{h.type}</span>
-                                <span className="text-slate-400"> · {h.status}</span>
+                                <span className="text-slate-400">{fmtDate(h.date)}</span>
                                 {h.description ? <> — {h.description}</> : null}
                               </li>
                             ))}
@@ -1199,21 +1197,25 @@ export default function FollowUpClient({
                 })}
               </div>
 
-              {/* Open items whose parent is already COMPLETED: shown under a
-                  read-only header so they stay linked to their origin, but the
-                  completed parent itself is not re-reviewed or saved. */}
-              {(orphanGroupsByArea[area] ?? []).map((grp) => (
-                <div key={grp.parentId} className="mt-5 rounded-lg border-l-4 border-l-slate-300 bg-slate-50 p-3">
-                  <div className="flex flex-wrap items-center gap-2 text-sm text-slate-600">
-                    <span className="font-medium">{grp.info.title}</span>
-                    <span className="rounded bg-slate-200 px-1.5 py-0.5 text-[10px] font-medium text-slate-600">{grp.info.status}</span>
-                    <span className="text-[11px] italic text-slate-400">— parent done; shown for context</span>
+              {/* Open items whose parent is already CLOSED: the parent no longer
+                  carries forward, but its open to-do/devops still needs review —
+                  so render each as a normal editable (yellow) follow-up item with
+                  a small caption linking it to its closed parent. */}
+              {(orphanGroupsByArea[area] ?? []).flatMap((grp) =>
+                grp.children.map((child) => (
+                  <div key={child.id} className="mt-5">
+                    <div className="mb-1 text-[11px] text-slate-400">
+                      ↳ under{" "}
+                      <span className="font-medium text-slate-500">{grp.info.title}</span>
+                      <span className="ml-1 rounded bg-slate-100 px-1 py-0.5 text-slate-500">
+                        {grp.info.status}
+                      </span>
+                      <span className="ml-1 italic">— parent closed</span>
+                    </div>
+                    {renderChildReview(child)}
                   </div>
-                  <div className="mt-2 space-y-2">
-                    {grp.children.map((child) => renderChildReview(child))}
-                  </div>
-                </div>
-              ))}
+                ))
+              )}
 
               <button
                 onClick={() => addNewMinute(area)}
