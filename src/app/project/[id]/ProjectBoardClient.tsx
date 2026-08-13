@@ -52,6 +52,16 @@ const STATUS_BADGE: Record<string, string> = {
   Cancelled: "bg-slate-200 text-slate-500"
 };
 
+// A coloured left edge per status — used in the default "All meetings" view.
+const STATUS_ACCENT: Record<string, string> = {
+  New: "border-l-slate-300",
+  Initiated: "border-l-indigo-400",
+  "In Progress": "border-l-blue-500",
+  Resolved: "border-l-teal-500",
+  Closed: "border-l-emerald-500",
+  Cancelled: "border-l-slate-300"
+};
+
 // Lifecycle order, so "Sort by status" groups items in a sensible progression
 // rather than alphabetically.
 const STATUS_RANK: Record<string, number> = {
@@ -343,22 +353,23 @@ export default function ProjectBoardClient({
     setSearch("");
   }
 
-  // Nest raised sub-items under their parent (same block) when the parent is
-  // also in the filtered view; otherwise the child stands alone (keeping its
-  // "↳ under <parent>" caption). Preserves the filtered sort order.
+  // Nesting + the Browse/follow-up colour coding apply ONLY when a single meeting
+  // is selected (the board then reads like that meeting). The default "All
+  // meetings" view stays flat and keeps the neutral status-accent styling.
+  const meetingSelected = meetingFilter !== "all";
   const tree = useMemo(() => {
     const ids = new Set(filtered.map((i) => i.id));
     const childrenOf: Record<string, BoardItem[]> = {};
     const top: BoardItem[] = [];
     for (const it of filtered) {
-      if (it.raisedFromRootId && ids.has(it.raisedFromRootId)) {
+      if (meetingSelected && it.raisedFromRootId && ids.has(it.raisedFromRootId)) {
         (childrenOf[it.raisedFromRootId] ??= []).push(it);
       } else {
         top.push(it);
       }
     }
     return { top, childrenOf };
-  }, [filtered]);
+  }, [filtered, meetingSelected]);
 
   // One board row (editable). `isNested` hides the "↳ under …" caption since the
   // visual nesting already conveys it.
@@ -368,9 +379,11 @@ export default function ProjectBoardClient({
     return (
       <div
         className={`flex items-start gap-3 rounded-lg border border-l-4 p-3 ${
-          isNested
-            ? "border-blue-200 border-l-brand-blue bg-blue-50"
-            : "border-amber-200 border-l-amber-500 bg-amber-50"
+          meetingSelected
+            ? isNested
+              ? "border-blue-200 border-l-brand-blue bg-blue-50"
+              : "border-amber-200 border-l-amber-500 bg-amber-50"
+            : `border-slate-200 bg-white ${STATUS_ACCENT[it.status] ?? "border-l-slate-300"}`
         }`}
       >
         {/* Status — editable inline */}

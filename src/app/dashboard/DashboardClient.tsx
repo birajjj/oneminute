@@ -208,42 +208,9 @@ export default function DashboardClient({
 
   // Group open items into buckets, each sorted by due date (soonest first),
   // undated last.
-  // Nest raised sub-items under their parent within the open list. A child whose
-  // parent isn't also an open item of mine stays top-level (with its caption).
-  const openTree = useMemo(() => {
-    const openIds = new Set(open.map((i) => i.id));
-    const childrenOf: Record<string, DashItem[]> = {};
-    const top: DashItem[] = [];
-    for (const it of open) {
-      if (it.raisedFromRootId && openIds.has(it.raisedFromRootId)) {
-        (childrenOf[it.raisedFromRootId] ??= []).push(it);
-      } else {
-        top.push(it);
-      }
-    }
-    const byDue = (a: DashItem, b: DashItem) => {
-      const ad = a.dueDate ? new Date(a.dueDate).getTime() : Infinity;
-      const bd = b.dueDate ? new Date(b.dueDate).getTime() : Infinity;
-      return ad - bd;
-    };
-    Object.values(childrenOf).forEach((list) => list.sort(byDue));
-    return { childrenOf, top };
-  }, [open]);
-
   const grouped = useMemo(() => {
-    const rank: Record<Bucket, number> = { overdue: 0, week: 1, later: 2 };
-    // A group sits in the most-urgent bucket among the parent and its children,
-    // so an overdue child floats the whole group up.
-    const groupBucketOf = (it: DashItem): Bucket => {
-      let best = bucketOf(it);
-      for (const k of openTree.childrenOf[it.id] ?? []) {
-        const kb = groupBucketOf(k);
-        if (rank[kb] < rank[best]) best = kb;
-      }
-      return best;
-    };
     const g: Record<Bucket, DashItem[]> = { overdue: [], week: [], later: [] };
-    for (const it of openTree.top) g[groupBucketOf(it)].push(it);
+    for (const it of open) g[bucketOf(it)].push(it);
     const byDue = (a: DashItem, b: DashItem) => {
       const ad = a.dueDate ? new Date(a.dueDate).getTime() : Infinity;
       const bd = b.dueDate ? new Date(b.dueDate).getTime() : Infinity;
@@ -252,7 +219,7 @@ export default function DashboardClient({
     };
     (Object.keys(g) as Bucket[]).forEach((k) => g[k].sort(byDue));
     return g;
-  }, [openTree]);
+  }, [open]);
 
   function toggleType(t: string) {
     setTypeFilter((prev) => (prev.includes(t) ? prev.filter((x) => x !== t) : [...prev, t]));
@@ -266,17 +233,11 @@ export default function DashboardClient({
     );
   }
 
-  function card(it: DashItem, isNested: boolean) {
+  function card(it: DashItem) {
     const itemOpen = isOpen(it.status);
     const overdue = isOverdue(it.dueDate, itemOpen);
     return (
-      <div
-        className={`rounded-lg border border-l-4 p-3 ${
-          isNested
-            ? "border-blue-200 border-l-brand-blue bg-blue-50"
-            : "border-amber-200 border-l-amber-500 bg-amber-50"
-        }`}
-      >
+      <div className="rounded-lg border border-slate-200 bg-white p-3">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0 flex-1">
             <div className={`font-medium ${itemOpen ? "text-slate-800" : "text-slate-500"}`}>
@@ -334,11 +295,6 @@ export default function DashboardClient({
                   #{it.devopsItemId}
                 </span>
               )}
-              {!isNested && it.raisedFromTitle && (
-                <span className="text-slate-400" title="Raised under another item">
-                  ↳ under “{it.raisedFromTitle}”
-                </span>
-              )}
               {it.tags.length > 0 && <TagBadges tags={it.tags} />}
             </div>
           </div>
@@ -352,21 +308,6 @@ export default function DashboardClient({
           </a>
         </div>
       </div>
-    );
-  }
-
-  // An item plus its nested raised sub-items (recursive).
-  function renderNode(it: DashItem, depth: number) {
-    const kids = openTree.childrenOf[it.id] ?? [];
-    return (
-      <li key={it.id}>
-        {card(it, depth > 0)}
-        {kids.length > 0 && (
-          <ul className="mt-2 space-y-2 border-l-2 border-slate-200 pl-3 md:pl-4">
-            {kids.map((k) => renderNode(k, depth + 1))}
-          </ul>
-        )}
-      </li>
     );
   }
 
@@ -384,7 +325,11 @@ export default function DashboardClient({
             {list.length} · {meta.hint}
           </span>
         </div>
-        <ul className="space-y-2">{list.map((it) => renderNode(it, 0))}</ul>
+        <ul className="space-y-2">
+          {list.map((it) => (
+            <li key={it.id}>{card(it)}</li>
+          ))}
+        </ul>
       </section>
     );
   }
@@ -614,7 +559,7 @@ export default function DashboardClient({
                                 new Date(a.lastActivity).getTime()
                             )
                             .map((it) => (
-                              <li key={it.id}>{card(it, false)}</li>
+                              <li key={it.id}>{card(it)}</li>
                             ))}
                         </ul>
                       )}
