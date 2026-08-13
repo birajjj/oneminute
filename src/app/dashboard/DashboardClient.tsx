@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { TagBadges } from "@/components/TagChips";
+import { MINUTE_TAGS, TAG_STYLES } from "@/lib/tags";
 
 export interface RosterMember {
   id: string;
@@ -120,6 +121,9 @@ export default function DashboardClient({
   }
 
   const [projectFilter, setProjectFilter] = useState<string[]>([]); // ids; empty = all
+  const [typeFilter, setTypeFilter] = useState<string[]>([]); // labels; empty = all
+  const [flagFilter, setFlagFilter] = useState<string[]>([]); // tags; empty = all
+  const [search, setSearch] = useState("");
   const [showDone, setShowDone] = useState(false);
   const [savingId, setSavingId] = useState<string | null>(null);
   // A different person's projects → reset the project chips.
@@ -171,10 +175,20 @@ export default function DashboardClient({
     }
   }
 
-  const visible = useMemo(
-    () => mine.filter((it) => projectFilter.length === 0 || projectFilter.includes(it.projectId)),
-    [mine, projectFilter]
-  );
+  const visible = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return mine.filter((it) => {
+      if (projectFilter.length && !projectFilter.includes(it.projectId)) return false;
+      if (typeFilter.length && !typeFilter.includes(it.type)) return false;
+      // OR across flags — an item shows if it carries ANY selected flag.
+      if (flagFilter.length && !it.tags.some((t) => flagFilter.includes(t))) return false;
+      if (q) {
+        const hay = `${it.title} ${it.description ?? ""} ${it.projectName} ${it.area}`.toLowerCase();
+        if (!hay.includes(q)) return false;
+      }
+      return true;
+    });
+  }, [mine, projectFilter, typeFilter, flagFilter, search]);
 
   const open = visible.filter((it) => isOpen(it.status));
   const done = visible.filter((it) => it.status === "Closed");
@@ -205,6 +219,12 @@ export default function DashboardClient({
     return g;
   }, [open]);
 
+  function toggleType(t: string) {
+    setTypeFilter((prev) => (prev.includes(t) ? prev.filter((x) => x !== t) : [...prev, t]));
+  }
+  function toggleFlag(t: string) {
+    setFlagFilter((prev) => (prev.includes(t) ? prev.filter((x) => x !== t) : [...prev, t]));
+  }
   function toggleProject(id: string) {
     setProjectFilter((prev) =>
       prev.includes(id) ? prev.filter((p) => p !== id) : [...prev, id]
@@ -389,6 +409,79 @@ export default function DashboardClient({
                 </div>
               </div>
 
+              {/* Filters — search, type, flags. (Owner is the picker above;
+                  open-vs-completed is the split below.) */}
+              <div className="mb-4 space-y-2 rounded-lg border border-slate-200 bg-white p-3">
+                <div className="relative">
+                  <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">
+                    ⌕
+                  </span>
+                  <input
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                    placeholder="Search my items…"
+                    className="w-full rounded-md border border-slate-300 py-1.5 pl-8 pr-8 text-sm"
+                  />
+                  {search && (
+                    <button
+                      onClick={() => setSearch("")}
+                      className="absolute right-2 top-1/2 -translate-y-1/2 rounded-full px-1 text-slate-400 hover:text-slate-600"
+                      aria-label="Clear search"
+                    >
+                      ✕
+                    </button>
+                  )}
+                </div>
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <span className="mr-0.5 text-xs text-slate-400">Type:</span>
+                  {TYPE_OPTIONS.map((t) => {
+                    const on = typeFilter.includes(t);
+                    return (
+                      <button
+                        key={t}
+                        onClick={() => toggleType(t)}
+                        className={`rounded-full border px-2.5 py-0.5 text-xs font-medium ${
+                          on
+                            ? "border-brand-blue bg-blue-50 text-brand-blue"
+                            : "border-slate-200 bg-white text-slate-500 hover:bg-slate-50"
+                        }`}
+                      >
+                        {t}
+                      </button>
+                    );
+                  })}
+                  <span className="mx-1 hidden h-4 w-px bg-slate-200 sm:block" />
+                  <span className="mr-0.5 text-xs text-slate-400">Flags:</span>
+                  {MINUTE_TAGS.map((tag) => {
+                    const on = flagFilter.includes(tag);
+                    return (
+                      <button
+                        key={tag}
+                        onClick={() => toggleFlag(tag)}
+                        className={`rounded-full border px-2 py-0.5 text-xs font-medium ${
+                          on ? TAG_STYLES[tag] : "border-slate-200 bg-white text-slate-400 hover:bg-slate-50"
+                        }`}
+                        title={`Filter by ${tag}`}
+                      >
+                        {tag}
+                      </button>
+                    );
+                  })}
+                  {(typeFilter.length > 0 || flagFilter.length > 0 || search.trim()) && (
+                    <button
+                      onClick={() => {
+                        setTypeFilter([]);
+                        setFlagFilter([]);
+                        setSearch("");
+                      }}
+                      className="ml-auto rounded px-2 py-0.5 text-xs text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+                    >
+                      Clear filters
+                    </button>
+                  )}
+                </div>
+              </div>
+
               {/* Project filter (only if this person has items in >1 project) */}
               {projects.length > 1 && (
                 <div className="mb-5 flex flex-wrap items-center gap-1.5">
@@ -424,6 +517,10 @@ export default function DashboardClient({
                 <div className="rounded-lg border border-dashed border-slate-300 bg-white py-16 text-center text-sm text-slate-400">
                   Nothing is assigned to {selectedName} yet. Set them as the owner on a
                   minute (from a meeting or a project board) and it&apos;ll show up here.
+                </div>
+              ) : visible.length === 0 ? (
+                <div className="rounded-lg border border-dashed border-slate-300 bg-white py-16 text-center text-sm text-slate-400">
+                  No items match these filters.
                 </div>
               ) : (
                 <>
