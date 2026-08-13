@@ -170,7 +170,7 @@ export default function ReportClient({ data }: { data: ReportData }) {
       </div>
 
       {/* The printable report */}
-      <div className="mx-auto max-w-3xl px-4 py-6">
+      <div className="mx-auto max-w-[1440px] px-4 py-6 sm:px-6">
         <div
           ref={reportRef}
           className="report-paper rounded-lg border border-slate-200 bg-white p-8 text-slate-800 shadow-sm"
