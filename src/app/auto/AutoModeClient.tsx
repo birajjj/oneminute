@@ -72,6 +72,7 @@ function emptyMinute(area = "General"): AutoPlan["minutes"][number] {
     referenceMinuteId: null,
     referenceMinuteTitle: null,
     statusChange: "",
+    parentTitle: "",
     area,
     title: "",
     description: "",
@@ -640,6 +641,19 @@ function PlanReview({
               <div className="mb-1 rounded bg-amber-100 px-2 py-1 text-xs text-amber-800">
                 Follows up: {m.referenceMinuteTitle || m.referenceMinuteId}
                 {m.statusChange && <span className="ml-1 font-semibold">→ {m.statusChange}</span>}
+              </div>
+            )}
+            {/* This task will be filed under an Action from this same meeting. */}
+            {m.parentTitle && (
+              <div className="mb-1 flex items-center gap-1 text-xs text-slate-500">
+                <span>↳ under “{m.parentTitle}”</span>
+                <button
+                  onClick={() => updateMinute(i, { parentTitle: "" })}
+                  className="rounded px-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+                  title="Keep this as a standalone item"
+                >
+                  ✕
+                </button>
               </div>
             )}
             <textarea value={m.description} onChange={(e) => updateMinute(i, { description: e.target.value })} rows={2} className="w-full rounded border border-slate-300 p-1 text-sm" />

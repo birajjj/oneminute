@@ -118,6 +118,10 @@ export async function commitAutoChunked(
   const approved = (plan.minutes || []).filter(
     (m) => m.approved && (m.title.trim() !== "" || (m.description ?? "").trim() !== "")
   );
+  // Parents first: a task links to its Action by title, and the server resolves
+  // that against minutes already written. Batches are saved in order, so the
+  // parent must not land in a later batch than its child.
+  approved.sort((a, b) => Number(!!a.parentTitle) - Number(!!b.parentTitle));
   const batches: AutoPlan["minutes"][] = [];
   for (let i = 0; i < approved.length; i += MINUTE_BATCH) {
     batches.push(approved.slice(i, i + MINUTE_BATCH));

@@ -329,6 +329,23 @@ export async function commitAutoPlanMinutes(
         }
       }
 
+      // A task (To-Do/Devops) can be filed under an Action captured in THIS
+      // meeting. Resolved by exact title within this meeting only — no history
+      // lookup, so it stays fast. Unresolved → saved standalone.
+      let raisedFromRootId: string | null = null;
+      if (!rootId && m.parentTitle && m.parentTitle.trim()) {
+        const parent = await db.minute.findFirst({
+          where: {
+            orgId,
+            meetingId,
+            title: m.parentTitle.trim(),
+            parentMinuteId: null
+          },
+          select: { id: true }
+        });
+        raisedFromRootId = parent?.id ?? null;
+      }
+
       let devopsItemId: number | null = null;
       let devopsProjectName: string | null = null;
       if (m.devopsAction === "create" || m.devopsAction === "link") {
@@ -351,6 +368,7 @@ export async function commitAutoPlanMinutes(
           type: MINUTE_TYPE_MAP[m.minuteType] ?? "Note",
           status: STATUS_MAP[m.status] ?? "New",
           parentMinuteId: rootId,
+          raisedFromRootId,
           assignedToUserId: m.assignedTo
             ? userIdByName.get(m.assignedTo.toLowerCase()) ?? null
             : null,

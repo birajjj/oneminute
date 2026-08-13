@@ -218,7 +218,9 @@ function buildPrompt(
   lines.push("TASK 1 — Update every open item. Return `updates` with EXACTLY ONE entry per open item:");
   lines.push("- ref: the item's ref number below (1-based). Copy it exactly.");
   lines.push("- discussed: was this specific item discussed this meeting? (true/false)");
-  lines.push("- note: a ONE-sentence update of what was said (empty string if not discussed).");
+  lines.push("- note: what was said about this item this meeting (empty string if not discussed).");
+  lines.push("  Cover the whole discussion of that item here — 1-3 sentences as needed. Do NOT split it");
+  lines.push("  into extra notes in TASK 2; anything said ABOUT an open item belongs in that item's note.");
   lines.push("- status: New | Initiated | In Progress | Resolved | Closed | Cancelled. Keep the current status if unchanged or not discussed. Use Resolved when the work is done but should still be tracked in later follow-ups; use Closed only when it is fully finished and no longer needs to carry forward.");
   lines.push("");
   lines.push("TASK 2 — Capture NEW items. Return `newMinutes` with EVERY new to-do, action, decision,");
@@ -226,6 +228,16 @@ function buildPrompt(
   lines.push("mentioned (e.g. \"let's set up X\", \"we need to do Y\", \"raise a bug for Z\", \"assign someone to W\"),");
   lines.push("it MUST appear here. Each entry: title, description, minuteType (Note | To-Do | Action | Devops),");
   lines.push("status, assignedTo, and `area`. Return an empty array only if genuinely nothing new was raised.");
+  lines.push("");
+  lines.push("GROUP BY TOPIC, not by sentence. If one new topic was discussed for several minutes, that is");
+  lines.push("ONE minute whose description covers the whole discussion — never an item plus a string of");
+  lines.push("one-sentence notes about the same thing. Prefer FEWER, RICHER items.");
+  lines.push("Types are a hierarchy:");
+  lines.push("- \"Action\": the initiative/piece of work discussed — the umbrella. Its description should");
+  lines.push("  capture the WHOLE discussion (2-4 sentences: context, what was agreed, concerns).");
+  lines.push("- \"To-Do\" / \"Devops\": ONE concrete task for that work — a single line each (Devops = becomes a work item).");
+  lines.push("- \"Note\": information/context/decision that is not a task; MAY be several sentences —");
+  lines.push("  keep related remarks in ONE note rather than several small ones.");
   lines.push("");
   lines.push("NESTING (optional): if a NEW to-do or devops is raised specifically about one of the open items above");
   lines.push("(e.g. \"on the mapping document, let's also raise a to-do to review the Costco fields\"), set");

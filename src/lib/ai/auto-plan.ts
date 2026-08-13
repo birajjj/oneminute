@@ -16,6 +16,10 @@ export interface PlanMinute {
   title: string;
   description: string;
   minuteType: "Note" | "To-Do" | "Action" | "Devops";
+  // Title of the Action in THIS SAME meeting that this task belongs under (""
+  // = standalone). Resolved to raisedFromRootId at commit; scoped to this
+  // meeting only, so no history lookup is needed.
+  parentTitle: string;
   status: string;
   assignedTo: string;
   dueDate: string;
@@ -100,6 +104,7 @@ const responseSchema = {
           title: { type: "STRING" },
           description: { type: "STRING" },
           minuteType: { type: "STRING" },
+          parentTitle: { type: "STRING" },
           status: { type: "STRING" },
           assignedTo: { type: "STRING" },
           dueDate: { type: "STRING" },
@@ -158,6 +163,13 @@ export async function buildAutoPlan(
     minuteType: (["Note", "To-Do", "Action", "Devops"].includes(m.minuteType)
       ? m.minuteType
       : "Note") as PlanMinute["minuteType"],
+    // Only a task can sit under an Action; ignore it on anything else, and never
+    // let an item parent itself.
+    parentTitle:
+      ["To-Do", "Devops"].includes(m.minuteType) &&
+      (m.parentTitle || "").trim().toLowerCase() !== (m.title || "").trim().toLowerCase()
+        ? (m.parentTitle || "").trim()
+        : "",
     status: m.status || "New",
     assignedTo: m.assignedTo || "",
     dueDate: m.dueDate || "",
@@ -346,11 +358,33 @@ function buildPrompt(
   lines.push("Given a meeting transcript, decide project + meeting + minutes in ONE JSON reply.");
   lines.push("");
   lines.push("### MINUTES TO EXTRACT");
-  lines.push("- Capture each distinct decision, action item, and important discussion point as its own minute.");
-  lines.push("- Merge trivially-related points; skip pure small talk. Capture discussion points as 'Note'.");
-  lines.push("- Aim for the meaningful items — typically 8-20 minutes; do NOT exceed 30.");
+  lines.push("Group by TOPIC, not by sentence. If the team talked about one thing for several");
+  lines.push("minutes, that is ONE minute whose description covers the whole discussion — NOT a");
+  lines.push("string of one-sentence fragments. Never split a single topic into an item plus");
+  lines.push("several loose notes: fold that context into the item's own description.");
+  lines.push("- Skip pure small talk. Prefer FEWER, RICHER minutes over many thin ones.");
+  lines.push("- Aim for one minute per real topic — typically 5-15; do NOT exceed 30.");
   lines.push("- EVERY minute MUST have a `title`: a short few-word headline (e.g. \"Fix Costco EDI delivery info\"). NEVER leave title empty.");
-  lines.push("- `description`: ONE concise sentence with the source detail — distinct from the title, not a paragraph.");
+  lines.push("- `description`: the substance of what was said, in the item's own words.");
+  lines.push("");
+  lines.push("### MINUTE TYPES (they are a hierarchy — choose deliberately)");
+  lines.push("- \"Action\": a piece of work / an initiative the team discussed. This is the UMBRELLA:");
+  lines.push("  its description should capture the WHOLE discussion about it — 2-4 sentences covering");
+  lines.push("  the context, what was agreed, and any concerns raised.");
+  lines.push("- \"To-Do\": ONE specific task to be carried out, usually for an Action. Keep it to a single line.");
+  lines.push("- \"Devops\": like a To-Do, but a task that should become a DevOps work item. Single line.");
+  lines.push("- \"Note\": information, context or a decision that is not a task. A Note MAY be several");
+  lines.push("  sentences — put all the related discussion in ONE note rather than several small ones.");
+  lines.push("Rule of thumb: the idea/initiative is an Action; the concrete tasks under it are To-Do or");
+  lines.push("Devops; everything else discussed is a Note. Do NOT emit a To-Do that merely restates its Action.");
+  lines.push("");
+  lines.push("### LINKING TASKS TO THEIR ACTION");
+  lines.push("When a To-Do or Devops is a task for an Action you are ALSO returning in this reply, set");
+  lines.push("`parentTitle` to that Action's exact title, so it is tracked underneath it.");
+  lines.push("- Copy the parent's `title` character-for-character; otherwise leave `parentTitle` empty.");
+  lines.push("- ONLY link to an Action from THIS meeting (one you are returning now, or one listed under");
+  lines.push("  'ALREADY CAPTURED EARLIER IN THIS MEETING'). Never link to an older meeting's item.");
+  lines.push("- Leave `parentTitle` empty for a standalone task, and on every Note and Action.");
   lines.push("");
   lines.push("### FOLLOW-UP DETECTION");
   lines.push("Follow-ups ONLY make sense within the SAME project you select in project.action.");
