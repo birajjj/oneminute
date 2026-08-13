@@ -60,6 +60,7 @@ interface NestedSub {
   assignedTo: string | null;
   tags: string[];
   devopsItemId: number | null;
+  capturedAt: string; // when the sub-item was first recorded (its root entry's date)
   // Editable only in the meeting where the sub-item was actually touched; a
   // read-only "as-of" row elsewhere so we never rewrite history off-meeting.
   editable: boolean;
@@ -609,6 +610,7 @@ export default function BrowseClient({
             assignedTo: touched.assignedTo,
             tags: touched.tags,
             devopsItemId: touched.devopsItemId,
+            capturedAt: rootEntry?.date ?? "",
             editable: true, entryId: touched.id
           });
         } else {
@@ -621,6 +623,7 @@ export default function BrowseClient({
             assignedTo: asOfEntry.assignedTo,
             tags: asOfEntry.tags,
             devopsItemId: asOfEntry.devopsItemId,
+            capturedAt: rootEntry?.date ?? "",
             editable: false, entryId: null
           });
         }
@@ -1377,6 +1380,14 @@ export default function BrowseClient({
                                                 title={sub.editable ? "Click to edit" : undefined}
                                               >
                                                 {subTitle}
+                                                {sub.capturedAt && (
+                                                  <span
+                                                    className="ml-2 text-[10px] font-normal text-slate-400"
+                                                    title="When this item was first recorded"
+                                                  >
+                                                    🕒 {fmtDate(sub.capturedAt)}
+                                                  </span>
+                                                )}
                                                 {savedFlash === sub.childRootId && (
                                                   <span className="ml-2 text-[10px] font-medium text-emerald-600">Saved ✓</span>
                                                 )}
