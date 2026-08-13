@@ -934,7 +934,7 @@ export default function BrowseClient({
                   </a>
                   <a
                     href={`/report/${selected.id}`}
-                    className="rounded bg-brand-blue px-4 py-2 text-sm font-medium text-white hover:bg-brand-blue/90"
+                    className="rounded bg-gradient-to-r from-brand-blue to-brand-purple px-4 py-2 text-sm font-medium text-white"
                     title="Open a printable stakeholder report for this meeting"
                   >
                     📄 Generate Report
