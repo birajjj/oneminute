@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/auth";
 import { db } from "@/lib/db";
-import { loadProjectItems } from "@/lib/project-report";
+import { loadProjectReport } from "@/lib/project-report";
 import ProjectReportClient from "./ProjectReportClient";
 
 export const dynamic = "force-dynamic";
@@ -22,13 +22,14 @@ export default async function ProjectReportPage({
   });
   if (!project) redirect("/browse");
 
-  const items = await loadProjectItems(user.orgId, project.id);
+  const { items, meta } = await loadProjectReport(user.orgId, project.id);
 
   return (
     <ProjectReportClient
       projectId={project.id}
       projectName={project.name}
       items={items}
+      meta={meta}
     />
   );
 }

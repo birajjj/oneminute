@@ -30,20 +30,36 @@ export interface ProjectItem {
   dueDate: string | null; // ISO
   tags: string[];
   devopsItemId: number | null;
-  lastActivity: string; // ISO
+  lastActivity: string; // ISO — meeting date of the newest entry
+  // How many follow-up updates this item has received (0 = never revisited).
+  updateCount: number;
+  // Meeting the newest entry was recorded in — for "what changed" context.
+  lastMeetingTitle: string;
 }
 
-export async function loadProjectItems(
+export interface ProjectMeta {
+  meetingCount: number;
+  firstMeeting: string | null; // ISO
+  lastMeeting: string | null; // ISO
+}
+
+export async function loadProjectReport(
   orgId: string,
   projectId: string
-): Promise<ProjectItem[]> {
+): Promise<{ items: ProjectItem[]; meta: ProjectMeta }> {
   const minutes = await db.minute.findMany({
     where: { orgId, meeting: { projectId } },
     orderBy: { createdAt: "asc" },
     include: {
       assignedTo: { select: { displayName: true } },
-      meeting: { select: { meetingDate: true } }
+      meeting: { select: { title: true, meetingDate: true } }
     }
+  });
+
+  const meetings = await db.meeting.findMany({
+    where: { orgId, projectId },
+    orderBy: { meetingDate: "asc" },
+    select: { meetingDate: true }
   });
 
   const threads: Record<string, typeof minutes> = {};
@@ -86,9 +102,18 @@ export async function loadProjectItems(
       dueDate: root.dueDate ? root.dueDate.toISOString() : null,
       tags: latest.tags ?? [],
       devopsItemId: root.devopsItemId ?? null,
-      lastActivity: latest.meeting.meetingDate.toISOString()
+      lastActivity: latest.meeting.meetingDate.toISOString(),
+      updateCount: entries.length - 1,
+      lastMeetingTitle: latest.meeting.title
     });
   }
 
-  return items;
+  return {
+    items,
+    meta: {
+      meetingCount: meetings.length,
+      firstMeeting: meetings[0]?.meetingDate.toISOString() ?? null,
+      lastMeeting: meetings[meetings.length - 1]?.meetingDate.toISOString() ?? null
+    }
+  };
 }

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireUser } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { generateJson } from "@/lib/ai/provider";
-import { loadProjectItems } from "@/lib/project-report";
+import { loadProjectReport } from "@/lib/project-report";
 
 export const runtime = "nodejs";
 
@@ -20,7 +20,7 @@ export async function POST(
     });
     if (!project) return NextResponse.json({ error: "project not found" }, { status: 404 });
 
-    const items = await loadProjectItems(user.orgId, id);
+    const { items } = await loadProjectReport(user.orgId, id);
     if (items.length === 0) return NextResponse.json({ summary: "" });
 
     const today = new Date();
