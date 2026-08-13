@@ -318,10 +318,10 @@ export default function FollowUpClient({
     return () => { cancelled = true; };
   }, [devopsEnabled]);
 
-  // Items raised under another item nest beneath that parent. If the parent is
-  // still open → nested under its editable block. If the parent is COMPLETED it
-  // no longer carries forward, so the child is grouped under a read-only header
-  // (data.raisedParents) instead of floating as a bare top-level row.
+  // Items raised under another item nest beneath that parent's editable block. A
+  // Closed parent that still hosts an open child is now kept in data.openItems
+  // (see followup.ts), so it renders as a normal editable item with the child
+  // nested. The orphan branch below only catches the rare non-persistent parent.
   const { byArea, childrenByParent, orphanGroupsByArea } = useMemo(() => {
     const openIds = new Set(data.openItems.map((i) => i.id));
     const children: Record<string, OpenItem[]> = {};

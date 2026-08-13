@@ -139,12 +139,23 @@ export async function loadFollowUpData(
     return latest;
   };
   const currentStatusOf = (rootId: string): string => latestEntryOf(rootId)?.status ?? "New";
+  const isOpenStatus = (s: string) => s !== "Completed" && s !== "Cancelled";
+
+  // Roots that still have at least one OPEN item raised under them. A Closed
+  // parent that hosts an open child must stay in the review (editable) so the
+  // child nests under it and the parent itself can still be edited or reopened,
+  // rather than collapsing into a read-only "context" box.
+  const parentsWithOpenChildren = new Set<string>();
+  for (const m of minutes) {
+    if (m.parentMinuteId || !m.isPersistent || !m.raisedFromRootId) continue;
+    if (isOpenStatus(currentStatusOf(m.id))) parentsWithOpenChildren.add(m.raisedFromRootId);
+  }
 
   const openItems: OpenItem[] = minutes
     .filter((m) => {
       if (m.parentMinuteId || !m.isPersistent) return false;
-      const cur = currentStatusOf(m.id);
-      return cur !== "Completed" && cur !== "Cancelled";
+      // Open items, plus Closed ones that still host an open child.
+      return isOpenStatus(currentStatusOf(m.id)) || parentsWithOpenChildren.has(m.id);
     })
     .map((m) => {
       const cur = currentStatusOf(m.id);
