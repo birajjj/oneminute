@@ -929,9 +929,13 @@ export default function BrowseClient({
                   >
                     ↪ Follow up this meeting
                   </a>
-                  <button className="rounded bg-emerald-600 px-4 py-2 text-sm font-medium text-white opacity-60" disabled title="Coming soon">
+                  <a
+                    href={`/report/${selected.id}`}
+                    className="rounded bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-700"
+                    title="Open a printable stakeholder report for this meeting"
+                  >
                     📄 Generate Report
-                  </button>
+                  </a>
                 </div>
               </div>
 
