@@ -111,6 +111,7 @@ export default async function ProjectBoardPage({
       tags: latest.tags ?? [],
       devopsItemId: root.devopsItemId ?? null,
       updateCount: entries.length - 1,
+      raisedFromRootId: root.raisedFromRootId ?? null,
       raisedFromTitle: root.raisedFromRootId
         ? rootById.get(root.raisedFromRootId)?.title ?? null
         : null,

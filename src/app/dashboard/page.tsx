@@ -124,7 +124,11 @@ export default async function DashboardPage() {
       projectName: root.meeting.project.name,
       devopsItemId: root.devopsItemId ?? null,
       tags: latest.tags ?? [],
-      lastActivity: latest.meeting.meetingDate.toISOString()
+      lastActivity: latest.meeting.meetingDate.toISOString(),
+      raisedFromRootId: root.raisedFromRootId ?? null,
+      raisedFromTitle: root.raisedFromRootId
+        ? rootById.get(root.raisedFromRootId)?.title ?? null
+        : null
     });
   }
 

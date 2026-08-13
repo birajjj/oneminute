@@ -29,6 +29,7 @@ export interface BoardItem {
   tags: string[];
   devopsItemId: number | null;
   updateCount: number;
+  raisedFromRootId: string | null;
   raisedFromTitle: string | null;
   lastActivity: string; // ISO
   meetingIds: string[]; // every meeting this item's thread touches
@@ -352,6 +353,154 @@ export default function ProjectBoardClient({
     setSearch("");
   }
 
+  // Nest raised sub-items under their parent (same block) when the parent is
+  // also in the filtered view; otherwise the child stands alone (keeping its
+  // "↳ under <parent>" caption). Preserves the filtered sort order.
+  const tree = useMemo(() => {
+    const ids = new Set(filtered.map((i) => i.id));
+    const childrenOf: Record<string, BoardItem[]> = {};
+    const top: BoardItem[] = [];
+    for (const it of filtered) {
+      if (it.raisedFromRootId && ids.has(it.raisedFromRootId)) {
+        (childrenOf[it.raisedFromRootId] ??= []).push(it);
+      } else {
+        top.push(it);
+      }
+    }
+    return { top, childrenOf };
+  }, [filtered]);
+
+  // One board row (editable). `isNested` hides the "↳ under …" caption since the
+  // visual nesting already conveys it.
+  function renderRow(it: BoardItem, isNested: boolean) {
+    const overdue = isOverdue(it);
+    const done = it.status === "Closed" || it.status === "Cancelled";
+    return (
+      <div
+        className={`flex items-start gap-3 rounded-lg border border-slate-200 border-l-4 bg-white p-3 ${
+          STATUS_ACCENT[it.status] ?? "border-l-slate-300"
+        }`}
+      >
+        {/* Status — editable inline */}
+        <select
+          value={it.status}
+          onChange={(e) => editItem(it, "status", e.target.value)}
+          title="Status"
+          className={`mt-0.5 w-[104px] shrink-0 cursor-pointer rounded border border-transparent px-1.5 py-0.5 text-xs font-semibold ${
+            STATUS_BADGE[it.status] ?? "bg-slate-100 text-slate-600"
+          }`}
+        >
+          {STATUS_OPTIONS.map((s) => (
+            <option key={s} value={s}>{s}</option>
+          ))}
+        </select>
+
+        <div className="flex min-w-0 flex-1 flex-col gap-1.5 md:flex-row md:items-start md:justify-between md:gap-4">
+          <div className="min-w-0">
+            <button
+              onClick={() => setOpenItem(it)}
+              title="View history"
+              className={`text-left font-medium hover:underline ${
+                done ? "text-slate-500" : "text-slate-800"
+              }`}
+            >
+              {it.title || <span className="italic text-slate-400">Untitled</span>}
+            </button>
+
+            {it.description && (
+              <p className="mt-0.5 line-clamp-2 text-sm font-normal text-slate-500">
+                {it.description}
+              </p>
+            )}
+
+            <div className="mt-1 flex flex-wrap items-center gap-x-2.5 gap-y-1 text-xs text-slate-500">
+              <select
+                value={it.type}
+                onChange={(e) => editItem(it, "type", e.target.value)}
+                title="Type"
+                className={`cursor-pointer rounded border border-transparent px-1.5 py-0.5 font-semibold ${
+                  TYPE_BADGE[it.type] ?? "bg-slate-100 text-slate-600"
+                }`}
+              >
+                {TYPE_OPTIONS.map((t) => (
+                  <option key={t} value={t}>{t}</option>
+                ))}
+              </select>
+              {it.devopsItemId && (
+                <span className="rounded bg-orange-50 px-1.5 py-0.5 text-orange-600">
+                  #{it.devopsItemId}
+                </span>
+              )}
+              {it.updateCount > 0 && (
+                <button
+                  onClick={() => setOpenItem(it)}
+                  title="View history"
+                  className="text-slate-400 hover:text-slate-600 hover:underline"
+                >
+                  {it.updateCount} update{it.updateCount > 1 ? "s" : ""}
+                </button>
+              )}
+              {!isNested && it.raisedFromTitle && (
+                <span className="text-slate-400" title="Raised under another item">
+                  ↳ under “{it.raisedFromTitle}”
+                </span>
+              )}
+              {it.tags.length > 0 && <TagBadges tags={it.tags} />}
+            </div>
+          </div>
+
+          <div className="flex shrink-0 flex-wrap items-center gap-2 text-xs text-slate-500 md:justify-end">
+            <select
+              value={it.assignedTo ?? ""}
+              onChange={(e) => editItem(it, "assignedTo", e.target.value)}
+              title="Owner"
+              className="cursor-pointer rounded border border-slate-300 px-1.5 py-0.5 text-slate-600"
+            >
+              <option value="">Unassigned</option>
+              {it.assignedTo && !members.includes(it.assignedTo) && (
+                <option value={it.assignedTo}>{it.assignedTo}</option>
+              )}
+              {members.map((m) => (
+                <option key={m} value={m}>{m}</option>
+              ))}
+            </select>
+            <input
+              type="date"
+              value={toDateInput(it.dueDate)}
+              onChange={(e) => editItem(it, "dueDate", e.target.value)}
+              title="Due date"
+              className={`cursor-pointer rounded border px-1.5 py-0.5 ${
+                overdue
+                  ? "border-red-300 bg-red-50 text-red-600"
+                  : "border-slate-300 text-slate-600"
+              }`}
+            />
+            {activeTab === "All" && (
+              <span className="rounded bg-slate-100 px-2 py-0.5 text-[11px] text-slate-500">
+                {it.area}
+              </span>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // An item plus its nested raised sub-items (recursive).
+  function renderNode(it: BoardItem, depth: number) {
+    const kids = tree.childrenOf[it.id] ?? [];
+    return (
+      <li key={it.id}>
+        {renderRow(it, depth > 0)}
+        {kids.length > 0 && (
+          <ul className="mt-2 space-y-2 border-l-2 border-slate-200 pl-3 md:pl-4">
+            {kids.map((k) => renderNode(k, depth + 1))}
+          </ul>
+        )}
+      </li>
+    );
+  }
+
   return (
     <div className="flex h-screen flex-col bg-slate-50">
       {/* Header */}
@@ -568,126 +717,7 @@ export default function ProjectBoardClient({
             </div>
           ) : (
             <ul className="space-y-2">
-              {filtered.map((it) => {
-                const overdue = isOverdue(it);
-                const done = it.status === "Closed" || it.status === "Cancelled";
-                return (
-                  <li key={it.id}>
-                    <div
-                      className={`flex items-start gap-3 rounded-lg border border-slate-200 border-l-4 bg-white p-3 ${
-                        STATUS_ACCENT[it.status] ?? "border-l-slate-300"
-                      }`}
-                    >
-                      {/* Status — editable inline */}
-                      <select
-                        value={it.status}
-                        onChange={(e) => editItem(it, "status", e.target.value)}
-                        title="Status"
-                        className={`mt-0.5 w-[104px] shrink-0 cursor-pointer rounded border border-transparent px-1.5 py-0.5 text-xs font-semibold ${
-                          STATUS_BADGE[it.status] ?? "bg-slate-100 text-slate-600"
-                        }`}
-                      >
-                        {STATUS_OPTIONS.map((s) => (
-                          <option key={s} value={s}>{s}</option>
-                        ))}
-                      </select>
-
-                      <div className="flex min-w-0 flex-1 flex-col gap-1.5 md:flex-row md:items-start md:justify-between md:gap-4">
-                        {/* Left: title + type/updates/flags */}
-                        <div className="min-w-0">
-                          <button
-                            onClick={() => setOpenItem(it)}
-                            title="View history"
-                            className={`text-left font-medium hover:underline ${
-                              done ? "text-slate-500" : "text-slate-800"
-                            }`}
-                          >
-                            {it.title || <span className="italic text-slate-400">Untitled</span>}
-                          </button>
-
-                          {it.description && (
-                            <p className="mt-0.5 line-clamp-2 text-sm font-normal text-slate-500">
-                              {it.description}
-                            </p>
-                          )}
-
-                          <div className="mt-1 flex flex-wrap items-center gap-x-2.5 gap-y-1 text-xs text-slate-500">
-                            {/* Type — editable inline */}
-                            <select
-                              value={it.type}
-                              onChange={(e) => editItem(it, "type", e.target.value)}
-                              title="Type"
-                              className={`cursor-pointer rounded border border-transparent px-1.5 py-0.5 font-semibold ${
-                                TYPE_BADGE[it.type] ?? "bg-slate-100 text-slate-600"
-                              }`}
-                            >
-                              {TYPE_OPTIONS.map((t) => (
-                                <option key={t} value={t}>{t}</option>
-                              ))}
-                            </select>
-                            {it.devopsItemId && (
-                              <span className="rounded bg-orange-50 px-1.5 py-0.5 text-orange-600">
-                                #{it.devopsItemId}
-                              </span>
-                            )}
-                            {it.updateCount > 0 && (
-                              <button
-                                onClick={() => setOpenItem(it)}
-                                title="View history"
-                                className="text-slate-400 hover:text-slate-600 hover:underline"
-                              >
-                                {it.updateCount} update{it.updateCount > 1 ? "s" : ""}
-                              </button>
-                            )}
-                            {it.raisedFromTitle && (
-                              <span className="text-slate-400" title="Raised under another item">
-                                ↳ under “{it.raisedFromTitle}”
-                              </span>
-                            )}
-                            {it.tags.length > 0 && <TagBadges tags={it.tags} />}
-                          </div>
-                        </div>
-
-                        {/* Right: owner · due · area — editable inline */}
-                        <div className="flex shrink-0 flex-wrap items-center gap-2 text-xs text-slate-500 md:justify-end">
-                          {/* Owner — editable */}
-                          <select
-                            value={it.assignedTo ?? ""}
-                            onChange={(e) => editItem(it, "assignedTo", e.target.value)}
-                            title="Owner"
-                            className="cursor-pointer rounded border border-slate-300 px-1.5 py-0.5 text-slate-600"
-                          >
-                            <option value="">Unassigned</option>
-                            {it.assignedTo && !members.includes(it.assignedTo) && (
-                              <option value={it.assignedTo}>{it.assignedTo}</option>
-                            )}
-                            {members.map((m) => (
-                              <option key={m} value={m}>{m}</option>
-                            ))}
-                          </select>
-                          {/* Due — editable */}
-                          <input
-                            type="date"
-                            value={toDateInput(it.dueDate)}
-                            onChange={(e) => editItem(it, "dueDate", e.target.value)}
-                            title="Due date"
-                            className={`cursor-pointer rounded border px-1.5 py-0.5 ${
-                              overdue
-                                ? "border-red-300 bg-red-50 text-red-600"
-                                : "border-slate-300 text-slate-600"
-                            }`}
-                          />
-                          {activeTab === "All" && (
-                            <span className="rounded bg-slate-100 px-2 py-0.5 text-[11px] text-slate-500">
-                              {it.area}
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  </li>
-                );
-              })}
+              {tree.top.map((it) => renderNode(it, 0))}
             </ul>
           )}
         </div>
