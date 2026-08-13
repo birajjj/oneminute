@@ -52,16 +52,6 @@ const STATUS_BADGE: Record<string, string> = {
   Cancelled: "bg-slate-200 text-slate-500"
 };
 
-// A coloured left edge per status, for peripheral "where does this stand" scanning.
-const STATUS_ACCENT: Record<string, string> = {
-  New: "border-l-slate-300",
-  Initiated: "border-l-indigo-400",
-  "In Progress": "border-l-blue-500",
-  Resolved: "border-l-teal-500",
-  Closed: "border-l-emerald-500",
-  Cancelled: "border-l-slate-300"
-};
-
 // Lifecycle order, so "Sort by status" groups items in a sensible progression
 // rather than alphabetically.
 const STATUS_RANK: Record<string, number> = {
@@ -377,8 +367,10 @@ export default function ProjectBoardClient({
     const done = it.status === "Closed" || it.status === "Cancelled";
     return (
       <div
-        className={`flex items-start gap-3 rounded-lg border border-slate-200 border-l-4 bg-white p-3 ${
-          STATUS_ACCENT[it.status] ?? "border-l-slate-300"
+        className={`flex items-start gap-3 rounded-lg border border-l-4 p-3 ${
+          isNested
+            ? "border-blue-200 border-l-brand-blue bg-blue-50"
+            : "border-amber-200 border-l-amber-500 bg-amber-50"
         }`}
       >
         {/* Status — editable inline */}

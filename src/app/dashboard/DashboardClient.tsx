@@ -270,7 +270,13 @@ export default function DashboardClient({
     const itemOpen = isOpen(it.status);
     const overdue = isOverdue(it.dueDate, itemOpen);
     return (
-      <div className="rounded-lg border border-slate-200 bg-white p-3">
+      <div
+        className={`rounded-lg border border-l-4 p-3 ${
+          isNested
+            ? "border-blue-200 border-l-brand-blue bg-blue-50"
+            : "border-amber-200 border-l-amber-500 bg-amber-50"
+        }`}
+      >
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0 flex-1">
             <div className={`font-medium ${itemOpen ? "text-slate-800" : "text-slate-500"}`}>
