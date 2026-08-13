@@ -522,6 +522,13 @@ export default function ProjectBoardClient({
         </span>
         <div className="ml-auto flex flex-wrap items-center gap-2">
           <a
+            href={`/report/project/${project.id}`}
+            className="rounded bg-gradient-to-r from-brand-blue to-brand-purple px-3 py-1.5 text-sm font-medium text-white"
+            title="A printable status report for the whole project"
+          >
+            📄 Status Report
+          </a>
+          <a
             href="/auto"
             className="rounded bg-gradient-to-r from-brand-pink to-brand-purple px-3 py-1.5 text-sm font-medium text-white"
           >
