@@ -404,7 +404,7 @@ export default function DashboardClient({
                     </span>
                   )}
                   <span className="rounded-full bg-emerald-50 px-3 py-1 font-medium text-emerald-700">
-                    {counts.done} completed
+                    {counts.done} closed
                   </span>
                 </div>
               </div>
@@ -541,7 +541,7 @@ export default function DashboardClient({
                         className="mb-2 flex items-center gap-1 text-sm font-semibold uppercase tracking-wide text-emerald-700"
                       >
                         <span className="text-xs">{showDone ? "▾" : "▸"}</span>
-                        Completed ({done.length})
+                        Closed ({done.length})
                       </button>
                       {showDone && (
                         <ul className="space-y-2">

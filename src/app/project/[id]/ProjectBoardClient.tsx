@@ -402,7 +402,7 @@ export default function ProjectBoardClient({
             <p className="mt-1 text-sm text-slate-500">
               <span className="font-semibold text-slate-700">{summary.total}</span> items ·{" "}
               <span className="font-semibold text-amber-600">{summary.open}</span> open ·{" "}
-              <span className="font-semibold text-emerald-600">{summary.done}</span> done
+              <span className="font-semibold text-emerald-600">{summary.done}</span> closed
               {summary.cancelled > 0 && (
                 <>
                   {" "}
@@ -447,7 +447,7 @@ export default function ProjectBoardClient({
                   <option value="activity">Recent activity</option>
                   <option value="due">Due date (soonest)</option>
                   <option value="title">Title A–Z</option>
-                  <option value="status">Status (New → Done)</option>
+                  <option value="status">Status (New → Closed)</option>
                 </select>
               </label>
             </div>
