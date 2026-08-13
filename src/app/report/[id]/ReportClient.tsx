@@ -15,13 +15,26 @@ export interface ReportMinute {
   devopsItemId: number | null;
 }
 
+export interface ReportUpdate {
+  id: string;
+  area: string;
+  title: string;
+  note: string | null;
+  type: string;
+  status: string; // new status (label)
+  priorStatus: string; // status before this meeting (label)
+  assignedTo: string | null;
+  dueDate: string | null;
+}
+
 export interface ReportData {
   meetingId: string;
   title: string;
   date: string; // ISO
   projectName: string;
   attendee: string | null;
-  minutes: ReportMinute[];
+  newMinutes: ReportMinute[];
+  updates: ReportUpdate[];
   attachments: { id: string; fileName: string; size: number }[];
 }
 
@@ -87,7 +100,8 @@ export default function ReportClient({ data }: { data: ReportData }) {
     sel.removeAllRanges();
   }
 
-  const visible = data.minutes.filter((m) => includeCancelled || m.status !== "Cancelled");
+  const visible = data.newMinutes.filter((m) => includeCancelled || m.status !== "Cancelled");
+  const updates = data.updates.filter((u) => includeCancelled || u.status !== "Cancelled");
   const actions = visible.filter((m) => ACTION_TYPES.includes(m.type));
   const decisions = visible.filter((m) => m.type === "Note" && m.tags.includes("Decision"));
   const notesByArea: Record<string, ReportMinute[]> = {};
@@ -97,6 +111,7 @@ export default function ReportClient({ data }: { data: ReportData }) {
     (notesByArea[m.area] ??= []).push(m);
   }
   const areas = Object.keys(notesByArea).sort();
+  const hasNew = visible.length > 0;
 
   return (
     <div className="min-h-screen bg-slate-100">
@@ -194,6 +209,47 @@ export default function ReportClient({ data }: { data: ReportData }) {
             />
           </section>
 
+          {/* Updates to carried-forward items (only present on follow-up meetings) */}
+          {updates.length > 0 && (
+            <section className="mt-6">
+              <h2 className="text-sm font-bold uppercase tracking-wide text-amber-700">
+                Updates to ongoing items
+              </h2>
+              <ul className="mt-2 space-y-2">
+                {updates.map((u) => (
+                  <li
+                    key={u.id}
+                    className="rounded border-l-4 border-l-amber-400 bg-amber-50 p-2 text-sm"
+                  >
+                    <div className="flex flex-wrap items-baseline justify-between gap-2">
+                      <span className="font-medium">{u.title}</span>
+                      <span className="whitespace-nowrap text-xs font-medium text-slate-500">
+                        {u.priorStatus !== u.status
+                          ? `${u.priorStatus} → ${u.status}`
+                          : u.status}
+                      </span>
+                    </div>
+                    {u.note && <div className="mt-0.5 text-slate-600">{u.note}</div>}
+                    {(u.assignedTo || u.dueDate) && (
+                      <div className="mt-0.5 text-xs text-slate-400">
+                        {u.assignedTo ?? ""}
+                        {u.assignedTo && u.dueDate ? " · " : ""}
+                        {u.dueDate ? `due ${fmtShort(u.dueDate)}` : ""}
+                      </div>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            </section>
+          )}
+
+          {/* Delineate new items when the report also carries updates. */}
+          {updates.length > 0 && hasNew && (
+            <h2 className="mt-7 text-sm font-bold uppercase tracking-wide text-slate-600">
+              New this meeting
+            </h2>
+          )}
+
           {/* Decisions */}
           {decisions.length > 0 && (
             <section className="mt-6">
@@ -279,7 +335,7 @@ export default function ReportClient({ data }: { data: ReportData }) {
             </section>
           )}
 
-          {visible.length === 0 && (
+          {!hasNew && updates.length === 0 && (
             <p className="mt-6 text-sm text-slate-400">
               No minutes were captured in this meeting.
             </p>
