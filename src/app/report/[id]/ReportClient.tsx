@@ -33,6 +33,7 @@ export interface ReportData {
   date: string; // ISO
   projectName: string;
   attendee: string | null;
+  description: string | null; // the meeting's own overview (default summary)
   newMinutes: ReportMinute[];
   updates: ReportUpdate[];
   attachments: { id: string; fileName: string; size: number }[];
@@ -95,9 +96,10 @@ export default function ReportClient({ data }: { data: ReportData }) {
       setGenerating(false);
     }
   }
-  // Draft a summary automatically when the report opens (editable afterwards).
+  // Default the summary to the meeting's own overview (editable afterwards).
+  // "Rewrite with AI" regenerates a fresh one on demand.
   useEffect(() => {
-    generateSummary();
+    if (summaryRef.current) summaryRef.current.innerText = data.description ?? "";
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -171,7 +173,7 @@ export default function ReportClient({ data }: { data: ReportData }) {
             disabled={generating}
             className="rounded border border-slate-300 px-3 py-1.5 text-sm hover:bg-slate-100 disabled:opacity-50"
           >
-            {generating ? "Summarizing…" : "✨ Regenerate summary"}
+            {generating ? "Summarizing…" : "✨ Rewrite with AI"}
           </button>
           <button
             onClick={copyReport}

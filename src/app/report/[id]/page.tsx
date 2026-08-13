@@ -89,6 +89,9 @@ export default async function ReportPage({
     date: meeting.meetingDate.toISOString(),
     projectName: meeting.project.name,
     attendee: meeting.attendee,
+    // The meeting's own overview (AI-written when captured) — used as the default
+    // report summary so we don't need a fresh AI call each time.
+    description: meeting.description,
     newMinutes: newItems.map((m) => ({
       id: m.id,
       area: m.area || "General",
