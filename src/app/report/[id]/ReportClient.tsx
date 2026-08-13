@@ -40,6 +40,25 @@ export interface ReportData {
 
 const ACTION_TYPES = ["To-Do", "Action", "Devops"];
 
+const TYPE_BADGE: Record<string, string> = {
+  Note: "bg-slate-100 text-slate-600",
+  "To-Do": "bg-blue-100 text-blue-700",
+  Action: "bg-emerald-100 text-emerald-700",
+  Devops: "bg-orange-100 text-orange-700"
+};
+
+function TypeBadge({ type }: { type: string }) {
+  return (
+    <span
+      className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-semibold ${
+        TYPE_BADGE[type] ?? "bg-slate-100 text-slate-600"
+      }`}
+    >
+      {type}
+    </span>
+  );
+}
+
 function fmtLong(iso: string) {
   return new Date(iso).toLocaleDateString(undefined, {
     year: "numeric",
@@ -222,7 +241,10 @@ export default function ReportClient({ data }: { data: ReportData }) {
                     className="rounded border-l-4 border-l-amber-400 bg-amber-50 p-2 text-sm"
                   >
                     <div className="flex flex-wrap items-baseline justify-between gap-2">
-                      <span className="font-medium">{u.title}</span>
+                      <span className="flex items-baseline gap-2">
+                        <TypeBadge type={u.type} />
+                        <span className="font-medium">{u.title}</span>
+                      </span>
                       <span className="whitespace-nowrap text-xs font-medium text-slate-500">
                         {u.priorStatus !== u.status
                           ? `${u.priorStatus} → ${u.status}`
@@ -262,8 +284,11 @@ export default function ReportClient({ data }: { data: ReportData }) {
                     key={d.id}
                     className="rounded border-l-4 border-l-brand-purple bg-purple-50 p-2 text-sm"
                   >
-                    <div className="font-medium">{d.title}</div>
-                    {d.description && <div className="text-slate-600">{d.description}</div>}
+                    <div className="flex items-baseline gap-2">
+                      <TypeBadge type={d.type} />
+                      <span className="font-medium">{d.title}</span>
+                    </div>
+                    {d.description && <div className="mt-0.5 text-slate-600">{d.description}</div>}
                   </li>
                 ))}
               </ul>
@@ -280,6 +305,7 @@ export default function ReportClient({ data }: { data: ReportData }) {
                 <thead>
                   <tr className="border-b border-slate-300 text-left text-xs uppercase text-slate-400">
                     <th className="py-1 pr-2 font-semibold">Item</th>
+                    <th className="py-1 pr-2 font-semibold">Type</th>
                     <th className="py-1 pr-2 font-semibold">Owner</th>
                     <th className="py-1 pr-2 font-semibold">Due</th>
                     <th className="py-1 font-semibold">Status</th>
@@ -291,6 +317,9 @@ export default function ReportClient({ data }: { data: ReportData }) {
                       <td className="py-1.5 pr-2">
                         <div className="font-medium">{a.title}</div>
                         {a.description && <div className="text-slate-500">{a.description}</div>}
+                      </td>
+                      <td className="whitespace-nowrap py-1.5 pr-2">
+                        <TypeBadge type={a.type} />
                       </td>
                       <td className="whitespace-nowrap py-1.5 pr-2">{a.assignedTo ?? "—"}</td>
                       <td className="whitespace-nowrap py-1.5 pr-2">
@@ -313,6 +342,7 @@ export default function ReportClient({ data }: { data: ReportData }) {
               <ul className="mt-2 space-y-1.5 text-sm">
                 {notesByArea[area].map((n) => (
                   <li key={n.id} className="border-l-2 border-slate-200 pl-2">
+                    <TypeBadge type={n.type} />{" "}
                     <span className="font-medium">{n.title}</span>
                     {n.description && <span className="text-slate-600"> — {n.description}</span>}
                   </li>
