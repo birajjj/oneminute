@@ -101,6 +101,9 @@ export default async function ProjectBoardPage({
       // The entry whose status the board shows — status edits target THIS, so the
       // board reflects the change (the rest are item identity, edited on the root).
       latestEntryId: latest.id,
+      // The meeting this item was first raised in — drives the "new (blue) vs
+      // carried (yellow)" colour when a single meeting is selected.
+      rootMeetingId: root.meetingId,
       area: root.area || "General",
       title: root.title,
       description: noteEntry?.description ?? root.description,

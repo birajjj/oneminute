@@ -19,6 +19,7 @@ export interface BoardItem {
   // Latest entry in the thread — status edits target this (it's the status the
   // board displays); type/owner/due are item identity and target `id` (the root).
   latestEntryId: string;
+  rootMeetingId: string;
   area: string;
   title: string;
   description: string | null;
@@ -380,9 +381,11 @@ export default function ProjectBoardClient({
       <div
         className={`flex items-start gap-3 rounded-lg border border-l-4 p-3 ${
           meetingSelected
-            ? isNested
-              ? "border-blue-200 border-l-brand-blue bg-blue-50"
-              : "border-amber-200 border-l-amber-500 bg-amber-50"
+            ? it.rootMeetingId === meetingFilter
+              ? // Raised in the selected meeting → new activity → blue.
+                "border-blue-200 border-l-brand-blue bg-blue-50"
+              : // Carried in from an earlier meeting → follow-up item → yellow.
+                "border-amber-200 border-l-amber-500 bg-amber-50"
             : `border-slate-200 bg-white ${STATUS_ACCENT[it.status] ?? "border-l-slate-300"}`
         }`}
       >
