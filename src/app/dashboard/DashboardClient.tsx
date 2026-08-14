@@ -126,8 +126,11 @@ export default function DashboardClient({
   const [typeFilter, setTypeFilter] = useState<string[]>([]); // labels; empty = all
   const [flagFilter, setFlagFilter] = useState<string[]>([]); // tags; empty = all
   const [search, setSearch] = useState("");
-  const [showDone, setShowDone] = useState(false);
+  // Which slice the summary chips are showing. "open" = the usual triage view.
+  const [view, setView] = useState<"open" | "overdue" | "week" | "closed">("open");
   const [savingId, setSavingId] = useState<string | null>(null);
+  // Items whose due-date picker is open (an undated item shows "+ due date").
+  const [dateOpen, setDateOpen] = useState<string | null>(null);
   // A different person's projects → reset the project chips.
   useEffect(() => setProjectFilter([]), [selectedId]);
 
@@ -246,13 +249,14 @@ export default function DashboardClient({
             {it.description && (
               <p className="mt-0.5 line-clamp-2 text-sm text-slate-500">{it.description}</p>
             )}
+            {/* Controls read as pills — the native dropdown chrome is hidden so
+                the list scans like a task list, not a data-entry form. */}
             <div className="mt-1.5 flex flex-wrap items-center gap-1.5 text-xs">
-              {/* Type — editable */}
               <select
                 value={it.type}
                 onChange={(e) => editItem(it, "type", e.target.value)}
-                title="Type"
-                className={`cursor-pointer rounded border border-transparent px-1.5 py-0.5 font-semibold ${
+                title="Type — click to change"
+                className={`cursor-pointer appearance-none rounded px-1.5 py-0.5 font-semibold hover:ring-1 hover:ring-slate-300 ${
                   TYPE_BADGE[it.type] ?? "bg-slate-100 text-slate-600"
                 }`}
               >
@@ -260,12 +264,11 @@ export default function DashboardClient({
                   <option key={t} value={t}>{t}</option>
                 ))}
               </select>
-              {/* Status — editable (replaces the old complete checkbox) */}
               <select
                 value={it.status}
                 onChange={(e) => editItem(it, "status", e.target.value)}
-                title="Status"
-                className={`cursor-pointer rounded border border-transparent px-1.5 py-0.5 font-semibold ${
+                title="Status — click to change"
+                className={`cursor-pointer appearance-none rounded px-1.5 py-0.5 font-semibold hover:ring-1 hover:ring-slate-300 ${
                   STATUS_BADGE[it.status] ?? "bg-slate-100 text-slate-600"
                 }`}
               >
@@ -273,21 +276,33 @@ export default function DashboardClient({
                   <option key={s} value={s}>{s}</option>
                 ))}
               </select>
-              {/* Due date — editable */}
-              <span className="inline-flex items-center gap-1 text-slate-400">
-                Due
+              {/* A due date only takes space once it exists (or you ask for it). */}
+              {it.dueDate || dateOpen === it.id ? (
                 <input
                   type="date"
+                  autoFocus={dateOpen === it.id && !it.dueDate}
                   value={toDateInput(it.dueDate)}
-                  onChange={(e) => editItem(it, "dueDate", e.target.value)}
+                  onChange={(e) => {
+                    editItem(it, "dueDate", e.target.value);
+                    setDateOpen(null);
+                  }}
+                  onBlur={() => setDateOpen(null)}
                   title="Due date"
-                  className={`cursor-pointer rounded border px-1.5 py-0.5 ${
+                  className={`cursor-pointer rounded px-1.5 py-0.5 ${
                     overdue
-                      ? "border-red-300 bg-red-50 text-red-600"
-                      : "border-slate-300 text-slate-600"
+                      ? "bg-red-50 font-medium text-red-600"
+                      : "bg-slate-100 text-slate-600"
                   }`}
                 />
-              </span>
+              ) : (
+                <button
+                  onClick={() => setDateOpen(it.id)}
+                  className="rounded px-1.5 py-0.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+                  title="Set a due date"
+                >
+                  + due date
+                </button>
+              )}
               {overdue && <span className="font-medium text-red-600">overdue</span>}
               {savingId === it.id && <span className="text-slate-400">saving…</span>}
               {it.devopsItemId && (
@@ -395,24 +410,36 @@ export default function DashboardClient({
                 <p className="mt-1 text-sm text-slate-500">
                   Everything assigned to {selectedName}, across every project.
                 </p>
+                {/* Summary chips double as filters — click one to see just that
+                    slice, click it again to go back to the full open list. */}
                 <div className="mt-3 flex flex-wrap gap-2 text-sm">
-                  <span className="rounded-full bg-slate-100 px-3 py-1 font-medium text-slate-700">
-                    {counts.open} open
-                  </span>
-                  {counts.overdue > 0 && (
-                    <span className="rounded-full bg-red-50 px-3 py-1 font-medium text-red-600">
-                      {counts.overdue} overdue
-                    </span>
+                  {(
+                    [
+                      { key: "open", n: counts.open, label: "open", cls: "bg-slate-100 text-slate-700", ring: "ring-slate-400" },
+                      { key: "overdue", n: counts.overdue, label: "overdue", cls: "bg-red-50 text-red-600", ring: "ring-red-400" },
+                      { key: "week", n: counts.week, label: "due this week", cls: "bg-amber-50 text-amber-700", ring: "ring-amber-400" },
+                      { key: "closed", n: counts.done, label: "closed", cls: "bg-emerald-50 text-emerald-700", ring: "ring-emerald-400" }
+                    ] as const
+                  ).map((c) =>
+                    c.n === 0 && c.key !== "open" ? null : (
+                      <button
+                        key={c.key}
+                        onClick={() => setView((v) => (v === c.key ? "open" : c.key))}
+                        className={`rounded-full px-3 py-1 font-medium ${c.cls} ${
+                          view === c.key ? `ring-2 ${c.ring}` : "hover:brightness-95"
+                        }`}
+                      >
+                        {c.n} {c.label}
+                      </button>
+                    )
                   )}
-                  {counts.week > 0 && (
-                    <span className="rounded-full bg-amber-50 px-3 py-1 font-medium text-amber-700">
-                      {counts.week} due this week
-                    </span>
-                  )}
-                  <span className="rounded-full bg-emerald-50 px-3 py-1 font-medium text-emerald-700">
-                    {counts.done} closed
-                  </span>
                 </div>
+                {/* Without dates the urgency grouping can't help — say so once. */}
+                {open.length > 0 && open.every((it) => !it.dueDate) && (
+                  <p className="mt-2 text-xs text-slate-400">
+                    None of these have a due date — add one to plan your week.
+                  </p>
+                )}
               </div>
 
               {/* Filters — search, type, flags. (Owner is the picker above;
@@ -530,40 +557,38 @@ export default function DashboardClient({
                 </div>
               ) : (
                 <>
-                  {open.length === 0 && (
-                    <div className="mb-6 rounded-lg border border-dashed border-emerald-300 bg-emerald-50/50 py-10 text-center text-sm text-emerald-700">
-                      🎉 All caught up — no open items.
-                    </div>
-                  )}
-                  {section("overdue")}
-                  {section("week")}
-                  {section("later")}
-
-                  {/* Completed — behind a toggle so it doesn't crowd the view. */}
-                  {done.length > 0 && (
-                    <section className="mt-2">
-                      <button
-                        onClick={() => setShowDone((s) => !s)}
-                        className="mb-2 flex items-center gap-1 text-sm font-semibold uppercase tracking-wide text-emerald-700"
-                      >
-                        <span className="text-xs">{showDone ? "▾" : "▸"}</span>
-                        Closed ({done.length})
-                      </button>
-                      {showDone && (
-                        <ul className="space-y-2">
-                          {done
-                            .slice()
-                            .sort(
-                              (a, b) =>
-                                new Date(b.lastActivity).getTime() -
-                                new Date(a.lastActivity).getTime()
-                            )
-                            .map((it) => (
-                              <li key={it.id}>{card(it)}</li>
-                            ))}
-                        </ul>
-                      )}
+                  {view === "closed" ? (
+                    <section>
+                      <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-emerald-700">
+                        Closed
+                        <span className="ml-2 text-xs font-normal text-slate-400">
+                          {done.length} · most recent first
+                        </span>
+                      </h2>
+                      <ul className="space-y-2">
+                        {done
+                          .slice()
+                          .sort(
+                            (a, b) =>
+                              new Date(b.lastActivity).getTime() -
+                              new Date(a.lastActivity).getTime()
+                          )
+                          .map((it) => (
+                            <li key={it.id}>{card(it)}</li>
+                          ))}
+                      </ul>
                     </section>
+                  ) : (
+                    <>
+                      {open.length === 0 && (
+                        <div className="mb-6 rounded-lg border border-dashed border-emerald-300 bg-emerald-50/50 py-10 text-center text-sm text-emerald-700">
+                          🎉 All caught up — no open items.
+                        </div>
+                      )}
+                      {(view === "open" || view === "overdue") && section("overdue")}
+                      {(view === "open" || view === "week") && section("week")}
+                      {view === "open" && section("later")}
+                    </>
                   )}
                 </>
               )}

@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/auth";
 import { db } from "@/lib/db";
+import { isPlaceholderNote } from "@/lib/notes";
 import DashboardClient, { DashItem, RosterMember } from "./DashboardClient";
 
 export const dynamic = "force-dynamic";
@@ -108,7 +109,7 @@ export default async function DashboardPage() {
         const d = b.meeting.meetingDate.getTime() - a.meeting.meetingDate.getTime();
         return d !== 0 ? d : b.createdAt.getTime() - a.createdAt.getTime();
       })
-      .find((e) => e.description && e.description.trim());
+      .find((e) => !isPlaceholderNote(e.description));
 
     items.push({
       id: rootId,
