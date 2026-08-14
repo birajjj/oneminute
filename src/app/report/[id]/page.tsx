@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/auth";
 import { db } from "@/lib/db";
-import ReportClient, { type ReportData } from "./ReportClient";
+import ReportClient, { type ReportData, type ReportItem } from "./ReportClient";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Meeting Report" };
@@ -46,14 +46,33 @@ export default async function ReportPage({
   });
   if (!meeting) redirect("/browse");
 
-  // Split this meeting's minutes: brand-new items (parentMinuteId null) vs
-  // updates to carried-forward items (parentMinuteId = the ongoing item's root).
-  const newItems = meeting.minutes.filter((m) => !m.parentMinuteId);
-  const updateItems = meeting.minutes.filter((m) => m.parentMinuteId);
+  // Brand-new items raised this meeting vs updates to carried-forward items.
+  const newEntries = meeting.minutes.filter((m) => !m.parentMinuteId);
+  const updateEntries = meeting.minutes.filter((m) => m.parentMinuteId);
 
-  // For each updated item, find its status just BEFORE this meeting so the report
-  // can show progress as "prior → new" (e.g. In Progress → Resolved).
-  const rootIds = [...new Set(updateItems.map((m) => m.parentMinuteId!).filter(Boolean))];
+  // An update entry is stored as a "Note" and carries only the note text — the
+  // ITEM's identity (title, type, area, what it was raised under) lives on its
+  // thread root, so load those.
+  const rootIds = [...new Set(updateEntries.map((m) => m.parentMinuteId!))];
+  const roots = rootIds.length
+    ? await db.minute.findMany({
+        where: { orgId: user.orgId, id: { in: rootIds } },
+        select: {
+          id: true,
+          title: true,
+          type: true,
+          area: true,
+          raisedFromRootId: true,
+          devopsItemId: true,
+          dueDate: true,
+          assignedTo: { select: { displayName: true } }
+        }
+      })
+    : [];
+  const rootById = new Map(roots.map((r) => [r.id, r]));
+
+  // Each updated item's status just BEFORE this meeting, so progress reads as
+  // "prior → new" (e.g. In Progress → Resolved).
   const priorStatusByRoot = new Map<string, string>();
   if (rootIds.length > 0) {
     const priorEntries = await db.minute.findMany({
@@ -83,41 +102,75 @@ export default async function ReportPage({
     for (const [root, v] of latest) priorStatusByRoot.set(root, v.status);
   }
 
+  // One flat list first; nesting is applied below.
+  const flat: (ReportItem & { raisedFrom: string | null })[] = [];
+
+  for (const m of updateEntries) {
+    const root = rootById.get(m.parentMinuteId!);
+    const priorEnum = priorStatusByRoot.get(m.parentMinuteId!) ?? "New";
+    flat.push({
+      id: m.id,
+      rootId: m.parentMinuteId!,
+      area: (root?.area || m.area || "General").trim(),
+      title: root?.title ?? m.title,
+      // The ITEM's type — not "Note", which is how the update entry is stored.
+      type: TYPE_LABEL[root?.type ?? "Note"] ?? "Note",
+      status: STATUS_LABEL[m.status] ?? m.status,
+      priorStatus: STATUS_LABEL[priorEnum] ?? priorEnum,
+      isUpdate: true,
+      note: m.description,
+      assignedTo: m.assignedTo?.displayName ?? root?.assignedTo?.displayName ?? null,
+      dueDate: (m.dueDate ?? root?.dueDate)?.toISOString() ?? null,
+      tags: m.tags ?? [],
+      devopsItemId: m.devopsItemId ?? root?.devopsItemId ?? null,
+      children: [],
+      raisedFrom: root?.raisedFromRootId ?? null
+    });
+  }
+
+  for (const m of newEntries) {
+    flat.push({
+      id: m.id,
+      rootId: m.id,
+      area: (m.area || "General").trim(),
+      title: m.title,
+      type: TYPE_LABEL[m.type] ?? m.type,
+      status: STATUS_LABEL[m.status] ?? m.status,
+      priorStatus: null,
+      isUpdate: false,
+      note: m.description,
+      assignedTo: m.assignedTo?.displayName ?? null,
+      dueDate: m.dueDate ? m.dueDate.toISOString() : null,
+      tags: m.tags ?? [],
+      devopsItemId: m.devopsItemId ?? null,
+      children: [],
+      raisedFrom: m.raisedFromRootId ?? null
+    });
+  }
+
+  // Nest a task under the item it was raised from, when that parent is also in
+  // this report — so a workstream and its tasks read as ONE block instead of
+  // repeating the same story several times.
+  const byRoot = new Map(flat.map((i) => [i.rootId, i]));
+  const top: ReportItem[] = [];
+  for (const item of flat) {
+    const parent = item.raisedFrom ? byRoot.get(item.raisedFrom) : undefined;
+    if (parent && parent !== item) parent.children.push(item);
+    else top.push(item);
+  }
+  // Ongoing work first within a group, then newly raised.
+  const order = (a: ReportItem, b: ReportItem) => Number(b.isUpdate) - Number(a.isUpdate);
+  top.sort(order);
+  top.forEach((t) => t.children.sort(order));
+
   const data: ReportData = {
     meetingId: meeting.id,
     title: meeting.title,
     date: meeting.meetingDate.toISOString(),
     projectName: meeting.project.name,
     attendee: meeting.attendee,
-    // The meeting's own overview (AI-written when captured) — used as the default
-    // report summary so we don't need a fresh AI call each time.
     description: meeting.description,
-    newMinutes: newItems.map((m) => ({
-      id: m.id,
-      area: m.area || "General",
-      title: m.title,
-      description: m.description,
-      type: TYPE_LABEL[m.type] ?? m.type,
-      status: STATUS_LABEL[m.status] ?? m.status,
-      assignedTo: m.assignedTo?.displayName ?? null,
-      dueDate: m.dueDate ? m.dueDate.toISOString() : null,
-      tags: m.tags ?? [],
-      devopsItemId: m.devopsItemId ?? null
-    })),
-    updates: updateItems.map((m) => {
-      const priorEnum = priorStatusByRoot.get(m.parentMinuteId!) ?? "New";
-      return {
-        id: m.id,
-        area: m.area || "General",
-        title: m.title,
-        note: m.description,
-        type: TYPE_LABEL[m.type] ?? m.type,
-        status: STATUS_LABEL[m.status] ?? m.status,
-        priorStatus: STATUS_LABEL[priorEnum] ?? priorEnum,
-        assignedTo: m.assignedTo?.displayName ?? null,
-        dueDate: m.dueDate ? m.dueDate.toISOString() : null
-      };
-    }),
+    items: top,
     attachments: meeting.attachments.map((a) => ({
       id: a.id,
       fileName: a.fileName,
