@@ -230,6 +230,9 @@ export default function ProjectBoardClient({
   const [openItem, setOpenItem] = useState<BoardItem | null>(null);
   // Which row's due-date picker is open (an undated item shows "+ due date").
   const [dateOpen, setDateOpen] = useState<string | null>(null);
+  // Bulk edit: tick rows, then apply one change to all of them.
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [bulkProgress, setBulkProgress] = useState<{ done: number; total: number } | null>(null);
   const router = useRouter();
 
   // Edit an item inline on a row. Status is point-in-time (it's the latest
@@ -408,6 +411,76 @@ export default function ProjectBoardClient({
     return { top, childrenOf };
   }, [filtered, meetingSelected]);
 
+  // Every row currently on screen (parents + their nested children), so "select
+  // all" and bulk edits can never touch something you can't see.
+  const visibleItems = useMemo(() => {
+    const out: BoardItem[] = [];
+    const walk = (list: BoardItem[]) => {
+      for (const i of list) {
+        out.push(i);
+        walk(tree.childrenOf[i.id] ?? []);
+      }
+    };
+    walk(tree.top);
+    return out;
+  }, [tree]);
+
+  // Changing tab changes what's on screen — drop the selection so a bulk action
+  // can't silently apply to rows you've navigated away from.
+  useEffect(() => setSelected(new Set()), [activeTab]);
+
+  const selectedItems = visibleItems.filter((i) => selected.has(i.id));
+  const allVisibleSelected = visibleItems.length > 0 && selectedItems.length === visibleItems.length;
+
+  function toggleSelect(id: string) {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  // Apply one change to every selected row. Sequential on purpose: 40 parallel
+  // writes would hammer the connection pool for no real gain.
+  async function bulkEdit(
+    field: "status" | "type" | "assignedTo" | "dueDate" | "area",
+    value: string
+  ) {
+    const targets = selectedItems;
+    if (targets.length === 0) return;
+    const apply = (i: BoardItem): BoardItem => {
+      if (field === "status") return { ...i, status: value };
+      if (field === "type") return { ...i, type: value };
+      if (field === "assignedTo") return { ...i, assignedTo: value || null };
+      if (field === "area") return { ...i, area: value };
+      return { ...i, dueDate: value || null };
+    };
+    const ids = new Set(targets.map((t) => t.id));
+    setItems((prev) => prev.map((i) => (ids.has(i.id) ? apply(i) : i)));
+    setBulkProgress({ done: 0, total: targets.length });
+    let failed = 0;
+    for (let n = 0; n < targets.length; n++) {
+      const item = targets[n];
+      const targetId = field === "status" ? item.latestEntryId : item.id;
+      try {
+        const res = await fetch(`/api/minutes/${targetId}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ [field]: value })
+        });
+        if (!res.ok) failed += 1;
+      } catch {
+        failed += 1;
+      }
+      setBulkProgress({ done: n + 1, total: targets.length });
+    }
+    setBulkProgress(null);
+    setSelected(new Set());
+    if (failed > 0) alert(`${failed} of ${targets.length} item(s) could not be updated.`);
+    router.refresh();
+  }
+
   // One board row (editable). `isNested` hides the "↳ under …" caption since the
   // visual nesting already conveys it.
   function renderRow(it: BoardItem, isNested: boolean) {
@@ -425,6 +498,14 @@ export default function ProjectBoardClient({
             : `border-slate-200 bg-white ${STATUS_ACCENT[it.status] ?? "border-l-slate-300"}`
         }`}
       >
+        <input
+          type="checkbox"
+          checked={selected.has(it.id)}
+          onChange={() => toggleSelect(it.id)}
+          className="mt-1 h-4 w-4 shrink-0"
+          title="Select for a bulk change"
+          aria-label={`Select ${it.title}`}
+        />
         {/* Status — editable inline */}
         <select
           value={it.status}
@@ -845,12 +926,95 @@ export default function ProjectBoardClient({
               No items match these filters.
             </div>
           ) : (
-            <ul className="space-y-2">
-              {tree.top.map((it) => renderNode(it, 0))}
-            </ul>
+            <>
+              <label className="mb-2 flex w-fit cursor-pointer items-center gap-2 text-xs text-slate-500">
+                <input
+                  type="checkbox"
+                  checked={allVisibleSelected}
+                  onChange={() =>
+                    setSelected(
+                      allVisibleSelected ? new Set() : new Set(visibleItems.map((i) => i.id))
+                    )
+                  }
+                  className="h-4 w-4"
+                />
+                Select all {visibleItems.length} shown
+              </label>
+              <ul className="space-y-2">
+                {tree.top.map((it) => renderNode(it, 0))}
+              </ul>
+            </>
           )}
         </div>
       </main>
+
+      {/* Bulk action bar — floats once rows are ticked. */}
+      {selected.size > 0 && (
+        <div className="fixed bottom-4 left-1/2 z-30 flex -translate-x-1/2 flex-wrap items-center gap-2 rounded-full border border-slate-700 bg-slate-800 px-4 py-2 text-sm text-white shadow-xl">
+          {bulkProgress ? (
+            <span className="px-1">
+              Updating {bulkProgress.done} of {bulkProgress.total}…
+            </span>
+          ) : (
+            <>
+              <span className="whitespace-nowrap font-medium">
+                {selectedItems.length} selected
+              </span>
+              <span className="h-4 w-px bg-slate-600" />
+              <select
+                value=""
+                onChange={(e) => e.target.value && bulkEdit("area", e.target.value)}
+                className="cursor-pointer rounded bg-slate-700 px-2 py-1 text-sm text-white"
+                title="Move the selected items to another tab"
+              >
+                <option value="">Move to tab…</option>
+                {areas.map((a) => (
+                  <option key={a} value={a}>{a}</option>
+                ))}
+              </select>
+              <select
+                value=""
+                onChange={(e) => e.target.value && bulkEdit("assignedTo", e.target.value === "__none" ? "" : e.target.value)}
+                className="cursor-pointer rounded bg-slate-700 px-2 py-1 text-sm text-white"
+                title="Assign the selected items"
+              >
+                <option value="">Assign…</option>
+                <option value="__none">Unassigned</option>
+                {members.map((m) => (
+                  <option key={m} value={m}>{m}</option>
+                ))}
+              </select>
+              <select
+                value=""
+                onChange={(e) => e.target.value && bulkEdit("status", e.target.value)}
+                className="cursor-pointer rounded bg-slate-700 px-2 py-1 text-sm text-white"
+                title="Set status on the selected items"
+              >
+                <option value="">Status…</option>
+                {STATUS_OPTIONS.map((s) => (
+                  <option key={s} value={s}>{s}</option>
+                ))}
+              </select>
+              <label className="flex items-center gap-1 text-xs text-slate-300">
+                Due
+                <input
+                  type="date"
+                  onChange={(e) => e.target.value && bulkEdit("dueDate", e.target.value)}
+                  className="cursor-pointer rounded bg-slate-700 px-2 py-1 text-sm text-white"
+                  title="Set a due date on the selected items"
+                />
+              </label>
+              <span className="h-4 w-px bg-slate-600" />
+              <button
+                onClick={() => setSelected(new Set())}
+                className="rounded px-2 py-1 text-slate-300 hover:bg-slate-700 hover:text-white"
+              >
+                Clear
+              </button>
+            </>
+          )}
+        </div>
+      )}
 
       {/* Thread history popup */}
       {openItem && (
