@@ -263,6 +263,8 @@ function buildPrompt(
   lines.push("Do NOT choose a DevOps project — the user selects that.");
   lines.push("");
   lines.push("Rules: assignedTo must exactly match an allowed user or be an empty string.");
+  lines.push("Also return `summary`: 2-3 plain sentences recapping THIS follow-up meeting — what");
+  lines.push("progressed on the open items, what was decided, and what new work was raised.");
   lines.push(`Allowed users: [${users.join(", ")}]`);
   const existingAreas = [...new Set(openItems.map((i) => i.area).filter(Boolean))].sort();
   if (existingAreas.length) {

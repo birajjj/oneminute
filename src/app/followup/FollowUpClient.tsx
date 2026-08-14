@@ -147,6 +147,8 @@ export default function FollowUpClient({
   const parentDisplayTitle = stripFollowUpSuffixes(data.parent.title) || data.parent.title;
   const [title, setTitle] = useState(() => buildFollowUpTitle(data.parent.title, datePart(initialDate)));
   const [date, setDate] = useState(initialDate);
+  // AI recap of this follow-up meeting → becomes the meeting's description.
+  const [aiSummary, setAiSummary] = useState("");
 
   const [updates, setUpdates] = useState<Record<string, ItemUpdate>>(() => {
     const init: Record<string, ItemUpdate> = {};
@@ -514,6 +516,7 @@ export default function FollowUpClient({
         setAnalysisProgress({ done: p.done, total: p.total })
       );
       applyPlan(plan);
+      if (plan.summary?.trim()) setAiSummary(plan.summary.trim());
     } catch (e) {
       setError("AI pre-fill failed: " + (e instanceof Error ? e.message : "unknown"));
     } finally {
@@ -613,6 +616,7 @@ export default function FollowUpClient({
           parentMeetingId: data.parent.id,
           meetingTitle: title,
           meetingDate: dateTimeLocalToISO(date),
+          summary: aiSummary,
           updates: data.openItems.map((it) => ({ rootMinuteId: it.id, ...updates[it.id] })),
           newMinutes: newMinutes.filter((m) => m.title.trim())
         })
