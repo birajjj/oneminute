@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { ProjectItem, ProjectMeta } from "@/lib/project-report";
+import { describesNoProgress } from "@/lib/notes";
 
 const ACTION_TYPES = ["To-Do", "Action", "Devops"];
 
@@ -78,7 +79,11 @@ export default function ProjectReportClient({
 }) {
   const [includeCancelled, setIncludeCancelled] = useState(false);
   const [showNotes, setShowNotes] = useState(true);
-  const [health, setHealth] = useState("On track");
+  // Default the health from the data rather than always claiming "On track" —
+  // saying that with overdue items on the page invites a challenge. Overridable.
+  const [health, setHealth] = useState(() =>
+    items.some((it) => isOpen(it.status) && isOverdue(it.dueDate)) ? "At risk" : "On track"
+  );
   const [generating, setGenerating] = useState(false);
   const [copied, setCopied] = useState(false);
   const summaryRef = useRef<HTMLDivElement>(null);
@@ -86,36 +91,53 @@ export default function ProjectReportClient({
 
   const shown = items.filter((it) => includeCancelled || it.status !== "Cancelled");
   const actions = shown.filter((it) => ACTION_TYPES.includes(it.type));
-  const openActions = actions.filter((it) => isOpen(it.status));
-  const overdue = openActions.filter((it) => isOverdue(it.dueDate)).sort(byDue);
-  const openOther = openActions.filter((it) => !isOverdue(it.dueDate));
+  // "Done" covers Resolved and Closed. Resolved still carries forward internally,
+  // but listing it under BOTH "Open items" and "Resolved & closed" reads as a
+  // contradiction to a client, so it lives here only.
   const done = actions
     .filter((it) => it.status === "Resolved" || it.status === "Closed")
     .sort(byRecent);
+  const stillOpen = actions.filter(
+    (it) => isOpen(it.status) && it.status !== "Resolved"
+  );
+  const overdue = stillOpen.filter((it) => isOverdue(it.dueDate)).sort(byDue);
+  const openOther = stillOpen.filter((it) => !isOverdue(it.dueDate));
   const decisions = shown.filter((it) => it.type === "Note" && it.tags.includes("Decision"));
   // Everything else that was captured — previously dropped from the report.
   const notes = shown.filter(
     (it) => !ACTION_TYPES.includes(it.type) && !it.tags.includes("Decision")
   );
-  // Items that actually moved: revisited in a later meeting.
-  const progressed = shown.filter((it) => it.updateCount > 0).sort(byRecent);
+
+  // Highlights = what genuinely MOVED. An item that was merely mentioned again,
+  // or whose latest note says nothing happened, is not progress. Deliberately a
+  // one-line recap (detail lives in the sections below), capped so it stays a
+  // highlight reel rather than a second copy of the report.
+  const highlights = useMemo(
+    () =>
+      shown
+        .filter((it) => it.updateCount > 0 && !describesNoProgress(it.description))
+        .sort(byRecent)
+        .slice(0, 6),
+    [shown]
+  );
 
   const counts = {
     total: shown.length,
-    open: openActions.length,
+    open: stillOpen.length,
     overdue: overdue.length,
     resolved: actions.filter((it) => it.status === "Resolved").length,
     closed: actions.filter((it) => it.status === "Closed").length,
-    noOwner: openActions.filter((it) => !it.assignedTo).length,
-    noDue: openActions.filter((it) => !it.dueDate).length
+    noOwner: stillOpen.filter((it) => !it.assignedTo).length,
+    noDue: stillOpen.filter((it) => !it.dueDate).length
   };
 
   // Who is carrying the open work.
   const byOwner = useMemo(() => {
     const map = new Map<string, number>();
-    for (const it of openActions) map.set(it.assignedTo ?? "Unassigned", (map.get(it.assignedTo ?? "Unassigned") ?? 0) + 1);
+    for (const it of stillOpen) map.set(it.assignedTo ?? "Unassigned", (map.get(it.assignedTo ?? "Unassigned") ?? 0) + 1);
     return [...map.entries()].sort((a, b) => b[1] - a[1]);
-  }, [openActions]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [items, includeCancelled]);
 
   // A factual summary built from the data, so the report is never blank.
   const autoSummary = useMemo(() => {
@@ -181,15 +203,19 @@ export default function ProjectReportClient({
   for (const it of notes) (notesByArea[it.area] ??= []).push(it);
   const noteAreas = Object.keys(notesByArea).sort();
 
+  // A column no row can fill is worse than no column — an Owner/Due column of
+  // dashes just makes the report look unfinished, so hide them when empty.
   function ItemTable({ rows }: { rows: ProjectItem[] }) {
+    const showOwner = rows.some((r) => r.assignedTo);
+    const showDue = rows.some((r) => r.dueDate);
     return (
       <table className="mt-2 w-full border-collapse text-sm">
         <thead>
           <tr className="border-b border-slate-300 text-left text-xs uppercase text-slate-400">
             <th className="py-1 pr-2 font-semibold">Item</th>
             <th className="py-1 pr-2 font-semibold">Type</th>
-            <th className="py-1 pr-2 font-semibold">Owner</th>
-            <th className="py-1 pr-2 font-semibold">Due</th>
+            {showOwner && <th className="py-1 pr-2 font-semibold">Owner</th>}
+            {showDue && <th className="py-1 pr-2 font-semibold">Due</th>}
             <th className="py-1 font-semibold">Status</th>
           </tr>
         </thead>
@@ -205,14 +231,18 @@ export default function ProjectReportClient({
                 <td className="whitespace-nowrap py-1.5 pr-2">
                   <TypeBadge type={a.type} />
                 </td>
-                <td className="whitespace-nowrap py-1.5 pr-2">{a.assignedTo ?? "—"}</td>
-                <td
-                  className={`whitespace-nowrap py-1.5 pr-2 ${
-                    od ? "font-semibold text-red-600" : ""
-                  }`}
-                >
-                  {a.dueDate ? fmtShort(a.dueDate) : "—"}
-                </td>
+                {showOwner && (
+                  <td className="whitespace-nowrap py-1.5 pr-2">{a.assignedTo ?? "—"}</td>
+                )}
+                {showDue && (
+                  <td
+                    className={`whitespace-nowrap py-1.5 pr-2 ${
+                      od ? "font-semibold text-red-600" : ""
+                    }`}
+                  >
+                    {a.dueDate ? fmtShort(a.dueDate) : "—"}
+                  </td>
+                )}
                 <td className="whitespace-nowrap py-1.5">{a.status}</td>
               </tr>
             );
@@ -382,30 +412,26 @@ export default function ProjectReportClient({
             )}
           </section>
 
-          {/* Recent progress — what actually moved */}
-          {progressed.length > 0 && (
+          {/* Highlights — a one-line recap of what genuinely moved. Detail for
+              each item lives once, in the sections below. */}
+          {highlights.length > 0 && (
             <section className="mt-6">
               <h2 className="text-sm font-bold uppercase tracking-wide text-slate-600">
-                Recent progress
+                Highlights
+                <span className="ml-2 text-xs font-normal normal-case text-slate-400">
+                  what moved — detail below
+                </span>
               </h2>
-              <ul className="mt-2 space-y-2">
-                {progressed.slice(0, 10).map((it) => (
-                  <li
-                    key={it.id}
-                    className="rounded border-l-4 border-l-brand-blue bg-blue-50 p-2 text-sm"
-                  >
-                    <div className="flex flex-wrap items-baseline justify-between gap-2">
-                      <span className="flex items-baseline gap-2">
-                        <TypeBadge type={it.type} />
-                        <span className="font-medium">{it.title}</span>
-                      </span>
-                      <span className="whitespace-nowrap text-xs font-medium text-slate-500">
-                        {it.status} · {fmtShort(it.lastActivity)}
-                      </span>
-                    </div>
-                    {it.description && (
-                      <div className="mt-0.5 text-slate-600">{it.description}</div>
-                    )}
+              <ul className="mt-2 space-y-1 text-sm">
+                {highlights.map((it) => (
+                  <li key={it.id} className="flex flex-wrap items-baseline gap-x-2 border-l-2 border-brand-blue pl-2">
+                    <span className="font-medium">{it.title}</span>
+                    <span className="text-xs text-slate-400">
+                      {it.priorStatus && it.priorStatus !== it.status
+                        ? `${it.priorStatus} → ${it.status}`
+                        : it.status}{" "}
+                      · {fmtShort(it.lastActivity)}
+                    </span>
                   </li>
                 ))}
               </ul>
@@ -422,24 +448,8 @@ export default function ProjectReportClient({
             </section>
           )}
 
-          {/* Open items by area */}
-          {areas.length > 0 && (
-            <section className="mt-6">
-              <h2 className="text-sm font-bold uppercase tracking-wide text-slate-600">
-                Open items
-              </h2>
-              {areas.map((area) => (
-                <div key={area} className="mt-3">
-                  <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-400">
-                    {area}
-                  </h3>
-                  <ItemTable rows={openByArea[area]} />
-                </div>
-              ))}
-            </section>
-          )}
-
-          {/* Decisions */}
+          {/* Decisions — outcomes stakeholders care about, so kept high rather
+              than buried after a long list of open items. */}
           {decisions.length > 0 && (
             <section className="mt-6">
               <h2 className="text-sm font-bold uppercase tracking-wide text-slate-600">
@@ -456,6 +466,23 @@ export default function ProjectReportClient({
                   </li>
                 ))}
               </ul>
+            </section>
+          )}
+
+          {/* Open items by area — overdue ones are above, so nothing repeats. */}
+          {areas.length > 0 && (
+            <section className="mt-6">
+              <h2 className="text-sm font-bold uppercase tracking-wide text-slate-600">
+                Open items
+              </h2>
+              {areas.map((area) => (
+                <div key={area} className="mt-3">
+                  <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+                    {area}
+                  </h3>
+                  <ItemTable rows={openByArea[area]} />
+                </div>
+              ))}
             </section>
           )}
 

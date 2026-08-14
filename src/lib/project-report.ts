@@ -34,6 +34,8 @@ export interface ProjectItem {
   lastActivity: string; // ISO — meeting date of the newest entry
   // How many follow-up updates this item has received (0 = never revisited).
   updateCount: number;
+  // Status at the previous entry, so a report can show "In Progress -> Closed".
+  priorStatus: string | null;
   // Meeting the newest entry was recorded in — for "what changed" context.
   lastMeetingTitle: string;
 }
@@ -83,14 +85,13 @@ export async function loadProjectReport(
       if (et > lt || (et === lt && e.createdAt > latest.createdAt)) latest = e;
     }
 
-    // Most recent entry that has a note, falling back to the root's own text.
-    const noteEntry = entries
-      .slice()
-      .sort((a, b) => {
-        const d = b.meeting.meetingDate.getTime() - a.meeting.meetingDate.getTime();
-        return d !== 0 ? d : b.createdAt.getTime() - a.createdAt.getTime();
-      })
-      .find((e) => !isPlaceholderNote(e.description));
+    // Newest-first, so we can take the latest real note and the previous status.
+    const newestFirst = entries.slice().sort((a, b) => {
+      const d = b.meeting.meetingDate.getTime() - a.meeting.meetingDate.getTime();
+      return d !== 0 ? d : b.createdAt.getTime() - a.createdAt.getTime();
+    });
+    const noteEntry = newestFirst.find((e) => !isPlaceholderNote(e.description));
+    const priorEntry = newestFirst[1];
 
     items.push({
       id: rootId,
@@ -105,6 +106,7 @@ export async function loadProjectReport(
       devopsItemId: root.devopsItemId ?? null,
       lastActivity: latest.meeting.meetingDate.toISOString(),
       updateCount: entries.length - 1,
+      priorStatus: priorEntry ? STATUS_LABEL[priorEntry.status] ?? priorEntry.status : null,
       lastMeetingTitle: latest.meeting.title
     });
   }
