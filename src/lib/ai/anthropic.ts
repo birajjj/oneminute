@@ -6,9 +6,11 @@
 
 import Anthropic from "@anthropic-ai/sdk";
 
-// Default to Sonnet 5 — excellent at structured extraction, cheaper/faster than
-// Opus for this task. Override with ANTHROPIC_MODEL (e.g. "claude-opus-5").
-const ANTHROPIC_MODEL = process.env.ANTHROPIC_MODEL || "claude-sonnet-5";
+// Opus 5 — the strongest model for this job: grouping a rambling transcript into
+// cohesive items is exactly the judgement call it's better at than a small model.
+// Override with ANTHROPIC_MODEL ("claude-sonnet-5" is cheaper/faster and still
+// very good; "claude-fable-5" is more capable again but costs more).
+const ANTHROPIC_MODEL = process.env.ANTHROPIC_MODEL || "claude-opus-5";
 // 8000 comfortably fits ~30 concise minutes and bounds worst-case generation
 // time so a request stays within the serverless 60s limit. Raise via env only
 // if you move to a plan with a longer function timeout (e.g. Vercel Pro = 300s).
