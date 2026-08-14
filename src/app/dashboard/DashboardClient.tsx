@@ -24,7 +24,8 @@ export interface DashItem {
   projectName: string;
   devopsItemId: number | null;
   tags: string[];
-  lastActivity: string; // ISO
+  lastActivity: string; // ISO — meeting date of the item's newest entry
+  lastMeetingTitle: string; // where it was last discussed
   raisedFromRootId: string | null;
   raisedFromTitle: string | null;
 }
@@ -67,6 +68,23 @@ function toDateInput(value: string | null) {
 function isOverdue(iso: string | null, open: boolean) {
   if (!iso || !open) return false;
   return new Date(iso) < startOfToday();
+}
+
+// How long an item has sat untouched — the question a personal dashboard is
+// uniquely able to answer ("what have I not looked at in three weeks?").
+const STALE_DAYS = 14;
+function daysSince(iso: string) {
+  const d = new Date(iso);
+  d.setHours(0, 0, 0, 0);
+  return Math.round((startOfToday().getTime() - d.getTime()) / 86_400_000);
+}
+function agoLabel(days: number) {
+  if (days <= 0) return "today";
+  if (days === 1) return "yesterday";
+  if (days < 7) return `${days} days ago`;
+  if (days < 14) return "last week";
+  if (days < 60) return `${Math.floor(days / 7)} weeks ago`;
+  return `${Math.floor(days / 30)} months ago`;
 }
 
 // Which bucket an item falls into (open items only; done handled separately).
@@ -128,6 +146,9 @@ export default function DashboardClient({
   const [search, setSearch] = useState("");
   // Which slice the summary chips are showing. "open" = the usual triage view.
   const [view, setView] = useState<"open" | "overdue" | "week" | "closed">("open");
+  const [groupBy, setGroupBy] = useState<"urgency" | "project">("urgency");
+  const [sort, setSort] = useState<"due" | "recent" | "stale" | "title">("due");
+  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const [savingId, setSavingId] = useState<string | null>(null);
   // Items whose due-date picker is open (an undated item shows "+ due date").
   const [dateOpen, setDateOpen] = useState<string | null>(null);
@@ -211,18 +232,58 @@ export default function DashboardClient({
 
   // Group open items into buckets, each sorted by due date (soonest first),
   // undated last.
-  const grouped = useMemo(() => {
-    const g: Record<Bucket, DashItem[]> = { overdue: [], week: [], later: [] };
-    for (const it of open) g[bucketOf(it)].push(it);
-    const byDue = (a: DashItem, b: DashItem) => {
-      const ad = a.dueDate ? new Date(a.dueDate).getTime() : Infinity;
-      const bd = b.dueDate ? new Date(b.dueDate).getTime() : Infinity;
-      if (ad !== bd) return ad - bd;
-      return new Date(b.lastActivity).getTime() - new Date(a.lastActivity).getTime();
+  // Open items, grouped the way the user asked and sorted within each group.
+  const groups = useMemo(() => {
+    const cmp = (a: DashItem, b: DashItem) => {
+      switch (sort) {
+        case "recent":
+          return new Date(b.lastActivity).getTime() - new Date(a.lastActivity).getTime();
+        case "stale": // longest untouched first
+          return new Date(a.lastActivity).getTime() - new Date(b.lastActivity).getTime();
+        case "title":
+          return a.title.localeCompare(b.title);
+        case "due":
+        default: {
+          const ad = a.dueDate ? new Date(a.dueDate).getTime() : Infinity;
+          const bd = b.dueDate ? new Date(b.dueDate).getTime() : Infinity;
+          if (ad !== bd) return ad - bd;
+          return new Date(b.lastActivity).getTime() - new Date(a.lastActivity).getTime();
+        }
+      }
     };
-    (Object.keys(g) as Bucket[]).forEach((k) => g[k].sort(byDue));
-    return g;
-  }, [open]);
+
+    // The chips narrow which open items are in play.
+    let list = open;
+    if (view === "overdue") list = list.filter((it) => bucketOf(it) === "overdue");
+    else if (view === "week") list = list.filter((it) => bucketOf(it) === "week");
+    const sorted = [...list].sort(cmp);
+
+    if (groupBy === "project") {
+      const byProject: Record<string, DashItem[]> = {};
+      for (const it of sorted) (byProject[it.projectName] ??= []).push(it);
+      return Object.keys(byProject)
+        .sort()
+        .map((name) => ({
+          key: name,
+          title: name,
+          hint: "",
+          accent: "text-slate-700",
+          items: byProject[name]
+        }));
+    }
+
+    const g: Record<Bucket, DashItem[]> = { overdue: [], week: [], later: [] };
+    for (const it of sorted) g[bucketOf(it)].push(it);
+    return (["overdue", "week", "later"] as Bucket[])
+      .filter((k) => g[k].length > 0)
+      .map((k) => ({
+        key: k,
+        title: BUCKET_META[k].title,
+        hint: BUCKET_META[k].hint,
+        accent: BUCKET_META[k].accent,
+        items: g[k]
+      }));
+  }, [open, view, groupBy, sort]);
 
   function toggleType(t: string) {
     setTypeFilter((prev) => (prev.includes(t) ? prev.filter((x) => x !== t) : [...prev, t]));
@@ -304,6 +365,20 @@ export default function DashboardClient({
                 </button>
               )}
               {overdue && <span className="font-medium text-red-600">overdue</span>}
+              {/* How long since anyone touched this — surfaces forgotten work. */}
+              {(() => {
+                const d = daysSince(it.lastActivity);
+                const stale = itemOpen && d >= STALE_DAYS;
+                return (
+                  <span
+                    className={stale ? "font-medium text-amber-700" : "text-slate-400"}
+                    title={`Last discussed in "${it.lastMeetingTitle}"`}
+                  >
+                    🕒 {agoLabel(d)}
+                    {stale ? " · stale" : ""}
+                  </span>
+                );
+              })()}
               {savingId === it.id && <span className="text-slate-400">saving…</span>}
               {it.devopsItemId && (
                 <span className="rounded bg-orange-50 px-1.5 py-0.5 text-orange-600">
@@ -326,25 +401,44 @@ export default function DashboardClient({
     );
   }
 
-  function section(bucket: Bucket) {
-    const list = grouped[bucket];
-    if (list.length === 0) return null;
-    const meta = BUCKET_META[bucket];
+  // One group (an urgency bucket or a project) — collapsible, with a count.
+  function groupSection(g: {
+    key: string;
+    title: string;
+    hint: string;
+    accent: string;
+    items: DashItem[];
+  }) {
+    const isCollapsed = collapsed.has(g.key);
     return (
-      <section className="mb-6">
-        <div className="mb-2 flex items-baseline gap-2">
-          <h2 className={`text-sm font-semibold uppercase tracking-wide ${meta.accent}`}>
-            {meta.title}
+      <section key={g.key} className="mb-6">
+        <button
+          onClick={() =>
+            setCollapsed((prev) => {
+              const next = new Set(prev);
+              if (next.has(g.key)) next.delete(g.key);
+              else next.add(g.key);
+              return next;
+            })
+          }
+          className="mb-2 flex items-baseline gap-2 text-left"
+        >
+          <span className="text-xs text-slate-400">{isCollapsed ? "▸" : "▾"}</span>
+          <h2 className={`text-sm font-semibold uppercase tracking-wide ${g.accent}`}>
+            {g.title}
           </h2>
           <span className="text-xs text-slate-400">
-            {list.length} · {meta.hint}
+            {g.items.length}
+            {g.hint ? ` · ${g.hint}` : ""}
           </span>
-        </div>
-        <ul className="space-y-2">
-          {list.map((it) => (
-            <li key={it.id}>{card(it)}</li>
-          ))}
-        </ul>
+        </button>
+        {!isCollapsed && (
+          <ul className="space-y-2">
+            {g.items.map((it) => (
+              <li key={it.id}>{card(it)}</li>
+            ))}
+          </ul>
+        )}
       </section>
     );
   }
@@ -513,6 +607,33 @@ export default function DashboardClient({
                     </button>
                   )}
                 </div>
+                {/* How the open list is organised. */}
+                <div className="flex flex-wrap items-center gap-3 border-t border-slate-100 pt-2 text-xs text-slate-500">
+                  <label className="flex items-center gap-1.5">
+                    Group by
+                    <select
+                      value={groupBy}
+                      onChange={(e) => setGroupBy(e.target.value as typeof groupBy)}
+                      className="rounded-md border border-slate-300 px-2 py-1 text-sm text-slate-700"
+                    >
+                      <option value="urgency">Urgency</option>
+                      <option value="project">Project</option>
+                    </select>
+                  </label>
+                  <label className="flex items-center gap-1.5">
+                    Sort
+                    <select
+                      value={sort}
+                      onChange={(e) => setSort(e.target.value as typeof sort)}
+                      className="rounded-md border border-slate-300 px-2 py-1 text-sm text-slate-700"
+                    >
+                      <option value="due">Due date (soonest)</option>
+                      <option value="recent">Recently discussed</option>
+                      <option value="stale">Untouched longest</option>
+                      <option value="title">Title A–Z</option>
+                    </select>
+                  </label>
+                </div>
               </div>
 
               {/* Project filter (only if this person has items in >1 project) */}
@@ -585,9 +706,7 @@ export default function DashboardClient({
                           🎉 All caught up — no open items.
                         </div>
                       )}
-                      {(view === "open" || view === "overdue") && section("overdue")}
-                      {(view === "open" || view === "week") && section("week")}
-                      {view === "open" && section("later")}
+                      {groups.map(groupSection)}
                     </>
                   )}
                 </>

@@ -126,6 +126,7 @@ export default async function DashboardPage() {
       devopsItemId: root.devopsItemId ?? null,
       tags: latest.tags ?? [],
       lastActivity: latest.meeting.meetingDate.toISOString(),
+      lastMeetingTitle: latest.meeting.title,
       raisedFromRootId: root.raisedFromRootId ?? null,
       raisedFromTitle: root.raisedFromRootId
         ? rootById.get(root.raisedFromRootId)?.title ?? null
