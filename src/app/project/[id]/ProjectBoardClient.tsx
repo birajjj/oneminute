@@ -178,6 +178,25 @@ function isOverdue(item: BoardItem) {
   return due < today;
 }
 
+// How long an item has sat untouched — with 60+ open items, this is what tells
+// a live item apart from one nobody has mentioned since July.
+const STALE_DAYS = 14;
+function daysSince(iso: string) {
+  const d = new Date(iso);
+  d.setHours(0, 0, 0, 0);
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  return Math.round((today.getTime() - d.getTime()) / 86_400_000);
+}
+function agoLabel(days: number) {
+  if (days <= 0) return "today";
+  if (days === 1) return "yesterday";
+  if (days < 7) return `${days} days ago`;
+  if (days < 14) return "last week";
+  if (days < 60) return `${Math.floor(days / 7)} weeks ago`;
+  return `${Math.floor(days / 30)} months ago`;
+}
+
 export default function ProjectBoardClient({
   project,
   items: initialItems,
@@ -206,8 +225,11 @@ export default function ProjectBoardClient({
   const [meetingFilter, setMeetingFilter] = useState<string>("all");
   const [flagFilter, setFlagFilter] = useState<string[]>([]);
   const [search, setSearch] = useState("");
-  const [sort, setSort] = useState<"activity" | "due" | "title" | "status">("activity");
+  const [sort, setSort] = useState<"activity" | "stale" | "due" | "title" | "status">("activity");
+  const [overdueOnly, setOverdueOnly] = useState(false);
   const [openItem, setOpenItem] = useState<BoardItem | null>(null);
+  // Which row's due-date picker is open (an undated item shows "+ due date").
+  const [dateOpen, setDateOpen] = useState<string | null>(null);
   const router = useRouter();
 
   // Edit an item inline on a row. Status is point-in-time (it's the latest
@@ -216,7 +238,7 @@ export default function ProjectBoardClient({
   // then re-synced from the server.
   async function editItem(
     item: BoardItem,
-    field: "status" | "type" | "assignedTo" | "dueDate",
+    field: "status" | "type" | "assignedTo" | "dueDate" | "area",
     value: string
   ) {
     const targetId = field === "status" ? item.latestEntryId : item.id;
@@ -225,6 +247,7 @@ export default function ProjectBoardClient({
       if (field === "status") return { ...i, status: value };
       if (field === "type") return { ...i, type: value };
       if (field === "assignedTo") return { ...i, assignedTo: value || null };
+      if (field === "area") return { ...i, area: value };
       return { ...i, dueDate: value || null };
     };
     // Optimistic: update the list (and the open panel if it's this item).
@@ -285,6 +308,7 @@ export default function ProjectBoardClient({
           (!it.assignedTo && assigneeFilter.includes("__unassigned"));
         if (!matches) return false;
       }
+      if (overdueOnly && !isOverdue(it)) return false;
       // Meeting filter: show items whose thread was touched in the chosen meeting.
       if (meetingFilter !== "all" && !it.meetingIds.includes(meetingFilter)) return false;
       // OR across flags: an item shows if it carries ANY selected flag (clicking
@@ -306,6 +330,8 @@ export default function ProjectBoardClient({
           const bd = b.dueDate ? new Date(b.dueDate).getTime() : Infinity;
           return ad - bd;
         }
+        case "stale": // longest untouched first
+          return new Date(a.lastActivity).getTime() - new Date(b.lastActivity).getTime();
         case "title":
           return a.title.localeCompare(b.title);
         case "status": {
@@ -321,20 +347,28 @@ export default function ProjectBoardClient({
       }
     });
     return list;
-  }, [items, activeTab, statusFilter, typeFilter, assigneeFilter, meetingFilter, flagFilter, search, sort]);
+  }, [items, activeTab, statusFilter, typeFilter, assigneeFilter, meetingFilter, flagFilter, search, sort, overdueOnly]);
 
   // Summary strip across the WHOLE project (independent of filters), so the boss
   // always sees the true totals.
   const summary = useMemo(() => {
     let open = 0,
       done = 0,
-      cancelled = 0;
+      cancelled = 0,
+      overdue = 0,
+      noOwner = 0,
+      noDue = 0;
     for (const it of items) {
       if (it.status === "Closed") done += 1;
       else if (it.status === "Cancelled") cancelled += 1;
-      else open += 1;
+      else {
+        open += 1;
+        if (isOverdue(it)) overdue += 1;
+        if (!it.assignedTo) noOwner += 1;
+        if (!it.dueDate) noDue += 1;
+      }
     }
-    return { total: items.length, open, done, cancelled };
+    return { total: items.length, open, done, cancelled, overdue, noOwner, noDue };
   }, [items]);
 
   const activeFilterCount =
@@ -342,6 +376,7 @@ export default function ProjectBoardClient({
     (typeFilter.length ? 1 : 0) +
     (assigneeFilter.length ? 1 : 0) +
     (meetingFilter !== "all" ? 1 : 0) +
+    (overdueOnly ? 1 : 0) +
     flagFilter.length +
     (search.trim() ? 1 : 0);
 
@@ -352,6 +387,7 @@ export default function ProjectBoardClient({
     setMeetingFilter("all");
     setFlagFilter([]);
     setSearch("");
+    setOverdueOnly(false);
   }
 
   // Nesting + the Browse/follow-up colour coding apply ONLY when a single meeting
@@ -453,6 +489,20 @@ export default function ProjectBoardClient({
                   ↳ under “{it.raisedFromTitle}”
                 </span>
               )}
+              {/* When it was last discussed — and a nudge when it's gone quiet. */}
+              {(() => {
+                const d = daysSince(it.lastActivity);
+                const stale = isOpen(it.status) && d >= STALE_DAYS;
+                return (
+                  <span
+                    className={stale ? "font-medium text-amber-700" : "text-slate-400"}
+                    title={`Last discussed in "${it.thread[0]?.meetingTitle ?? ""}"`}
+                  >
+                    🕒 {agoLabel(d)}
+                    {stale ? " · stale" : ""}
+                  </span>
+                );
+              })()}
               {it.tags.length > 0 && <TagBadges tags={it.tags} />}
             </div>
           </div>
@@ -472,22 +522,43 @@ export default function ProjectBoardClient({
                 <option key={m} value={m}>{m}</option>
               ))}
             </select>
-            <input
-              type="date"
-              value={toDateInput(it.dueDate)}
-              onChange={(e) => editItem(it, "dueDate", e.target.value)}
-              title="Due date"
-              className={`cursor-pointer rounded border px-1.5 py-0.5 ${
-                overdue
-                  ? "border-red-300 bg-red-50 text-red-600"
-                  : "border-slate-300 text-slate-600"
-              }`}
-            />
-            {activeTab === "All" && (
-              <span className="rounded bg-slate-100 px-2 py-0.5 text-[11px] text-slate-500">
-                {it.area}
-              </span>
+            {/* A due date only takes space once it exists (or you ask for it). */}
+            {it.dueDate || dateOpen === it.id ? (
+              <input
+                type="date"
+                autoFocus={dateOpen === it.id && !it.dueDate}
+                value={toDateInput(it.dueDate)}
+                onChange={(e) => {
+                  editItem(it, "dueDate", e.target.value);
+                  setDateOpen(null);
+                }}
+                onBlur={() => setDateOpen(null)}
+                title="Due date"
+                className={`cursor-pointer rounded px-1.5 py-0.5 ${
+                  overdue ? "bg-red-50 font-medium text-red-600" : "bg-slate-100 text-slate-600"
+                }`}
+              />
+            ) : (
+              <button
+                onClick={() => setDateOpen(it.id)}
+                className="rounded px-1.5 py-0.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+                title="Set a due date"
+              >
+                + due date
+              </button>
             )}
+            {/* Area is editable here — re-file an item without leaving the board. */}
+            <select
+              value={it.area}
+              onChange={(e) => editItem(it, "area", e.target.value)}
+              title="Tab — move this item to another area"
+              className="max-w-[150px] cursor-pointer appearance-none truncate rounded bg-slate-100 px-2 py-0.5 text-[11px] text-slate-500 hover:ring-1 hover:ring-slate-300"
+            >
+              {!areas.includes(it.area) && <option value={it.area}>{it.area}</option>}
+              {areas.map((a) => (
+                <option key={a} value={a}>{a}</option>
+              ))}
+            </select>
           </div>
         </div>
       </div>
@@ -563,18 +634,60 @@ export default function ProjectBoardClient({
                 Board
               </span>
             </div>
-            <p className="mt-1 text-sm text-slate-500">
-              <span className="font-semibold text-slate-700">{summary.total}</span> items ·{" "}
-              <span className="font-semibold text-amber-600">{summary.open}</span> open ·{" "}
-              <span className="font-semibold text-emerald-600">{summary.done}</span> closed
-              {summary.cancelled > 0 && (
-                <>
-                  {" "}
-                  · <span className="font-semibold text-slate-400">{summary.cancelled}</span>{" "}
-                  cancelled
-                </>
+            {/* The totals double as filters. */}
+            <div className="mt-2 flex flex-wrap items-center gap-2 text-sm">
+              <span className="rounded-full bg-slate-100 px-3 py-1 font-medium text-slate-600">
+                {summary.total} items
+              </span>
+              <button
+                onClick={() => {
+                  setStatusFilter("open");
+                  setOverdueOnly(false);
+                }}
+                className={`rounded-full bg-amber-50 px-3 py-1 font-medium text-amber-700 ${
+                  statusFilter === "open" && !overdueOnly ? "ring-2 ring-amber-400" : "hover:brightness-95"
+                }`}
+              >
+                {summary.open} open
+              </button>
+              {summary.overdue > 0 && (
+                <button
+                  onClick={() => {
+                    setStatusFilter("open");
+                    setOverdueOnly((v) => !v);
+                  }}
+                  className={`rounded-full bg-red-50 px-3 py-1 font-medium text-red-600 ${
+                    overdueOnly ? "ring-2 ring-red-400" : "hover:brightness-95"
+                  }`}
+                >
+                  {summary.overdue} overdue
+                </button>
               )}
-            </p>
+              <button
+                onClick={() => {
+                  setStatusFilter("closed");
+                  setOverdueOnly(false);
+                }}
+                className={`rounded-full bg-emerald-50 px-3 py-1 font-medium text-emerald-700 ${
+                  statusFilter === "closed" ? "ring-2 ring-emerald-400" : "hover:brightness-95"
+                }`}
+              >
+                {summary.done} closed
+              </button>
+              {summary.cancelled > 0 && (
+                <span className="rounded-full bg-slate-100 px-3 py-1 font-medium text-slate-400">
+                  {summary.cancelled} cancelled
+                </span>
+              )}
+            </div>
+            {/* Why the board can't prioritise: the data isn't there yet. */}
+            {(summary.noOwner > 0 || summary.noDue > 0) && (
+              <p className="mt-1.5 text-xs text-slate-400">
+                {summary.noOwner > 0 && <>{summary.noOwner} open item{summary.noOwner === 1 ? "" : "s"} have no owner</>}
+                {summary.noOwner > 0 && summary.noDue > 0 && " · "}
+                {summary.noDue > 0 && <>{summary.noDue} have no due date</>}
+              </p>
+            )}
           </div>
 
           {/* Filter bar */}
@@ -609,6 +722,7 @@ export default function ProjectBoardClient({
                   className="rounded-md border border-slate-300 px-2 py-1.5 text-sm text-slate-700"
                 >
                   <option value="activity">Recent activity</option>
+                  <option value="stale">Untouched longest</option>
                   <option value="due">Due date (soonest)</option>
                   <option value="title">Title A–Z</option>
                   <option value="status">Status (New → Closed)</option>
