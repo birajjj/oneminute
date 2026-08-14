@@ -16,6 +16,7 @@ const BodySchema = z.object({
   parentMeetingId: z.string().min(1),
   chunk: z.string().min(1),
   priorTitles: z.array(z.string()).optional(),
+  priorAreas: z.array(z.string()).optional(),
   saveTranscript: z.string().optional()
 });
 
@@ -55,7 +56,8 @@ export async function POST(req: NextRequest) {
     ).map((u) => u.displayName);
 
     const plan = await buildFollowUpPlan(data.openItems, users, parsed.data.chunk, {
-      priorTitles: parsed.data.priorTitles
+      priorTitles: parsed.data.priorTitles,
+      priorAreas: parsed.data.priorAreas
     });
     return NextResponse.json(plan);
   } catch (err) {

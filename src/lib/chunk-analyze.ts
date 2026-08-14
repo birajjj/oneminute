@@ -64,10 +64,17 @@ export async function analyzeAutoChunked(
   for (let i = 0; i < chunks.length; i++) {
     onProgress?.({ done: i, total: chunks.length, phase: "analyzing" });
     const priorTitles: string[] = acc ? acc.minutes.map((m) => m.title).filter(Boolean) : [];
+    // Areas invented by earlier chunks. Without these each chunk coins its own
+    // vocabulary ("Identity & Access" in one, "Identity Management" in the next),
+    // and one meeting ends up scattered across ~20 near-duplicate tabs.
+    const priorAreas: string[] = acc
+      ? [...new Set(acc.minutes.map((m) => m.area).filter(Boolean))]
+      : [];
     const plan: AutoPlan = await postJson<AutoPlan>("/api/auto/analyze-chunk", {
       chunk: chunks[i],
       today,
       priorTitles,
+      priorAreas,
       saveTranscript: i === 0 ? transcript : undefined
     });
     acc = acc ? mergeAutoPlans(acc, plan) : plan;
@@ -87,10 +94,12 @@ export async function analyzeFollowupChunked(
   for (let i = 0; i < chunks.length; i++) {
     onProgress?.({ done: i, total: chunks.length, phase: "analyzing" });
     const priorTitles = acc.newMinutes.map((m) => m.title).filter(Boolean);
+    const priorAreas = [...new Set(acc.newMinutes.map((m) => m.area).filter(Boolean))];
     const plan = await postJson<FollowUpPlan>("/api/followup/analyze-chunk", {
       parentMeetingId,
       chunk: chunks[i],
       priorTitles,
+      priorAreas,
       saveTranscript: i === 0 ? transcript : undefined
     });
     acc = mergeFollowUpPlans(acc, plan);

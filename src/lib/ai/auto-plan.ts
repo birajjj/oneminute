@@ -124,7 +124,7 @@ export async function buildAutoPlan(
   orgId: string,
   transcript: string,
   today?: string,
-  opts?: { priorTitles?: string[]; newMeetingOnly?: boolean }
+  opts?: { priorTitles?: string[]; priorAreas?: string[]; newMeetingOnly?: boolean }
 ): Promise<AutoPlan> {
   // New-meeting mode (the Auto page): this is a brand-new meeting, so there's no
   // point loading the org's history to hunt for follow-ups — that huge context
@@ -135,7 +135,7 @@ export async function buildAutoPlan(
   const context: Context = opts?.newMeetingOnly
     ? { projects: [], users: await loadUsers(orgId) }
     : await loadContext(orgId);
-  const prompt = buildPrompt(transcript, context, today, opts?.priorTitles);
+  const prompt = buildPrompt(transcript, context, today, opts?.priorTitles, opts?.priorAreas);
 
   const { data, raw } = await generateJson<AutoPlan>({
     prompt,
@@ -347,7 +347,8 @@ function buildPrompt(
   transcript: string,
   ctx: Context,
   todayOverride?: string,
-  priorTitles?: string[]
+  priorTitles?: string[],
+  priorAreas?: string[]
 ): string {
   // Prefer the caller's local date; the server clock is UTC and would be a day
   // behind for ahead-of-UTC timezones in the morning.
@@ -396,6 +397,10 @@ function buildPrompt(
   lines.push("### AREAS (tabs)");
   lines.push("Every minute MUST have an `area` — the topic group it belongs to. Areas become tabs.");
   lines.push("- Group the meeting's minutes into 2-6 meaningful areas by subject, e.g. \"Development\", \"Testing / QA\", \"Data Migration\", \"DevOps\", \"Infrastructure\", \"Reporting\".");
+  lines.push("- Keep areas BROAD. Never create two areas that mean nearly the same thing (e.g.");
+  lines.push("  \"Identity & Access\" and \"Identity Management\", or \"Recruitment\" and \"Recruitment");
+  lines.push("  Process\") — pick ONE and put both items in it. A tab holding a single item is");
+  lines.push("  usually a sign it should have been folded into a broader one.");
   lines.push("- Name areas after the SUBJECT discussed, not the minute type. Never use a person's name.");
   lines.push("- REUSE an existing area name listed under the selected project whenever it fits — copy it exactly. Only invent a new area for a genuinely new topic.");
   lines.push("- Use \"General\" only for items that truly fit no topic. Do NOT put everything in General.");
@@ -451,6 +456,16 @@ function buildPrompt(
       "These minutes were already extracted from an EARLIER part of this SAME meeting. Do NOT repeat them. From the transcript portion below, extract ONLY items that are new; if it merely adds detail to one already captured, skip it."
     );
     for (const t of priorTitles.slice(0, 80)) lines.push(`- ${t}`);
+  }
+  // Areas earlier chunks already opened. Without this each chunk invents its own
+  // synonyms and a single meeting fans out across a dozen near-duplicate tabs.
+  if (priorAreas && priorAreas.length) {
+    lines.push("");
+    lines.push("### AREAS ALREADY USED IN THIS MEETING");
+    lines.push(
+      "Earlier parts of this SAME meeting already filed minutes under these areas. REUSE them verbatim wherever an item fits — only invent a new area for a genuinely different subject, and never a synonym of one below."
+    );
+    for (const a of priorAreas.slice(0, 30)) lines.push(`- "${a}"`);
   }
   lines.push("");
   lines.push("### Transcript");

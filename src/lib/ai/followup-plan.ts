@@ -129,9 +129,9 @@ export async function buildFollowUpPlan(
   openItems: OpenItem[],
   users: string[],
   transcript: string,
-  opts?: { priorTitles?: string[] }
+  opts?: { priorTitles?: string[]; priorAreas?: string[] }
 ): Promise<FollowUpPlan> {
-  const prompt = buildPrompt(openItems, users, transcript, opts?.priorTitles);
+  const prompt = buildPrompt(openItems, users, transcript, opts?.priorTitles, opts?.priorAreas);
   const { data } = await generateJson<RawPlan>({
     prompt,
     schema: responseSchema,
@@ -206,7 +206,8 @@ function buildPrompt(
   openItems: OpenItem[],
   users: string[],
   transcript: string,
-  priorTitles?: string[]
+  priorTitles?: string[],
+  priorAreas?: string[]
 ): string {
   const lines: string[] = [];
   lines.push("You are updating a FOLLOW-UP meeting's minutes.");
@@ -291,6 +292,14 @@ function buildPrompt(
       "These new items were already recorded from an earlier part of this same meeting. Do NOT list them again in newMinutes. (Still update the open items above as normal.)"
     );
     for (const t of priorTitles.slice(0, 80)) lines.push(`- ${t}`);
+  }
+  // Areas earlier chunks opened, so a long meeting does not fan out across a
+  // dozen near-duplicate tabs.
+  if (priorAreas && priorAreas.length) {
+    lines.push("");
+    lines.push("AREAS ALREADY USED IN THIS MEETING — reuse these verbatim wherever an item fits;");
+    lines.push("only invent a new area for a genuinely different subject, never a synonym of one below:");
+    for (const a of priorAreas.slice(0, 30)) lines.push(`- "${a}"`);
   }
   lines.push("");
   lines.push("### Transcript");

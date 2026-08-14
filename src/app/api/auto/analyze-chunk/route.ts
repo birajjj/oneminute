@@ -17,6 +17,9 @@ const BodySchema = z.object({
   today: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   // Titles already extracted from earlier chunks, so this one doesn't repeat them.
   priorTitles: z.array(z.string()).optional(),
+  // Area names earlier chunks already used, so this chunk reuses them instead
+  // of coining synonyms and scattering one meeting across many tabs.
+  priorAreas: z.array(z.string()).optional(),
   // The FULL transcript, sent only on the first chunk, persisted once for the record.
   saveTranscript: z.string().optional()
 });
@@ -49,6 +52,7 @@ export async function POST(req: NextRequest) {
     // Follow-up flow's job).
     const plan = await buildAutoPlan(user.orgId, parsed.data.chunk, parsed.data.today, {
       priorTitles: parsed.data.priorTitles,
+      priorAreas: parsed.data.priorAreas,
       newMeetingOnly: true
     });
     return NextResponse.json(plan);
