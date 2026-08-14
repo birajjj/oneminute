@@ -197,6 +197,7 @@ export default async function BrowsePage({
       projects={shapedProjects}
       threads={threads}
       raisedChildrenOf={raisedChildrenOf}
+      projectByRoot={Object.fromEntries(projectByRoot)}
       members={members}
       userName={user.displayName}
       devopsBaseUrl={devopsBaseUrl}

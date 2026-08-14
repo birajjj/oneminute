@@ -141,6 +141,7 @@ export default function BrowseClient({
   projects,
   threads,
   raisedChildrenOf,
+  projectByRoot,
   members,
   userName,
   devopsBaseUrl,
@@ -150,6 +151,9 @@ export default function BrowseClient({
   projects: BrowseProject[];
   threads: Record<string, ThreadEntry[]>;
   raisedChildrenOf: Record<string, string[]>;
+  // Thread root id -> its project id, so a carried sub-item only ever surfaces in
+  // meetings of its OWN project (never leaks into another project's meeting).
+  projectByRoot: Record<string, string>;
   members: { id: string; displayName: string }[];
   userName: string;
   devopsBaseUrl: string;
@@ -592,6 +596,10 @@ export default function BrowseClient({
     };
 
     for (const [parentRoot, childRoots] of Object.entries(raisedChildrenOf)) {
+      // Only surface a raised sub-tree in meetings of its OWN project — otherwise
+      // a carried item leaks into an unrelated project's meeting just because it
+      // predates that meeting's date.
+      if (projectByRoot[parentRoot] !== selected.projectId) continue;
       const subs: NestedSub[] = [];
       for (const c of childRoots) {
         const entries = threads[c] ?? [];
@@ -663,7 +671,7 @@ export default function BrowseClient({
 
     return { nestedSubsByRoot: subsByRoot, isNested: nested, referenceParents: refs };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selected, raisedChildrenOf, threads]);
+  }, [selected, raisedChildrenOf, projectByRoot, threads]);
 
   const areaMinutes = selected
     ? [
