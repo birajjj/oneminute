@@ -882,8 +882,9 @@ export default function FollowUpClient({
           </p>
         ) : (
           <>
-          {/* Area tabs — click to jump to a group without scrolling. */}
-          <div className="mb-4 flex flex-wrap items-center gap-2 border-b border-slate-200 pb-2">
+          {/* Area tabs — sticky so they stay reachable as a drop target while
+              you scroll a long list (like Browse). */}
+          <div className="sticky top-0 z-20 -mx-4 mb-4 flex flex-wrap items-center gap-2 border-b border-slate-200 bg-white/95 px-4 pb-2 pt-2 backdrop-blur">
             {allAreas.map((area) => {
               const count =
                 (byArea[area] ?? []).length +
