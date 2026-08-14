@@ -1170,7 +1170,7 @@ export default function BrowseClient({
                                 <span className="text-[10px] font-medium text-emerald-600">Saved ✓</span>
                               )}
                               {capturedAt && (
-                                <span className="text-[10px] font-normal text-slate-400" title="When this item was first captured">
+                                <span className="text-xs font-normal text-slate-500" title="When this item was first captured">
                                   🕒 {fmtDate(capturedAt)}
                                 </span>
                               )}
@@ -1390,7 +1390,7 @@ export default function BrowseClient({
                                                 {subTitle}
                                                 {sub.capturedAt && (
                                                   <span
-                                                    className="ml-2 text-[10px] font-normal text-slate-400"
+                                                    className="ml-2 text-xs font-normal text-slate-500"
                                                     title="When this item was first recorded"
                                                   >
                                                     🕒 {fmtDate(sub.capturedAt)}

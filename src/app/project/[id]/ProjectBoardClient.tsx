@@ -576,7 +576,7 @@ export default function ProjectBoardClient({
                 const stale = isOpen(it.status) && d >= STALE_DAYS;
                 return (
                   <span
-                    className={stale ? "font-medium text-amber-700" : "text-slate-400"}
+                    className={stale ? "font-medium text-amber-700" : "text-slate-500"}
                     title={`Last discussed in "${it.thread[0]?.meetingTitle ?? ""}"`}
                   >
                     🕒 {agoLabel(d)}

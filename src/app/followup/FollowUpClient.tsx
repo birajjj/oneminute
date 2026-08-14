@@ -650,7 +650,7 @@ export default function FollowUpClient({
       <div key={child.id} className="rounded border-l-4 border-l-amber-500 bg-amber-50 p-2">
         <div className="flex flex-wrap items-center gap-2">
           <span className="text-sm font-medium">{child.title}</span>
-          <span className="text-[10px] font-normal text-slate-400" title="When this item was first captured">
+          <span className="text-xs font-normal text-slate-500" title="When this item was first captured">
             🕒 {fmtDate(child.capturedAt)}
           </span>
           <select
@@ -980,7 +980,7 @@ export default function FollowUpClient({
                       <div className="flex flex-wrap items-center gap-2">
                         <DragGrip onStart={() => setDragItem({ kind: "openItem", id: it.id })} onEnd={endDrag} label="Drag to another tab" />
                         <span className="font-semibold">{it.title}</span>
-                        <span className="text-[11px] font-normal text-slate-400" title="When this item was first captured">
+                        <span className="text-xs font-normal text-slate-500" title="When this item was first captured">
                           🕒 {fmtDate(it.capturedAt)}
                         </span>
                         {aiFilled.has(it.id) && (
