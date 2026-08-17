@@ -903,7 +903,7 @@ export default function FollowUpClient({
       {/* Gap-check what has been written against the transcript. The open items
           and their notes count as "already captured", so a suggestion is only
           raised for something genuinely not written down anywhere. */}
-      {recorder.transcript.trim() && (
+      {(
         <SuggestionsPanel
           transcript={recorder.transcript}
           captured={[

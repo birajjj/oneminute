@@ -58,8 +58,9 @@ export default function SuggestionsPanel({
             : "💡 What did I miss?"}
         </button>
         <span className="text-xs text-slate-500">
-          Reads your minutes and the transcript, then suggests only what you haven&apos;t already
-          written. Nothing is added unless you accept it.
+          {!transcript.trim()
+            ? "Needs a transcript — record the meeting (each ~10-minute segment appears as it finishes) or paste one above."
+            : "Reads your minutes and the transcript, then suggests only what you haven't already written. Nothing is added unless you accept it."}
         </span>
       </div>
 

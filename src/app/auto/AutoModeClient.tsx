@@ -355,7 +355,7 @@ export default function AutoModeClient({
       )}
 
       {/* Gap-check the hand-written minutes against the transcript. */}
-      {step === "edit" && transcript.trim() && (
+      {step === "edit" && (
         <SuggestionsPanel
           transcript={transcript}
           captured={plan.minutes.map((m) => ({
@@ -550,6 +550,13 @@ function PlanReview({
     plan.project.action === "use_existing"
       ? !!plan.project.existingProjectId
       : !!plan.project.newProjectName?.trim();
+
+  // Everything still standing between the user and a save, in plain words.
+  const blockers: string[] = [
+    ...(approvedCount === 0 ? ["a minute with a title or description"] : []),
+    ...(!plan.meeting.title?.trim() ? ["a meeting title"] : []),
+    ...(!projectValid ? ["a project"] : [])
+  ];
 
   return (
     <div className="rounded-lg border border-slate-200 bg-white p-4">
@@ -875,11 +882,19 @@ function PlanReview({
         ))}
       </div>
 
-      <div className="mt-4 flex items-center gap-2 border-t border-slate-200 pt-3">
+      <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-slate-200 pt-3">
         <button onClick={onBack} disabled={committing} className="rounded border border-slate-300 px-4 py-2 text-sm">← Start Over</button>
+        {/* Say WHY committing is blocked — a greyed-out button with no reason is
+            the most common way to get stuck here. */}
+        {blockers.length > 0 && (
+          <span className="text-xs text-amber-700">
+            Still needed: {blockers.join(" · ")}
+          </span>
+        )}
         <button
           onClick={async () => { setCommitting(true); await onCommit(); setCommitting(false); }}
-          disabled={committing || approvedCount === 0 || !plan.meeting.title || !projectValid}
+          disabled={committing || blockers.length > 0}
+          title={blockers.length > 0 ? `Still needed: ${blockers.join(", ")}` : "Save this meeting"}
           className="ml-auto rounded bg-gradient-to-r from-brand-pink to-brand-purple px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
         >
           {committing ? "Committing…" : `✓ Approve & Commit (${approvedCount})`}
