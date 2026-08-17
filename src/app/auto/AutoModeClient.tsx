@@ -178,21 +178,56 @@ export default function AutoModeClient({
   } = useSegmentRecorder("oneminute:auto:transcript");
 
   // The draft survives a refresh or a crash mid-meeting — minutes typed during a
-  // live recording are too costly to lose.
+  // live recording are too costly to lose. But it must never silently resurrect
+  // an abandoned draft when you sit down to start a NEW meeting, so it expires
+  // and, when it is restored, says so with a way out.
   const DRAFT_KEY = "oneminute:auto:plan";
+  const DRAFT_MAX_AGE_MS = 12 * 60 * 60 * 1000; // 12 hours
   const [draftSaved, setDraftSaved] = useState(false);
+  const [restoredAt, setRestoredAt] = useState<number | null>(null);
+
+  function planHasContent(p: AutoPlan): boolean {
+    return (
+      !!p.meeting.title?.trim() ||
+      !!p.project.newProjectName?.trim() ||
+      p.minutes.some((m) => m.title.trim() || m.description.trim())
+    );
+  }
+
+  function discardDraft() {
+    try { localStorage.removeItem(DRAFT_KEY); } catch { /* ignore */ }
+    setPlan(emptyPlan());
+    setRestoredAt(null);
+  }
+
   useEffect(() => {
     try {
       const raw = localStorage.getItem(DRAFT_KEY);
-      if (raw) setPlan(JSON.parse(raw) as AutoPlan);
+      if (!raw) return;
+      const saved = JSON.parse(raw) as { savedAt?: number; plan?: AutoPlan };
+      const p = saved?.plan;
+      const savedAt = saved?.savedAt ?? 0;
+      // Stale, empty, or written by an older build -> start clean.
+      if (!p || !savedAt || Date.now() - savedAt > DRAFT_MAX_AGE_MS || !planHasContent(p)) {
+        localStorage.removeItem(DRAFT_KEY);
+        return;
+      }
+      setPlan(p);
+      setRestoredAt(savedAt);
     } catch {
-      /* ignore a corrupt draft */
+      try { localStorage.removeItem(DRAFT_KEY); } catch { /* ignore */ }
     }
   }, []);
+
   useEffect(() => {
     if (step !== "edit") return;
     try {
-      localStorage.setItem(DRAFT_KEY, JSON.stringify(plan));
+      // Nothing worth keeping yet -> don't leave a stub behind.
+      if (!planHasContent(plan)) {
+        localStorage.removeItem(DRAFT_KEY);
+        return;
+      }
+      localStorage.setItem(DRAFT_KEY, JSON.stringify({ savedAt: Date.now(), plan }));
       setDraftSaved(true);
       const t = setTimeout(() => setDraftSaved(false), 1200);
       return () => clearTimeout(t);
@@ -440,6 +475,28 @@ export default function AutoModeClient({
                 ? "Available once recording has stopped and the last segment has transcribed."
                 : "Opens a new tab where AI compares the minutes you wrote with the transcript and recommends what to add. Anything you accept appears here straight away."}
           </span>
+        </div>
+      )}
+
+      {/* A restored draft must announce itself, with one click to start clean. */}
+      {step === "edit" && restoredAt && (
+        <div className="flex flex-wrap items-center gap-2 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm">
+          <span className="text-amber-800">
+            Picked up your unsaved draft from{" "}
+            {new Date(restoredAt).toLocaleString(undefined, {
+              month: "short",
+              day: "numeric",
+              hour: "2-digit",
+              minute: "2-digit"
+            })}
+            .
+          </span>
+          <button
+            onClick={discardDraft}
+            className="ml-auto rounded border border-amber-400 bg-white px-3 py-1 text-xs font-medium text-amber-800 hover:bg-amber-100"
+          >
+            Start a blank meeting
+          </button>
         </div>
       )}
 
