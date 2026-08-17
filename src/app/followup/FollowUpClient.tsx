@@ -207,7 +207,7 @@ export default function FollowUpClient({
 
   const [newMinutes, setNewMinutes] = useState<NewMinute[]>([]);
 
-  // Suggestions accepted in the "What did I miss?" tab arrive here live.
+  // Suggestions accepted in the AI Recommendation tab arrive here live.
   useEffect(() => {
     function applyAccepted() {
       const items = drainAccepted();
@@ -962,12 +962,12 @@ export default function FollowUpClient({
           disabled={!recorder.transcript.trim() || recorder.isRecording || recorder.isTranscribing || analyzing}
           className="rounded bg-amber-500 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
         >
-          💡 What did I miss? ↗
+          ✨ AI Recommendation ↗
         </button>
         <span className="text-xs text-slate-500">
           {!recorder.transcript.trim()
             ? "Needs a transcript — record the meeting (each ~10-minute segment appears as it finishes) or paste one above."
-            : "Opens a new tab comparing what you've written — including the notes on open items — with the transcript."}
+            : "Opens a new tab where AI compares what you've written — including the notes on open items — with the transcript."}
         </span>
       </div>
 

@@ -201,7 +201,7 @@ export default function AutoModeClient({
     }
   }, [plan, step]);
 
-  // Suggestions accepted in the "What did I miss?" tab arrive here live.
+  // Suggestions accepted in the AI Recommendation tab arrive here live.
   useEffect(() => {
     function applyAccepted() {
       const items = drainAccepted();
@@ -431,14 +431,14 @@ export default function AutoModeClient({
             disabled={!transcript.trim() || isRecording || isTranscribing}
             className="rounded bg-amber-500 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
           >
-            💡 What did I miss? ↗
+            ✨ AI Recommendation ↗
           </button>
           <span className="text-xs text-slate-500">
             {!transcript.trim()
               ? "Needs a transcript — record the meeting (each ~10-minute segment appears as it finishes) or paste one above."
               : isRecording || isTranscribing
                 ? "Available once recording has stopped and the last segment has transcribed."
-                : "Opens a new tab comparing the minutes you wrote with the transcript. Anything you add there appears here straight away."}
+                : "Opens a new tab where AI compares the minutes you wrote with the transcript and recommends what to add. Anything you accept appears here straight away."}
           </span>
         </div>
       )}

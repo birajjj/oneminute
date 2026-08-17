@@ -47,10 +47,10 @@ export default function GapsClient() {
   if (!payload) {
     return (
       <div className="mx-auto max-w-3xl p-8">
-        <h1 className="text-xl font-bold text-slate-800">What did I miss?</h1>
+        <h1 className="text-xl font-bold text-slate-800">AI Recommendation</h1>
         <p className="mt-2 rounded border border-dashed border-slate-300 bg-white p-6 text-sm text-slate-500">
           Nothing to compare yet. Open this from a meeting page using{" "}
-          <b>💡 What did I miss?</b> — it sends the minutes you&apos;ve written plus the
+          <b>✨ AI Recommendation</b> — it sends the minutes you&apos;ve written plus the
           transcript over to this page.
         </p>
       </div>
@@ -61,9 +61,9 @@ export default function GapsClient() {
     <div className="min-h-screen bg-slate-100">
       <header className="sticky top-0 z-10 flex flex-wrap items-center gap-3 border-b border-slate-200 bg-white px-4 py-3 sm:px-6">
         <div className="min-w-0">
-          <h1 className="truncate text-lg font-bold text-slate-800">What did I miss?</h1>
+          <h1 className="truncate text-lg font-bold text-slate-800">AI Recommendation</h1>
           <p className="truncate text-xs text-slate-500">
-            {payload.meetingTitle || "Untitled meeting"} · comparing your minutes with the transcript
+            {payload.meetingTitle || "Untitled meeting"} · AI comparing your minutes with the transcript
           </p>
         </div>
         <div className="ml-auto flex flex-wrap items-center gap-2">
@@ -126,7 +126,7 @@ export default function GapsClient() {
           {/* What the AI believes is missing from them */}
           <section>
             <h2 className="mb-2 text-sm font-bold uppercase tracking-wide text-amber-700">
-              AI thinks you missed
+              AI recommends adding
               {suggestions && (
                 <span className="ml-2 text-xs font-normal normal-case text-slate-400">
                   {suggestions.length} suggestion{suggestions.length === 1 ? "" : "s"}
