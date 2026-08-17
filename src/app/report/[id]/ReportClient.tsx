@@ -30,6 +30,9 @@ export interface ReportData {
   attachments: { id: string; fileName: string; size: number }[];
 }
 
+// Task-shaped minutes: the work the meeting committed to.
+const ACTION_TYPES = ["To-Do", "Action", "Devops"];
+
 const TYPE_BADGE: Record<string, string> = {
   Note: "bg-slate-100 text-slate-600",
   "To-Do": "bg-blue-100 text-blue-700",
@@ -46,6 +49,12 @@ const STATUS_PILL: Record<string, string> = {
   Closed: "bg-emerald-100 text-emerald-700",
   Cancelled: "bg-slate-200 text-slate-500"
 };
+const FLAG_BADGE: Record<string, string> = {
+  Decision: "bg-purple-100 text-brand-purple",
+  Scope: "bg-amber-100 text-amber-700",
+  Governance: "bg-sky-100 text-sky-700"
+};
+
 const STATUS_EDGE: Record<string, string> = {
   New: "border-l-slate-300",
   Initiated: "border-l-indigo-400",
@@ -80,24 +89,29 @@ export default function ReportClient({ data }: { data: ReportData }) {
   const summaryRef = useRef<HTMLDivElement>(null);
   const reportRef = useRef<HTMLDivElement>(null);
 
-  // Drop cancelled (unless asked for), then pull Decision notes into their own
-  // section so they read as outcomes rather than being buried in a workstream.
-  const { areas, decisions, all } = useMemo(() => {
+  // Ordered by what a reader needs, not by workstream: the work people committed
+  // to, then the outcomes worth recording, then the background. Each item is
+  // claimed ONCE — a flagged Action stays with the actions and simply shows its
+  // flag, rather than being repeated under Decisions. Area moves onto the item as
+  // a chip, so it is still visible without three sets of repeated headings.
+  const { actionItems, decisions, notes, all } = useMemo(() => {
     const keep = (it: ReportItem): ReportItem | null => {
       if (!includeCancelled && it.status === "Cancelled") return null;
       const kids = it.children.map(keep).filter(Boolean) as ReportItem[];
       return { ...it, children: kids };
     };
     const kept = data.items.map(keep).filter(Boolean) as ReportItem[];
-    const isDecisionNote = (it: ReportItem) =>
-      it.type === "Note" && it.tags.includes("Decision") && it.children.length === 0;
-    const decisions = kept.filter(isDecisionNote);
-    const rest = kept.filter((it) => !isDecisionNote(it));
-    const byArea: Record<string, ReportItem[]> = {};
-    for (const it of rest) (byArea[it.area] ??= []).push(it);
+    const isTask = (it: ReportItem) => ACTION_TYPES.includes(it.type);
+    const isFlagged = (it: ReportItem) =>
+      it.tags.some((t) => ["Decision", "Scope", "Governance"].includes(t));
+    // Classified on the TOP-LEVEL item so a task nested under its parent keeps
+    // travelling with it.
+    const actionItems = kept.filter(isTask);
+    const rest = kept.filter((it) => !isTask(it));
     return {
-      areas: Object.keys(byArea).sort().map((name) => ({ name, items: byArea[name] })),
-      decisions,
+      actionItems,
+      decisions: rest.filter(isFlagged),
+      notes: rest.filter((it) => !isFlagged(it)),
       all: flatten(kept)
     };
   }, [data.items, includeCancelled]);
@@ -201,13 +215,22 @@ export default function ReportClient({ data }: { data: ReportData }) {
 
           {it.note && <p className="mt-1 text-sm text-slate-600">{it.note}</p>}
 
-          {(it.assignedTo || it.dueDate || it.devopsItemId) && (
-            <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-400">
-              {it.assignedTo && <span>👤 {it.assignedTo}</span>}
-              {it.dueDate && <span>📅 due {fmtShort(it.dueDate)}</span>}
-              {it.devopsItemId && <span>DevOps #{it.devopsItemId}</span>}
-            </div>
-          )}
+          <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-400">
+            {it.assignedTo && <span>👤 {it.assignedTo}</span>}
+            {it.dueDate && <span>📅 due {fmtShort(it.dueDate)}</span>}
+            {it.devopsItemId && <span>DevOps #{it.devopsItemId}</span>}
+            {it.tags.map((t) => (
+              <span
+                key={t}
+                className={`rounded-full px-1.5 py-0.5 text-[10px] font-medium ${
+                  FLAG_BADGE[t] ?? "bg-slate-100 text-slate-500"
+                }`}
+              >
+                {t}
+              </span>
+            ))}
+            {!nested && <span className="text-slate-300">{it.area}</span>}
+          </div>
 
           {/* Tasks raised under this item — keeps a workstream in one block. */}
           {it.children.length > 0 && (
@@ -350,39 +373,56 @@ export default function ReportClient({ data }: { data: ReportData }) {
             </section>
           )}
 
-          {/* Decisions */}
-          {decisions.length > 0 && (
+          {/* 1. The work people committed to — what a reader needs first. */}
+          {actionItems.length > 0 && (
             <section className="mt-6">
               <h2 className="text-sm font-bold uppercase tracking-wide text-slate-600">
-                Decisions
+                Actions, to-dos &amp; devops
+                <span className="ml-2 text-xs font-normal normal-case text-slate-400">
+                  {actionItems.length}
+                </span>
               </h2>
-              <ul className="mt-2 space-y-2">
-                {decisions.map((d) => (
-                  <li
-                    key={d.id}
-                    className="rounded border-l-4 border-l-brand-purple bg-purple-50 p-2.5 text-sm"
-                  >
-                    <div className="font-medium">{d.title}</div>
-                    {d.note && <div className="mt-0.5 text-slate-600">{d.note}</div>}
-                  </li>
+              <ul className="mt-2">
+                {actionItems.map((it) => (
+                  <Item key={it.id} it={it} nested={false} />
                 ))}
               </ul>
             </section>
           )}
 
-          {/* Workstreams — one section per area, tasks nested under their item */}
-          {areas.map((a) => (
-            <section key={a.name} className="mt-6">
-              <h2 className="text-sm font-bold uppercase tracking-wide text-slate-600">
-                {a.name}
+          {/* 2. Outcomes worth recording — anything carrying a governance flag. */}
+          {decisions.length > 0 && (
+            <section className="mt-6">
+              <h2 className="text-sm font-bold uppercase tracking-wide text-brand-purple">
+                Decisions, scope &amp; governance
+                <span className="ml-2 text-xs font-normal normal-case text-slate-400">
+                  {decisions.length}
+                </span>
               </h2>
               <ul className="mt-2">
-                {a.items.map((it) => (
+                {decisions.map((it) => (
                   <Item key={it.id} it={it} nested={false} />
                 ))}
               </ul>
             </section>
-          ))}
+          )}
+
+          {/* 3. Background — read only if you want the detail. */}
+          {notes.length > 0 && (
+            <section className="mt-6">
+              <h2 className="text-sm font-bold uppercase tracking-wide text-slate-500">
+                Notes &amp; discussion
+                <span className="ml-2 text-xs font-normal normal-case text-slate-400">
+                  {notes.length}
+                </span>
+              </h2>
+              <ul className="mt-2">
+                {notes.map((it) => (
+                  <Item key={it.id} it={it} nested={false} />
+                ))}
+              </ul>
+            </section>
+          )}
 
           {/* Attachments */}
           {data.attachments.length > 0 && (
