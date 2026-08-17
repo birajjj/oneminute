@@ -1317,7 +1317,7 @@ export default function FollowUpClient({
                       <span className="ml-1 rounded bg-slate-100 px-1 py-0.5 text-slate-500">
                         {grp.info.status}
                       </span>
-                      <span className="ml-1 italic">— parent closed</span>
+                      <span className="ml-1 italic">— shown for context</span>
                     </div>
                     {renderChildReview(child)}
                   </div>

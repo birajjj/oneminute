@@ -153,9 +153,13 @@ export async function loadFollowUpData(
 
   const openItems: OpenItem[] = minutes
     .filter((m) => {
-      if (m.parentMinuteId || !m.isPersistent) return false;
-      // Open items, plus Closed ones that still host an open child.
-      return isOpenStatus(currentStatusOf(m.id)) || parentsWithOpenChildren.has(m.id);
+      if (m.parentMinuteId) return false;
+      // A parent hosting an open child is kept whatever its own state — closed,
+      // or even a non-persistent Note — so the child shows nested beneath it
+      // instead of floating on its own.
+      if (parentsWithOpenChildren.has(m.id)) return true;
+      if (!m.isPersistent) return false;
+      return isOpenStatus(currentStatusOf(m.id));
     })
     .map((m) => {
       const cur = currentStatusOf(m.id);

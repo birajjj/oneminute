@@ -86,12 +86,20 @@ export async function PATCH(
       }
     }
 
-    // Type is the item's identity → set it on the thread root.
+    // Type is the item's identity → set it on the thread root. isPersistent must
+    // move with it: a To-Do/Action/Devops carries into follow-up meetings, a Note
+    // does not. Leaving it behind silently drops the item from every follow-up.
     if (parsed.data.type !== undefined) {
       const mapped = TYPE_MAP[parsed.data.type];
       if (mapped) {
         const rootId = minute.parentMinuteId ?? minute.id;
-        await db.minute.update({ where: { id: rootId }, data: { type: mapped } });
+        await db.minute.update({
+          where: { id: rootId },
+          data: {
+            type: mapped,
+            isPersistent: ["To-Do", "Action", "Devops"].includes(parsed.data.type)
+          }
+        });
       }
     }
 
