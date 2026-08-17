@@ -50,6 +50,8 @@ export interface FollowUpUpdateInput {
 }
 
 export interface FollowUpNewMinuteInput {
+  // To-dos / devops raised under this new minute (one level — a task has none).
+  children?: FollowUpNewMinuteInput[];
   area: string;
   title: string;
   description: string;
@@ -140,8 +142,8 @@ export async function commitFollowUp(
         m: FollowUpNewMinuteInput,
         raisedFromRootId: string | null,
         areaOverride?: string
-      ): Promise<boolean> {
-        if (!hasContent(m.title, m.description)) return false;
+      ): Promise<string | null> {
+        if (!hasContent(m.title, m.description)) return null;
         const area = (areaOverride || m.area || "General").trim();
         areaSet.add(area);
 
@@ -164,7 +166,8 @@ export async function commitFollowUp(
           }
         }
 
-        await tx.minute.create({
+        const createdRoot = await tx.minute.create({
+          select: { id: true },
           data: {
             orgId,
             meetingId: meeting.id,
@@ -183,7 +186,7 @@ export async function commitFollowUp(
             devopsArea
           }
         });
-        return true;
+        return createdRoot.id;
       }
 
       // ---- Updates to carried-forward open items ----
@@ -342,7 +345,15 @@ export async function commitFollowUp(
 
       // ---- Brand-new minutes for this meeting ----
       for (const m of input.newMinutes) {
-        if (await createRootMinute(m, null)) created++;
+        const newRootId = await createRootMinute(m, null);
+        if (newRootId) {
+          created++;
+          // Tasks the user attached to this brand-new minute — the parent had no
+          // id until now, so they are written straight after it.
+          for (const child of m.children ?? []) {
+            if (await createRootMinute(child, newRootId, m.area || "General")) created++;
+          }
+        }
       }
 
       // ---- Areas ----

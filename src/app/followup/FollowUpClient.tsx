@@ -40,6 +40,8 @@ interface ItemUpdate {
 }
 
 interface NewMinute {
+  // To-dos / devops raised under this new minute (one level deep).
+  children?: NewMinute[];
   area: string;
   title: string;
   description: string;
@@ -432,6 +434,34 @@ export default function FollowUpClient({
   function removeNewMinute(i: number) {
     setNewMinutes((prev) => prev.filter((_, idx) => idx !== i));
   }
+  // Tasks hung off a brand-new minute — same idea as "items under this" on a
+  // carried-forward item, but the parent doesn't exist in the DB yet, so they
+  // travel with it and are written straight after it on save.
+  function addNewMinuteChild(i: number) {
+    setNewMinutes((prev) =>
+      prev.map((m, idx) =>
+        idx === i
+          ? { ...m, children: [...(m.children ?? []), { ...emptySub(), area: m.area }] }
+          : m
+      )
+    );
+  }
+  function setNewMinuteChild(i: number, ci: number, patch: Partial<NewMinute>) {
+    setNewMinutes((prev) =>
+      prev.map((m, idx) =>
+        idx === i
+          ? { ...m, children: (m.children ?? []).map((c, k) => (k === ci ? { ...c, ...patch } : c)) }
+          : m
+      )
+    );
+  }
+  function removeNewMinuteChild(i: number, ci: number) {
+    setNewMinutes((prev) =>
+      prev.map((m, idx) =>
+        idx === i ? { ...m, children: (m.children ?? []).filter((_, k) => k !== ci) } : m
+      )
+    );
+  }
 
   // One new-minute editor card. Rendered inline under its area (so a freshly
   // added minute appears right where you clicked, not in a section off-screen).
@@ -536,6 +566,94 @@ export default function FollowUpClient({
             onChange={(patch) => setNewMinute(i, patch)}
           />
         )}
+
+        {/* Tasks under this new minute — saved nested beneath it. */}
+        {(m.children ?? []).length > 0 && (
+          <div className="mt-2 space-y-2 border-t border-blue-200 pt-2">
+            <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+              Items under this
+            </div>
+            {(m.children ?? []).map((c, ci) => (
+              <div key={ci} className="rounded border-l-4 border-l-slate-300 bg-white p-2">
+                <div className="mb-1 flex flex-wrap items-center gap-2">
+                  <select
+                    value={c.type}
+                    onChange={(e) => setNewMinuteChild(i, ci, { type: e.target.value })}
+                    className="rounded border border-slate-300 p-1 text-[11px]"
+                  >
+                    {SUB_TYPE_OPTIONS.map((t) => (
+                      <option key={t} value={t}>{t}</option>
+                    ))}
+                  </select>
+                  <input
+                    value={c.title}
+                    onChange={(e) => setNewMinuteChild(i, ci, { title: e.target.value })}
+                    placeholder="Title"
+                    className="flex-1 rounded border border-slate-300 p-1 text-sm"
+                  />
+                  <button
+                    onClick={() => removeNewMinuteChild(i, ci)}
+                    className="rounded px-2 py-1 text-xs text-red-600 hover:bg-red-50"
+                    title="Remove"
+                  >
+                    ✕
+                  </button>
+                </div>
+                <textarea
+                  value={c.description}
+                  onChange={(e) => setNewMinuteChild(i, ci, { description: e.target.value })}
+                  rows={2}
+                  placeholder="Description"
+                  className="w-full rounded border border-slate-300 p-1 text-sm"
+                />
+                <div className="mt-1 grid grid-cols-1 gap-1 text-xs sm:grid-cols-3">
+                  <select
+                    value={c.status}
+                    onChange={(e) => setNewMinuteChild(i, ci, { status: e.target.value })}
+                    className="rounded border border-slate-300 p-1"
+                  >
+                    {STATUS_OPTIONS.map((st) => (
+                      <option key={st} value={st}>{st}</option>
+                    ))}
+                  </select>
+                  <select
+                    value={c.assignedTo}
+                    onChange={(e) => setNewMinuteChild(i, ci, { assignedTo: e.target.value })}
+                    className="rounded border border-slate-300 p-1"
+                  >
+                    <option value="">— Unassigned —</option>
+                    {assigneeOptions(c.assignedTo).map((n) => (
+                      <option key={n} value={n}>{n}</option>
+                    ))}
+                  </select>
+                  <input
+                    type="date"
+                    value={c.dueDate}
+                    onChange={(e) => setNewMinuteChild(i, ci, { dueDate: e.target.value })}
+                    className="rounded border border-slate-300 p-1"
+                  />
+                </div>
+                {c.type === "Devops" && (
+                  <DevopsControls
+                    action={c.devopsAction}
+                    project={c.devopsProject}
+                    workItemType={c.devopsWorkItemType}
+                    workItemId={c.devopsWorkItemId}
+                    devopsEnabled={devopsEnabled}
+                    devopsProjects={devopsProjects}
+                    onChange={(patch) => setNewMinuteChild(i, ci, patch)}
+                  />
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+        <button
+          onClick={() => addNewMinuteChild(i)}
+          className="mt-2 rounded border border-dashed border-slate-400 px-2 py-1 text-xs text-slate-600 hover:bg-white"
+        >
+          + Add to-do / devops under this item
+        </button>
       </div>
     );
   }

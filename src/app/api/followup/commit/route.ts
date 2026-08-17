@@ -43,7 +43,9 @@ const BodySchema = z.object({
       subEntries: z.array(NewMinuteSchema).default([])
     })
   ),
-  newMinutes: z.array(NewMinuteSchema)
+  newMinutes: z.array(
+    NewMinuteSchema.extend({ children: z.array(NewMinuteSchema).default([]) })
+  )
 });
 
 export async function POST(req: NextRequest) {
