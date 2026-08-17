@@ -104,10 +104,18 @@ export async function generateJson<T = unknown>({
 const INLINE_AUDIO_LIMIT = 19 * 1024 * 1024; // 19 MB safety margin under Gemini's 20 MB
 const UPLOAD_BASE_URL = "https://generativelanguage.googleapis.com/upload/v1beta";
 
+// Speaker-attributed so the transcript reads as a conversation ("who said what")
+// rather than a wall of text. Real names are used only when the audio actually
+// reveals them (someone is addressed or introduces themselves); otherwise stable
+// "Speaker 1/2/3" labels. NOTE: audio is transcribed one segment at a time, so
+// speaker numbering is only consistent WITHIN a segment.
 const TRANSCRIBE_PROMPT =
-  "Transcribe the following meeting audio verbatim. " +
-  "Include every speaker turn. Do not summarize or add commentary. " +
-  "Return only the transcript text.";
+  "Transcribe the following meeting audio verbatim, as a speaker-attributed dialogue.\n" +
+  "- Start each turn on a new line as `Name: what they said`.\n" +
+  "- Use a participant's REAL NAME when the audio makes it clear (they introduce " +
+  "themselves, or someone addresses them by name). Reuse that name for all of their turns.\n" +
+  "- Otherwise label them `Speaker 1`, `Speaker 2`, … consistently for the whole recording.\n" +
+  "- Do not summarize, translate, or add commentary. Return only the transcript.";
 
 export async function transcribeAudio(
   audioBytes: ArrayBuffer,

@@ -8,6 +8,7 @@ import { TagChips } from "@/components/TagChips";
 import { normalizeTags } from "@/lib/tags";
 import BusyOverlay from "@/components/BusyOverlay";
 import MeetingAttachments from "@/components/MeetingAttachments";
+import { downloadTranscript } from "@/lib/download-transcript";
 
 const TYPE_OPTIONS = ["Note", "To-Do", "Action", "Devops"];
 // Types allowed for extra minutes raised under an open item (boss: note/todo/
@@ -426,9 +427,9 @@ export default function FollowUpClient({
         <textarea
           value={m.description}
           onChange={(e) => setNewMinute(i, { description: e.target.value })}
-          rows={2}
-          placeholder="Description"
-          className="w-full rounded border border-slate-300 p-1 text-sm"
+          rows={5}
+          placeholder="What was discussed…"
+          className="w-full resize-y rounded border border-slate-300 p-2 text-sm"
         />
         <div className="mt-1">
           <TagChips value={m.tags} onChange={(tags) => setNewMinute(i, { tags })} />
@@ -806,6 +807,21 @@ export default function FollowUpClient({
                 ? `Analyzing… ${Math.min(analysisProgress.done + 1, analysisProgress.total)}/${analysisProgress.total}`
                 : "Analyzing…"
               : "AI pre-fill ↓"}
+          </button>
+          <button
+            onClick={() =>
+              downloadTranscript({
+                title,
+                date: dateTimeLocalToISO(date),
+                projectName: data.parent.projectName,
+                transcript: recorder.transcript
+              })
+            }
+            disabled={!recorder.transcript.trim()}
+            className="rounded border border-slate-300 px-3 py-1.5 text-sm text-slate-600 disabled:opacity-40"
+            title="Save the transcript as a readable text file (who said what)"
+          >
+            ⬇ Transcript
           </button>
           <button
             onClick={recorder.clearTranscript}

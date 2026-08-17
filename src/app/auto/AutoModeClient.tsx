@@ -6,6 +6,7 @@ import type { AutoPlan } from "@/lib/ai/auto-plan";
 import { useSegmentRecorder } from "@/lib/useSegmentRecorder";
 import { analyzeAutoChunked, commitAutoChunked } from "@/lib/chunk-analyze";
 import { TagChips } from "@/components/TagChips";
+import { downloadTranscript } from "@/lib/download-transcript";
 import BusyOverlay from "@/components/BusyOverlay";
 
 // The page is manual-first: you land straight in the editable form and can fill
@@ -275,6 +276,20 @@ export default function AutoModeClient({
               Analyze with AI →
             </button>
             <button
+              onClick={() =>
+                downloadTranscript({
+                  title: plan.meeting.title || "New meeting",
+                  date: plan.meeting.meetingDate || new Date().toISOString(),
+                  transcript
+                })
+              }
+              disabled={!transcript.trim()}
+              className="rounded border border-slate-300 px-3 py-2 text-sm text-slate-600 disabled:opacity-40"
+              title="Save the transcript as a readable text file (who said what)"
+            >
+              ⬇ Transcript
+            </button>
+            <button
               onClick={clearTranscript}
               disabled={!transcript.trim() || isRecording || isTranscribing}
               className="rounded border border-slate-300 px-3 py-2 text-sm text-slate-600 disabled:opacity-40"
@@ -408,6 +423,36 @@ function PlanReview({
   function updateMinute(i: number, patch: Partial<AutoPlan["minutes"][number]>) {
     const minutes = plan.minutes.map((m, idx) => (idx === i ? { ...m, ...patch } : m));
     onChange({ ...plan, minutes });
+  }
+
+  // Render order: each top-level item followed by the tasks filed under it, so
+  // a workstream and its to-dos stay together while you type.
+  const ordered = (() => {
+    const out: { m: AutoPlan["minutes"][number]; i: number; nested: boolean }[] = [];
+    const withIndex = plan.minutes.map((m, i) => ({ m, i }));
+    const taken = new Set<number>();
+    for (const { m, i } of withIndex) {
+      if (m.parentTitle?.trim()) continue; // placed under its parent below
+      out.push({ m, i, nested: false });
+      taken.add(i);
+      for (const c of withIndex) {
+        if (c.i === i || taken.has(c.i)) continue;
+        if (c.m.parentTitle?.trim() && c.m.parentTitle.trim() === m.title.trim()) {
+          out.push({ m: c.m, i: c.i, nested: true });
+          taken.add(c.i);
+        }
+      }
+    }
+    // Anything whose parent title no longer matches still has to be editable.
+    for (const { m, i } of withIndex) if (!taken.has(i)) out.push({ m, i, nested: false });
+    return out;
+  })();
+
+  // A task under an existing item — linked by the parent's title, which is how
+  // the commit resolves nesting within this meeting.
+  function addChild(parentTitle: string, area: string) {
+    const child = { ...emptyMinute(area || "General"), parentTitle, minuteType: "To-Do" as const };
+    onChange({ ...plan, minutes: [...plan.minutes, child] });
   }
 
   // ---- Project / meeting overrides (AI decides, user can change) ----
@@ -615,10 +660,10 @@ function PlanReview({
       )}
 
       <div className="space-y-4">
-        {plan.minutes.map((m, i) => (
+        {ordered.map(({ m, i, nested }) => (
           <div
             key={i}
-            className={`rounded border p-2 ${m.type === "followup" ? "border-l-4 border-l-amber-500 bg-amber-100" : "border-l-4 border-l-brand-blue bg-blue-100"} ${!m.approved ? "opacity-45" : ""}`}
+            className={`rounded border p-2 ${nested ? "ml-6 border-l-4 border-l-slate-300 bg-slate-50" : m.type === "followup" ? "border-l-4 border-l-amber-500 bg-amber-100" : "border-l-4 border-l-brand-blue bg-blue-100"} ${!m.approved ? "opacity-45" : ""}`}
           >
             <div className="mb-1 flex items-center gap-2">
               <label className="flex items-center gap-1 text-xs">
@@ -656,7 +701,13 @@ function PlanReview({
                 </button>
               </div>
             )}
-            <textarea value={m.description} onChange={(e) => updateMinute(i, { description: e.target.value })} rows={2} className="w-full rounded border border-slate-300 p-1 text-sm" />
+            <textarea
+              value={m.description}
+              onChange={(e) => updateMinute(i, { description: e.target.value })}
+              rows={nested ? 2 : 5}
+              placeholder="What was discussed…"
+              className="w-full resize-y rounded border border-slate-300 p-2 text-sm"
+            />
             <div className="mt-1">
               <TagChips value={m.tags} onChange={(tags) => updateMinute(i, { tags })} />
             </div>
@@ -766,6 +817,19 @@ function PlanReview({
                   />
                 )}
               </div>
+            )}
+
+            {/* Capture a concrete task under this item without leaving the row —
+                it commits nested beneath it (raisedFromRootId). */}
+            {!nested && (
+              <button
+                onClick={() => addChild(m.title, m.area)}
+                disabled={!m.title.trim()}
+                className="mt-2 rounded border border-dashed border-slate-400 px-2 py-1 text-xs text-slate-600 hover:bg-white disabled:opacity-40"
+                title={m.title.trim() ? "Add a to-do / devops under this item" : "Give this item a title first"}
+              >
+                + to-do / devops under this
+              </button>
             )}
           </div>
         ))}
