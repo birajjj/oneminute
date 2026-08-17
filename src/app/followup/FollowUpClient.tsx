@@ -9,7 +9,7 @@ import { normalizeTags } from "@/lib/tags";
 import BusyOverlay from "@/components/BusyOverlay";
 import MeetingAttachments from "@/components/MeetingAttachments";
 import { downloadTranscript } from "@/lib/download-transcript";
-import SuggestionsPanel from "@/components/SuggestionsPanel";
+import { writeGapsPayload, drainAccepted, GAPS_ACCEPTED_KEY } from "@/lib/gaps-handoff";
 
 const TYPE_OPTIONS = ["Note", "To-Do", "Action", "Devops"];
 // Types allowed for extra minutes raised under an open item (boss: note/todo/
@@ -206,6 +206,40 @@ export default function FollowUpClient({
   }
 
   const [newMinutes, setNewMinutes] = useState<NewMinute[]>([]);
+
+  // Suggestions accepted in the "What did I miss?" tab arrive here live.
+  useEffect(() => {
+    function applyAccepted() {
+      const items = drainAccepted();
+      if (items.length === 0) return;
+      setNewMinutes((prev) => [
+        ...prev,
+        ...items.map((it) => ({
+          area: it.area || "General",
+          title: it.title,
+          description: it.description,
+          type: it.minuteType,
+          status: "New",
+          assignedTo: "",
+          dueDate: "",
+          tags: [] as string[],
+          devopsAction: "none",
+          devopsProject: "",
+          devopsWorkItemType: "User Story",
+          devopsWorkItemId: ""
+        }))
+      ]);
+    }
+    function onStorage(e: StorageEvent) {
+      if (e.key === GAPS_ACCEPTED_KEY && e.newValue) applyAccepted();
+    }
+    window.addEventListener("storage", onStorage);
+    window.addEventListener("focus", applyAccepted);
+    return () => {
+      window.removeEventListener("storage", onStorage);
+      window.removeEventListener("focus", applyAccepted);
+    };
+  }, []);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [result, setResult] = useState<{ meetingId?: string; updated: number; created: number; warnings: string[] } | null>(null);
@@ -900,47 +934,42 @@ export default function FollowUpClient({
         </label>
       </div>
 
-      {/* Gap-check what has been written against the transcript. The open items
-          and their notes count as "already captured", so a suggestion is only
-          raised for something genuinely not written down anywhere. */}
-      {(
-        <SuggestionsPanel
-          transcript={recorder.transcript}
-          captured={[
-            ...data.openItems.map((it) => ({
-              title: it.title,
-              description: updates[it.id]?.note || it.description || "",
-              type: it.type
-            })),
-            ...newMinutes.map((m) => ({
-              title: m.title,
-              description: m.description,
-              type: m.type
-            }))
-          ]}
-          areas={allAreas}
-          disabled={recorder.isRecording || recorder.isTranscribing || analyzing}
-          onAccept={(sug) =>
-            setNewMinutes((prev) => [
-              ...prev,
-              {
-                area: sug.area,
-                title: sug.title,
-                description: sug.description,
-                type: sug.minuteType,
-                status: "New",
-                assignedTo: "",
-                dueDate: "",
-                tags: [],
-                devopsAction: "none",
-                devopsProject: "",
-                devopsWorkItemType: "User Story",
-                devopsWorkItemId: ""
-              }
-            ])
-          }
-        />
-      )}
+      {/* Gap-check opens in its OWN tab so this page — and the recording — is
+          never navigated away from. */}
+      <div className="flex flex-wrap items-center gap-2 rounded-lg border-2 border-dashed border-amber-300 bg-amber-50/50 p-4">
+        <button
+          onClick={() => {
+            writeGapsPayload({
+              source: "followup",
+              meetingTitle: title,
+              transcript: recorder.transcript,
+              captured: [
+                ...data.openItems.map((it) => ({
+                  title: it.title,
+                  description: updates[it.id]?.note || it.description || "",
+                  type: it.type
+                })),
+                ...newMinutes.map((m) => ({
+                  title: m.title,
+                  description: m.description,
+                  type: m.type
+                }))
+              ],
+              areas: allAreas
+            });
+            window.open("/gaps", "_blank", "noopener");
+          }}
+          disabled={!recorder.transcript.trim() || recorder.isRecording || recorder.isTranscribing || analyzing}
+          className="rounded bg-amber-500 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+        >
+          💡 What did I miss? ↗
+        </button>
+        <span className="text-xs text-slate-500">
+          {!recorder.transcript.trim()
+            ? "Needs a transcript — record the meeting (each ~10-minute segment appears as it finishes) or paste one above."
+            : "Opens a new tab comparing what you've written — including the notes on open items — with the transcript."}
+        </span>
+      </div>
 
       {/* Carried-forward open items */}
       <div className="rounded-lg border border-slate-200 bg-white p-4">

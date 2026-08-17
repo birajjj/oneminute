@@ -8,7 +8,7 @@ import { analyzeAutoChunked, commitAutoChunked } from "@/lib/chunk-analyze";
 import { TagChips } from "@/components/TagChips";
 import { downloadTranscript } from "@/lib/download-transcript";
 import BusyOverlay from "@/components/BusyOverlay";
-import SuggestionsPanel from "@/components/SuggestionsPanel";
+import { writeGapsPayload, drainAccepted, GAPS_ACCEPTED_KEY } from "@/lib/gaps-handoff";
 
 // The page is manual-first: you land straight in the editable form and can fill
 // it in by hand. Recording / pasting a transcript is an optional accelerator
@@ -177,6 +177,59 @@ export default function AutoModeClient({
     stopRecording
   } = useSegmentRecorder("oneminute:auto:transcript");
 
+  // The draft survives a refresh or a crash mid-meeting — minutes typed during a
+  // live recording are too costly to lose.
+  const DRAFT_KEY = "oneminute:auto:plan";
+  const [draftSaved, setDraftSaved] = useState(false);
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(DRAFT_KEY);
+      if (raw) setPlan(JSON.parse(raw) as AutoPlan);
+    } catch {
+      /* ignore a corrupt draft */
+    }
+  }, []);
+  useEffect(() => {
+    if (step !== "edit") return;
+    try {
+      localStorage.setItem(DRAFT_KEY, JSON.stringify(plan));
+      setDraftSaved(true);
+      const t = setTimeout(() => setDraftSaved(false), 1200);
+      return () => clearTimeout(t);
+    } catch {
+      /* ignore */
+    }
+  }, [plan, step]);
+
+  // Suggestions accepted in the "What did I miss?" tab arrive here live.
+  useEffect(() => {
+    function applyAccepted() {
+      const items = drainAccepted();
+      if (items.length === 0) return;
+      setPlan((prev) => ({
+        ...prev,
+        minutes: [
+          ...prev.minutes,
+          ...items.map((it) => ({
+            ...emptyMinute(it.area || "General"),
+            title: it.title,
+            description: it.description,
+            minuteType: it.minuteType as never
+          }))
+        ]
+      }));
+    }
+    function onStorage(e: StorageEvent) {
+      if (e.key === GAPS_ACCEPTED_KEY && e.newValue) applyAccepted();
+    }
+    window.addEventListener("storage", onStorage);
+    window.addEventListener("focus", applyAccepted);
+    return () => {
+      window.removeEventListener("storage", onStorage);
+      window.removeEventListener("focus", applyAccepted);
+    };
+  }, []);
+
   async function analyze() {
     if (!transcript.trim()) return;
     setError("");
@@ -213,6 +266,7 @@ export default function AutoModeClient({
       // so a big meeting never hits Vercel's 60s cap.
       const r = await commitAutoChunked(planForCommit);
       clearTranscript(); // committed — the draft is done with
+      try { localStorage.removeItem(DRAFT_KEY); } catch { /* ignore */ }
       // Warnings (e.g. a DevOps item that failed) matter — pause on them.
       // Otherwise jump straight to Browse with the new meeting selected.
       if (r.warnings.length > 0) {
@@ -238,6 +292,7 @@ export default function AutoModeClient({
     setPlan(emptyPlan());
     setResult(null);
     setError("");
+    try { localStorage.removeItem(DRAFT_KEY); } catch { /* ignore */ }
   }
 
   // ---- render ----
@@ -354,32 +409,42 @@ export default function AutoModeClient({
         </div>
       )}
 
-      {/* Gap-check the hand-written minutes against the transcript. */}
+      {/* Gap-check opens in its OWN tab, so the meeting page (and the running
+          recording) is never navigated away from. */}
       {step === "edit" && (
-        <SuggestionsPanel
-          transcript={transcript}
-          captured={plan.minutes.map((m) => ({
-            title: m.title,
-            description: m.description,
-            type: m.minuteType
-          }))}
-          areas={[...new Set(plan.minutes.map((m) => m.area).filter(Boolean))]}
-          disabled={isRecording || isTranscribing}
-          onAccept={(sug) =>
-            setPlan((prev) => ({
-              ...prev,
-              minutes: [
-                ...prev.minutes,
-                {
-                  ...emptyMinute(sug.area),
-                  title: sug.title,
-                  description: sug.description,
-                  minuteType: sug.minuteType as never
-                }
-              ]
-            }))
-          }
-        />
+        <div className="flex flex-wrap items-center gap-2 rounded-lg border-2 border-dashed border-amber-300 bg-amber-50/50 p-4">
+          <button
+            onClick={() => {
+              writeGapsPayload({
+                source: "auto",
+                meetingTitle: plan.meeting.title || "New meeting",
+                transcript,
+                captured: plan.minutes.map((m) => ({
+                  title: m.title,
+                  description: m.description,
+                  type: m.minuteType
+                })),
+                areas: [...new Set(plan.minutes.map((m) => m.area).filter(Boolean))]
+              });
+              window.open("/gaps", "_blank", "noopener");
+            }}
+            disabled={!transcript.trim() || isRecording || isTranscribing}
+            className="rounded bg-amber-500 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+          >
+            💡 What did I miss? ↗
+          </button>
+          <span className="text-xs text-slate-500">
+            {!transcript.trim()
+              ? "Needs a transcript — record the meeting (each ~10-minute segment appears as it finishes) or paste one above."
+              : isRecording || isTranscribing
+                ? "Available once recording has stopped and the last segment has transcribed."
+                : "Opens a new tab comparing the minutes you wrote with the transcript. Anything you add there appears here straight away."}
+          </span>
+        </div>
+      )}
+
+      {step === "edit" && draftSaved && (
+        <p className="text-right text-xs text-emerald-600">Draft saved ✓</p>
       )}
 
       {step === "edit" && (
