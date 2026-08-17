@@ -26,6 +26,7 @@ const BodySchema = z.object({
   meetingTitle: z.string().min(1),
   meetingDate: z.string(),
   summary: z.string().optional().default(""),
+  transcript: z.string().optional().default(""),
   updates: z.array(
     z.object({
       rootMinuteId: z.string(),

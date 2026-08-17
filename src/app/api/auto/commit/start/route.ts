@@ -10,12 +10,12 @@ export const maxDuration = 60;
 // minutes are written afterwards in batches via /api/auto/commit/minutes.
 export async function POST(req: NextRequest) {
   try {
-    const body = (await req.json()) as { plan?: AutoPlan };
+    const body = (await req.json()) as { plan?: AutoPlan; transcript?: string };
     if (!body.plan) {
       return NextResponse.json({ error: "plan is required" }, { status: 400 });
     }
     const user = await requireUser();
-    const result = await commitAutoPlanStart(user.orgId, user.id, body.plan);
+    const result = await commitAutoPlanStart(user.orgId, user.id, body.plan, body.transcript);
     return NextResponse.json(result);
   } catch (err) {
     const msg = err instanceof Error ? err.message : "unknown error";

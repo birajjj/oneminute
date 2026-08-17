@@ -264,7 +264,7 @@ export default function AutoModeClient({
       };
       // Chunked commit: create the meeting first, then save minutes in batches,
       // so a big meeting never hits Vercel's 60s cap.
-      const r = await commitAutoChunked(planForCommit);
+      const r = await commitAutoChunked(planForCommit, transcript);
       clearTranscript(); // committed — the draft is done with
       try { localStorage.removeItem(DRAFT_KEY); } catch { /* ignore */ }
       // Warnings (e.g. a DevOps item that failed) matter — pause on them.

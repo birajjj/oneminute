@@ -111,6 +111,7 @@ export async function analyzeFollowupChunked(
 // Chunked commit: one fast "start", then batches of minutes.
 export async function commitAutoChunked(
   plan: AutoPlan,
+  transcript?: string,
   onProgress?: (p: ChunkProgress) => void
 ): Promise<{
   meetingId: string;
@@ -121,7 +122,7 @@ export async function commitAutoChunked(
 }> {
   const start = await postJson<{ projectId: string; meetingId: string; projectCreated: boolean }>(
     "/api/auto/commit/start",
-    { plan }
+    { plan, transcript }
   );
 
   const approved = (plan.minutes || []).filter(

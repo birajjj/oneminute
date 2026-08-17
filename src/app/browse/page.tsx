@@ -147,6 +147,7 @@ export default async function BrowsePage({
       description: m.description,
       attendee: m.attendee,
       followUpFrom,
+      transcript: m.transcript,
       // Registered tabs on this meeting — so a manually-added empty tab persists.
       areaNames: m.areas.map((a) => a.areaName),
       attachments: m.attachments.map((a) => ({

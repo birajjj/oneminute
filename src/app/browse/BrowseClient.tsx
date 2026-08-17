@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation";
 import ProjectFilterDropdown from "@/components/ProjectFilterDropdown";
 import { TagChips, TagBadges } from "@/components/TagChips";
 import MeetingAttachments, { type AttachmentMeta } from "@/components/MeetingAttachments";
+import { downloadTranscript } from "@/lib/download-transcript";
+import { writeGapsPayload } from "@/lib/gaps-handoff";
 
 const DESKTOP_SIDEBAR_COLLAPSED_KEY = "oneminute:desktop-sidebar-collapsed";
 
@@ -107,6 +109,7 @@ export interface BrowseMeeting {
   description: string | null;
   attendee: string | null;
   followUpFrom: { title: string; date: string } | null;
+  transcript: string | null;
   areaNames: string[];
   attachments: AttachmentMeta[];
   minutes: BrowseMinute[];
@@ -940,6 +943,53 @@ export default function BrowseClient({
                   >
                     ↪ Follow up this meeting
                   </a>
+                  {/* The transcript is stored with the meeting, so it can still be
+                      downloaded and re-checked long after the meeting ended. */}
+                  <button
+                    onClick={() =>
+                      downloadTranscript({
+                        title: selected.title,
+                        date: selected.date,
+                        projectName: selected.projectName,
+                        transcript: selected.transcript ?? ""
+                      })
+                    }
+                    disabled={!selected.transcript?.trim()}
+                    className="rounded border border-slate-300 px-4 py-2 text-sm text-slate-600 disabled:opacity-40"
+                    title={
+                      selected.transcript?.trim()
+                        ? "Save the transcript as a readable text file (who said what)"
+                        : "No transcript was recorded with this meeting"
+                    }
+                  >
+                    ⬇ Transcript
+                  </button>
+                  <button
+                    onClick={() => {
+                      writeGapsPayload({
+                        source: "browse",
+                        meetingId: selected.id,
+                        meetingTitle: selected.title,
+                        transcript: selected.transcript ?? "",
+                        captured: selected.minutes.map((mn) => ({
+                          title: mn.title,
+                          description: mn.description ?? "",
+                          type: mn.type
+                        })),
+                        areas: allAreas
+                      });
+                      window.open("/gaps", "_blank", "noopener");
+                    }}
+                    disabled={!selected.transcript?.trim()}
+                    className="rounded bg-amber-500 px-4 py-2 text-sm font-medium text-white disabled:opacity-40"
+                    title={
+                      selected.transcript?.trim()
+                        ? "Compare these minutes with the transcript and get recommendations"
+                        : "No transcript was recorded with this meeting"
+                    }
+                  >
+                    ✨ AI Recommendation ↗
+                  </button>
                   <a
                     href={`/report/${selected.id}`}
                     className="rounded bg-gradient-to-r from-brand-blue to-brand-purple px-4 py-2 text-sm font-medium text-white"

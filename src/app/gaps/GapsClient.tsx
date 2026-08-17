@@ -170,17 +170,40 @@ export default function GapsClient() {
                           </span>
                           {isAccepted ? (
                             <span className="text-xs font-medium text-emerald-700">
-                              Sent to your meeting ✓
+                              Added ✓
                             </span>
                           ) : (
                             <button
-                              onClick={() => {
-                                pushAccepted({
-                                  title: s.title,
-                                  description: s.description,
-                                  minuteType: s.minuteType,
-                                  area: s.area
-                                });
+                              onClick={async () => {
+                                if (payload.meetingId) {
+                                  // Already-saved meeting: write it straight in.
+                                  try {
+                                    const res = await fetch(
+                                      `/api/meetings/${payload.meetingId}/minutes`,
+                                      {
+                                        method: "POST",
+                                        headers: { "Content-Type": "application/json" },
+                                        body: JSON.stringify({
+                                          area: s.area,
+                                          title: s.title,
+                                          description: s.description,
+                                          type: s.minuteType
+                                        })
+                                      }
+                                    );
+                                    if (!res.ok) throw new Error("save failed");
+                                  } catch {
+                                    setError("Could not add that minute — try again.");
+                                    return;
+                                  }
+                                } else {
+                                  pushAccepted({
+                                    title: s.title,
+                                    description: s.description,
+                                    minuteType: s.minuteType,
+                                    area: s.area
+                                  });
+                                }
                                 setAccepted((prev) => new Set(prev).add(i));
                               }}
                               className="rounded bg-brand-blue px-2 py-1 text-xs font-medium text-white"

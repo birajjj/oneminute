@@ -771,6 +771,7 @@ export default function FollowUpClient({
           meetingTitle: title,
           meetingDate: dateTimeLocalToISO(date),
           summary: aiSummary,
+          transcript: recorder.transcript,
           updates: data.openItems.map((it) => ({ rootMinuteId: it.id, ...updates[it.id] })),
           newMinutes: newMinutes.filter((m) => m.title.trim())
         })

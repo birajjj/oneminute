@@ -220,7 +220,8 @@ export async function commitAutoPlan(
 export async function commitAutoPlanStart(
   orgId: string,
   userId: string,
-  plan: AutoPlan
+  plan: AutoPlan,
+  transcript?: string
 ): Promise<{ projectId: string; meetingId: string; projectCreated: boolean }> {
   return db.$transaction(
     async (tx) => {
@@ -247,6 +248,7 @@ export async function commitAutoPlanStart(
           projectId,
           title: (plan.meeting.title || "Untitled Meeting").trim(),
           description: plan.meeting.description || plan.summary || null,
+          transcript: transcript?.trim() || null,
           meetingDate,
           attendee: plan.meeting.attendees || null,
           ownerUserId: userId,

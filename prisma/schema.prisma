@@ -87,6 +87,10 @@ model Meeting {
   //   parentMeetingId = <id>       → followup to a specific meeting; copy areas from that meeting
   parentMeetingIdRaw String?      @map("parent_meeting_id_raw")
 
+  // Verbatim record of what was said, kept with the meeting it produced so it
+  // can be downloaded later and compared against the minutes (AI Recommendation).
+  transcript        String?
+
   // list of parent-minute ids that were "marked complete" during this meeting (mirrors MeetingMinuteID)
   completedParentMinuteIds String[] @map("completed_parent_minute_ids") @db.Uuid
 

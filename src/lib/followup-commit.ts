@@ -70,7 +70,8 @@ export interface FollowUpInput {
   parentMeetingId: string;
   meetingTitle: string;
   meetingDate: string;
-  summary?: string; // AI recap → the follow-up meeting's description
+  summary?: string;
+  transcript?: string; // verbatim record, kept with the meeting // AI recap → the follow-up meeting's description
   updates: FollowUpUpdateInput[];
   newMinutes: FollowUpNewMinuteInput[];
 }
@@ -127,6 +128,7 @@ export async function commitFollowUp(
           projectId: parent.projectId,
           title,
           description: input.summary?.trim() || null,
+          transcript: input.transcript?.trim() || null,
           meetingDate: resolveMeetingDate(input.meetingDate),
           ownerUserId: userId,
           parentMeetingIdRaw: parent.id
