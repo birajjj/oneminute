@@ -257,7 +257,12 @@ export default function ReportClient({ data }: { data: ReportData }) {
           body { background: #fff; }
           .report-paper { box-shadow: none !important; border: 0 !important; max-width: none !important; padding: 0 !important; }
           .cover-note { border: 0 !important; padding: 0 !important; }
-          section, li { break-inside: avoid; }
+          /* Keep an ITEM whole, but let a section flow across pages — a
+             section that must not break gets pushed wholesale to the next page,
+             which is what left large blank areas at the foot of a page. */
+          section { break-inside: auto; }
+          li, tr { break-inside: avoid; }
+          h1, h2, h3 { break-after: avoid; }
           @page { margin: 16mm; }
         }
       `}</style>
