@@ -9,6 +9,7 @@ import { normalizeTags } from "@/lib/tags";
 import BusyOverlay from "@/components/BusyOverlay";
 import MeetingAttachments from "@/components/MeetingAttachments";
 import { downloadTranscript } from "@/lib/download-transcript";
+import SuggestionsPanel from "@/components/SuggestionsPanel";
 
 const TYPE_OPTIONS = ["Note", "To-Do", "Action", "Devops"];
 // Types allowed for extra minutes raised under an open item (boss: note/todo/
@@ -207,7 +208,7 @@ export default function FollowUpClient({
   const [newMinutes, setNewMinutes] = useState<NewMinute[]>([]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
-  const [result, setResult] = useState<{ updated: number; created: number; warnings: string[] } | null>(null);
+  const [result, setResult] = useState<{ meetingId?: string; updated: number; created: number; warnings: string[] } | null>(null);
 
   // ---- Drag & drop reorganisation (additive — existing controls untouched) ----
   // Drag an item's grip handle; drop onto a tab (re-file) or onto another item
@@ -728,9 +729,23 @@ export default function FollowUpClient({
             </ul>
           )}
         </div>
-        <a href="/browse" className="rounded bg-brand-blue px-4 py-2 font-medium text-white">
-          View in Browse
-        </a>
+        <div className="flex shrink-0 flex-col gap-2">
+          {result.meetingId && (
+            <a
+              href={`/report/${result.meetingId}`}
+              className="rounded bg-gradient-to-r from-brand-blue to-brand-purple px-4 py-2 text-center font-medium text-white"
+              title="Open a printable report — use Download / Print PDF there"
+            >
+              📄 Report / PDF
+            </a>
+          )}
+          <a
+            href={result.meetingId ? `/browse?meeting=${result.meetingId}` : "/browse"}
+            className="rounded border border-slate-300 px-4 py-2 text-center font-medium text-slate-700"
+          >
+            View in Browse
+          </a>
+        </div>
       </div>
     );
   }
@@ -884,6 +899,48 @@ export default function FollowUpClient({
           />
         </label>
       </div>
+
+      {/* Gap-check what has been written against the transcript. The open items
+          and their notes count as "already captured", so a suggestion is only
+          raised for something genuinely not written down anywhere. */}
+      {recorder.transcript.trim() && (
+        <SuggestionsPanel
+          transcript={recorder.transcript}
+          captured={[
+            ...data.openItems.map((it) => ({
+              title: it.title,
+              description: updates[it.id]?.note || it.description || "",
+              type: it.type
+            })),
+            ...newMinutes.map((m) => ({
+              title: m.title,
+              description: m.description,
+              type: m.type
+            }))
+          ]}
+          areas={allAreas}
+          disabled={recorder.isRecording || recorder.isTranscribing || analyzing}
+          onAccept={(sug) =>
+            setNewMinutes((prev) => [
+              ...prev,
+              {
+                area: sug.area,
+                title: sug.title,
+                description: sug.description,
+                type: sug.minuteType,
+                status: "New",
+                assignedTo: "",
+                dueDate: "",
+                tags: [],
+                devopsAction: "none",
+                devopsProject: "",
+                devopsWorkItemType: "User Story",
+                devopsWorkItemId: ""
+              }
+            ])
+          }
+        />
+      )}
 
       {/* Carried-forward open items */}
       <div className="rounded-lg border border-slate-200 bg-white p-4">

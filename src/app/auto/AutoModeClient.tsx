@@ -8,6 +8,7 @@ import { analyzeAutoChunked, commitAutoChunked } from "@/lib/chunk-analyze";
 import { TagChips } from "@/components/TagChips";
 import { downloadTranscript } from "@/lib/download-transcript";
 import BusyOverlay from "@/components/BusyOverlay";
+import SuggestionsPanel from "@/components/SuggestionsPanel";
 
 // The page is manual-first: you land straight in the editable form and can fill
 // it in by hand. Recording / pasting a transcript is an optional accelerator
@@ -353,6 +354,34 @@ export default function AutoModeClient({
         </div>
       )}
 
+      {/* Gap-check the hand-written minutes against the transcript. */}
+      {step === "edit" && transcript.trim() && (
+        <SuggestionsPanel
+          transcript={transcript}
+          captured={plan.minutes.map((m) => ({
+            title: m.title,
+            description: m.description,
+            type: m.minuteType
+          }))}
+          areas={[...new Set(plan.minutes.map((m) => m.area).filter(Boolean))]}
+          disabled={isRecording || isTranscribing}
+          onAccept={(sug) =>
+            setPlan((prev) => ({
+              ...prev,
+              minutes: [
+                ...prev.minutes,
+                {
+                  ...emptyMinute(sug.area),
+                  title: sug.title,
+                  description: sug.description,
+                  minuteType: sug.minuteType as never
+                }
+              ]
+            }))
+          }
+        />
+      )}
+
       {step === "edit" && (
         <PlanReview plan={plan} members={members} projects={projects} meetings={meetings} devopsEnabled={devopsEnabled} devopsProjects={devopsProjects} onChange={setPlan} onBack={reset} onCommit={commit} />
       )}
@@ -372,7 +401,18 @@ export default function AutoModeClient({
                 </ul>
               )}
             </div>
-            <a href={`/browse?meeting=${result.meetingId ?? ""}`} className="rounded border border-emerald-300 px-4 py-2 font-medium text-emerald-700">View in Browse</a>
+            <div className="flex shrink-0 flex-col gap-2">
+              {result.meetingId && (
+                <a
+                  href={`/report/${result.meetingId}`}
+                  className="rounded bg-gradient-to-r from-brand-blue to-brand-purple px-4 py-2 text-center font-medium text-white"
+                  title="Open a printable report — use Download / Print PDF there"
+                >
+                  📄 Report / PDF
+                </a>
+              )}
+              <a href={`/browse?meeting=${result.meetingId ?? ""}`} className="rounded border border-emerald-300 px-4 py-2 text-center font-medium text-emerald-700">View in Browse</a>
+            </div>
             <button onClick={reset} className="rounded bg-brand-blue px-4 py-2 font-medium text-white">Capture another</button>
           </div>
         </div>

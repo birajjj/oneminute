@@ -219,3 +219,50 @@ async function postJson<T>(url: string, body: unknown, retries = 1): Promise<T> 
 function sleep(ms: number): Promise<void> {
   return new Promise((r) => setTimeout(r, ms));
 }
+
+// ---------------------------------------------------------------------------
+// "What did I miss?" — reviews the hand-written minutes against the transcript.
+// Chunked like the analyzers so a long meeting never hits the 60s cap. The
+// captured list is sent with EVERY chunk so each pass can tell what is already
+// covered; results are merged and de-duped on title.
+// ---------------------------------------------------------------------------
+
+export interface MissedSuggestion {
+  title: string;
+  description: string;
+  minuteType: string;
+  area: string;
+  reason: string;
+}
+
+export async function suggestMissingChunked(
+  transcript: string,
+  captured: { title: string; description: string; type: string }[],
+  areas: string[],
+  onProgress?: (p: ChunkProgress) => void
+): Promise<MissedSuggestion[]> {
+  const chunks = splitTranscript(transcript);
+  const out: MissedSuggestion[] = [];
+  const seen = new Set(captured.map((c) => c.title.trim().toLowerCase()).filter(Boolean));
+  for (let i = 0; i < chunks.length; i++) {
+    onProgress?.({ done: i, total: chunks.length, phase: "analyzing" });
+    const r = await postJson<{ suggestions: MissedSuggestion[] }>("/api/suggest", {
+      chunk: chunks[i],
+      // Includes what earlier chunks already proposed, so later passes don't
+      // suggest the same gap twice.
+      captured: [
+        ...captured,
+        ...out.map((s) => ({ title: s.title, description: s.description, type: s.minuteType }))
+      ],
+      areas
+    });
+    for (const s of r.suggestions ?? []) {
+      const key = s.title.trim().toLowerCase();
+      if (!key || seen.has(key)) continue;
+      seen.add(key);
+      out.push(s);
+    }
+  }
+  onProgress?.({ done: chunks.length, total: chunks.length, phase: "analyzing" });
+  return out;
+}
