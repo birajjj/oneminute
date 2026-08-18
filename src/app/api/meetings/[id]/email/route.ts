@@ -68,7 +68,7 @@ export async function POST(
       return NextResponse.json(
         {
           error:
-            "Email is not configured yet. Set SENDGRID_API_KEY and EMAIL_FROM in the environment, then redeploy."
+            "Email is not configured yet. Set EMAIL_FROM plus either SENDGRID_API_KEY, or SMTP_HOST/SMTP_USER/SMTP_PASS to send through an existing mailbox. Then redeploy."
         },
         { status: 503 }
       );

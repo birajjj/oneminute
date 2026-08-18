@@ -1,19 +1,36 @@
-// SendGrid transport. Matches how the DECYP form project sends mail, so the same
-// account/sender can be reused.
+// Outbound mail. Two transports, picked from whichever env vars are present, so
+// the app can send through any mailbox you already have today and be switched to
+// a corporate account later WITHOUT a code change — only env vars move.
 //
-// Config (set in Vercel — never committed):
-//   SENDGRID_API_KEY  the API key
-//   EMAIL_FROM        a VERIFIED sender on that SendGrid account, e.g.
-//                     "OneMinute <noreply@yourdomain>". SendGrid rejects any
-//                     From address that isn't verified.
-//   EMAIL_REPLY_TO    optional; replies go here instead of the from address
+//   SendGrid (preferred once available — matches the DECYP project):
+//     SENDGRID_API_KEY   the API key
+//
+//   SMTP (works with Office 365, Gmail app passwords, or any SMTP host):
+//     SMTP_HOST          e.g. smtp.office365.com / smtp.gmail.com
+//     SMTP_PORT          587 (STARTTLS, default) or 465 (implicit TLS)
+//     SMTP_USER          mailbox login
+//     SMTP_PASS          password or app password
+//
+//   Both:
+//     EMAIL_FROM         the sender, e.g. "OneMinute <noreply@yourdomain>".
+//                        SendGrid requires this address to be VERIFIED; SMTP
+//                        usually requires it to match SMTP_USER.
+//     EMAIL_REPLY_TO     optional; replies go here instead
 //
 // SERVER-ONLY: never import from a Client Component.
 
-import sgMail from "@sendgrid/mail";
+export type EmailProvider = "sendgrid" | "smtp" | null;
+
+/** Which transport is usable right now, or null if none is configured. */
+export function activeProvider(): EmailProvider {
+  if (!process.env.EMAIL_FROM) return null;
+  if (process.env.SENDGRID_API_KEY) return "sendgrid";
+  if (process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS) return "smtp";
+  return null;
+}
 
 export function emailConfigured(): boolean {
-  return !!process.env.SENDGRID_API_KEY && !!process.env.EMAIL_FROM;
+  return activeProvider() !== null;
 }
 
 export interface SendEmailInput {
@@ -24,30 +41,54 @@ export interface SendEmailInput {
 }
 
 export async function sendEmail(input: SendEmailInput): Promise<void> {
-  const key = process.env.SENDGRID_API_KEY;
+  const provider = activeProvider();
   const from = process.env.EMAIL_FROM;
-  if (!key || !from) {
+  if (!provider || !from) {
     throw new Error(
-      "Email is not configured — set SENDGRID_API_KEY and EMAIL_FROM in the environment."
+      "Email is not configured — set EMAIL_FROM plus either SENDGRID_API_KEY or SMTP_HOST/SMTP_USER/SMTP_PASS."
     );
   }
   if (input.to.length === 0) throw new Error("No recipients selected.");
 
-  sgMail.setApiKey(key);
+  const text = input.text || stripHtml(input.html);
+  const replyTo = process.env.EMAIL_REPLY_TO || undefined;
 
-  // Personalizations with one entry per recipient means each person gets their
-  // own copy — nobody sees the rest of the list, which matters when the
-  // recipients are external stakeholders from different organisations.
-  await sgMail.send({
-    from,
-    replyTo: process.env.EMAIL_REPLY_TO || undefined,
-    subject: input.subject,
-    html: input.html,
-    text: input.text || stripHtml(input.html),
-    personalizations: input.to.map((r) => ({
-      to: [{ email: r.email, name: r.name }]
-    }))
+  if (provider === "sendgrid") {
+    const sgMail = (await import("@sendgrid/mail")).default;
+    sgMail.setApiKey(process.env.SENDGRID_API_KEY!);
+    // One personalization per recipient: each person gets their own copy and
+    // never sees the rest of the list (they are external stakeholders).
+    await sgMail.send({
+      from,
+      replyTo,
+      subject: input.subject,
+      html: input.html,
+      text,
+      personalizations: input.to.map((r) => ({ to: [{ email: r.email, name: r.name }] }))
+    });
+    return;
+  }
+
+  const nodemailer = (await import("nodemailer")).default;
+  const port = Number(process.env.SMTP_PORT || 587);
+  const transport = nodemailer.createTransport({
+    host: process.env.SMTP_HOST!,
+    port,
+    secure: port === 465, // 465 = implicit TLS; 587 upgrades via STARTTLS
+    auth: { user: process.env.SMTP_USER!, pass: process.env.SMTP_PASS! }
   });
+
+  // Sent one message per recipient, for the same privacy reason as above.
+  for (const r of input.to) {
+    await transport.sendMail({
+      from,
+      to: r.name ? `${r.name} <${r.email}>` : r.email,
+      replyTo,
+      subject: input.subject,
+      html: input.html,
+      text
+    });
+  }
 }
 
 // A plain-text fallback for clients that refuse HTML.
