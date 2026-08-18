@@ -229,7 +229,7 @@ export default function ReportClient({ data }: { data: ReportData }) {
                 {t}
               </span>
             ))}
-            {!nested && <span className="text-slate-300">{it.area}</span>}
+            {!nested && <span className="text-slate-500">{it.area}</span>}
           </div>
 
           {/* Tasks raised under this item — keeps a workstream in one block. */}
