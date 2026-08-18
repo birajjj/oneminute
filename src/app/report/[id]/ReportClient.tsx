@@ -312,7 +312,7 @@ export default function ReportClient({ data }: { data: ReportData }) {
       {/* The printable report */}
       <div className="mx-auto max-w-[1440px] px-4 py-6 sm:px-6">
         <div className="mb-4">
-          <StakeholderManager projectId={data.projectId} />
+          <StakeholderManager projectId={data.projectId} meetingId={data.meetingId} meetingTitle={data.title} />
         </div>
         <div
           ref={reportRef}
