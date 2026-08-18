@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import StakeholderManager from "@/components/StakeholderManager";
 
 export interface ReportItem {
   id: string;
@@ -23,6 +24,7 @@ export interface ReportData {
   meetingId: string;
   title: string;
   date: string; // ISO
+  projectId: string;
   projectName: string;
   attendee: string | null;
   description: string | null; // the meeting's own overview (default summary)
@@ -309,6 +311,9 @@ export default function ReportClient({ data }: { data: ReportData }) {
 
       {/* The printable report */}
       <div className="mx-auto max-w-[1440px] px-4 py-6 sm:px-6">
+        <div className="mb-4">
+          <StakeholderManager projectId={data.projectId} />
+        </div>
         <div
           ref={reportRef}
           className="report-paper rounded-lg border border-slate-200 bg-white p-8 text-slate-800 shadow-sm"

@@ -167,6 +167,7 @@ export default async function ReportPage({
     meetingId: meeting.id,
     title: meeting.title,
     date: meeting.meetingDate.toISOString(),
+    projectId: meeting.project.id,
     projectName: meeting.project.name,
     attendee: meeting.attendee,
     description: meeting.description,

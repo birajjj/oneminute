@@ -26,8 +26,9 @@ model Org {
   meetings    Meeting[]
   minutes     Minute[]
   areas       MeetingArea[]
-  audit       AuditLog[]
-  attachments Attachment[]
+  audit        AuditLog[]
+  attachments  Attachment[]
+  stakeholders Stakeholder[]
 
   @@map("orgs")
 }
@@ -62,8 +63,9 @@ model Project {
   ownerName String?   @map("owner_name")
   createdAt DateTime  @default(now()) @map("created_at")
 
-  org       Org       @relation(fields: [orgId], references: [id], onDelete: Cascade)
-  meetings  Meeting[]
+  org          Org           @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  meetings     Meeting[]
+  stakeholders Stakeholder[]
 
   @@unique([orgId, name])
   @@index([orgId])
@@ -127,6 +129,26 @@ model Attachment {
 
   @@index([meetingId])
   @@map("attachments")
+}
+
+// A person a project's meeting reports are sent to. Project-scoped: the recipient
+// list is stable across a project's meetings; the sender ticks who to include per
+// send. Stored here (not pulled from a login/roster) because stakeholders are
+// usually external and never sign in.
+model Stakeholder {
+  id        String   @id @default(uuid()) @db.Uuid
+  orgId     String   @map("org_id") @db.Uuid
+  projectId String   @map("project_id") @db.Uuid
+  name      String
+  email     String
+  createdAt DateTime @default(now()) @map("created_at")
+
+  org     Org     @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, email])
+  @@index([projectId])
+  @@map("stakeholders")
 }
 
 model MeetingArea {
