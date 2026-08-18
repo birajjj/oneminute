@@ -171,9 +171,9 @@ export async function buildReportEmail(
                </td></tr>`
             : ""
         }
-        ${section("Actions, to-dos &amp; devops", "#059669", actions)}
-        ${section("Decisions, scope &amp; governance", "#7c3aed", decisions)}
-        ${section("Notes &amp; discussion", "#64748b", notes)}
+        ${section("Actions, to-dos & devops", "#059669", actions)}
+        ${section("Decisions, scope & governance", "#7c3aed", decisions)}
+        ${section("Notes & discussion", "#64748b", notes)}
         <tr><td style="padding-top:22px;border-top:1px solid #e2e8f0;color:#94a3b8;font-size:12px;">
           Sent from OneMinute &middot; ${esc(meeting.project.name)}
         </td></tr>
