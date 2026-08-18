@@ -86,7 +86,6 @@ function flatten(items: ReportItem[]): ReportItem[] {
 
 export default function ReportClient({ data }: { data: ReportData }) {
   const [includeCancelled, setIncludeCancelled] = useState(false);
-  const [generating, setGenerating] = useState(false);
   const [copied, setCopied] = useState(false);
   const summaryRef = useRef<HTMLDivElement>(null);
   const reportRef = useRef<HTMLDivElement>(null);
@@ -130,7 +129,7 @@ export default function ReportClient({ data }: { data: ReportData }) {
   }, [all]);
 
   // Never open on a blank summary: use the meeting's own overview, else state
-  // the facts. Editable either way; "Rewrite with AI" replaces it.
+  // the facts. Editable either way.
   const autoSummary = useMemo(() => {
     const bits: string[] = [];
     if (counts.discussed) bits.push(`${counts.discussed} ongoing item${counts.discussed === 1 ? "" : "s"} reviewed`);
@@ -147,18 +146,6 @@ export default function ReportClient({ data }: { data: ReportData }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  async function generateSummary() {
-    setGenerating(true);
-    try {
-      const res = await fetch(`/api/meetings/${data.meetingId}/report-summary`, { method: "POST" });
-      const j = await res.json().catch(() => ({}));
-      if (res.ok && j.summary && summaryRef.current) summaryRef.current.innerText = j.summary;
-    } catch {
-      /* leave editable */
-    } finally {
-      setGenerating(false);
-    }
-  }
 
   function copyReport() {
     const node = reportRef.current;
@@ -288,13 +275,6 @@ export default function ReportClient({ data }: { data: ReportData }) {
             Include cancelled
           </label>
           <button
-            onClick={generateSummary}
-            disabled={generating}
-            className="rounded border border-slate-300 px-3 py-1.5 text-sm hover:bg-slate-100 disabled:opacity-50"
-          >
-            {generating ? "Summarizing…" : "✨ Rewrite with AI"}
-          </button>
-          <button
             onClick={copyReport}
             className="rounded border border-slate-300 px-3 py-1.5 text-sm hover:bg-slate-100"
           >
@@ -348,7 +328,7 @@ export default function ReportClient({ data }: { data: ReportData }) {
               className="mt-1 text-[15px] leading-relaxed"
               contentEditable
               suppressContentEditableWarning
-              data-ph={generating ? "Generating summary…" : "Write a short summary…"}
+              data-ph="Write a short summary…"
             />
           </section>
 
