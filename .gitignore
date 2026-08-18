@@ -33,3 +33,7 @@ yarn-error.log*
 coverage
 playwright-report
 test-results
+
+# Database backups — contain real meeting data, never commit
+backups/
+tsconfig.tsbuildinfo
