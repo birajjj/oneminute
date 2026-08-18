@@ -500,12 +500,33 @@ export default function FollowUpClient({
           <TagChips value={m.tags} onChange={(tags) => setNewMinute(i, { tags })} />
         </div>
         <div className="mt-1 grid grid-cols-2 gap-1 text-xs">
-          <input
-            value={m.area}
-            onChange={(e) => setNewMinute(i, { area: e.target.value })}
-            placeholder="Area"
-            className="rounded border border-slate-300 p-1"
-          />
+          {/* Pick one of the parent meeting's areas, or name a new one. The
+              choice is derived from the value itself — an area that is not one
+              of the existing tabs means "new", so no extra state is needed. */}
+          <div className="flex flex-col gap-1">
+            <select
+              value={allAreas.includes(m.area) ? m.area : "__new__"}
+              onChange={(e) =>
+                setNewMinute(i, { area: e.target.value === "__new__" ? "" : e.target.value })
+              }
+              className="rounded border border-slate-300 p-1"
+            >
+              {allAreas.map((a) => (
+                <option key={a} value={a}>
+                  {a}
+                </option>
+              ))}
+              <option value="__new__">+ New area…</option>
+            </select>
+            {!allAreas.includes(m.area) && (
+              <input
+                value={m.area}
+                onChange={(e) => setNewMinute(i, { area: e.target.value })}
+                placeholder="New area name"
+                className="rounded border border-slate-300 p-1"
+              />
+            )}
+          </div>
           <select
             value={m.type}
             onChange={(e) =>
