@@ -89,7 +89,6 @@ export default function StakeholderManager({
       const j = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(j.error || "Send failed");
       setSendMsg(`Sent to ${j.sent} recipient${j.sent === 1 ? "" : "s"}.`);
-      setPicked(new Set());
     } catch (e) {
       setSendErr(e instanceof Error ? e.message : "Send failed");
     } finally {
@@ -102,7 +101,12 @@ export default function StakeholderManager({
     fetch(`/api/projects/${projectId}/stakeholders`)
       .then((r) => (r.ok ? r.json() : { stakeholders: [] }))
       .then((j) => {
-        if (!cancelled) setList(j.stakeholders ?? []);
+        if (cancelled) return;
+        const rows: Stakeholder[] = j.stakeholders ?? [];
+        setList(rows);
+        // Ticked by default — the usual case is "send to everyone on this
+        // project"; unticking one is easier than remembering to tick all.
+        setPicked(new Set(rows.map((r) => r.id)));
       })
       .catch(() => { /* leave empty */ })
       .finally(() => { if (!cancelled) setLoaded(true); });
@@ -128,6 +132,7 @@ export default function StakeholderManager({
         const without = prev.filter((s) => s.id !== j.stakeholder.id && s.email !== j.stakeholder.email);
         return [...without, j.stakeholder].sort((a, b) => a.name.localeCompare(b.name));
       });
+      setPicked((prev) => new Set(prev).add(j.stakeholder.id));
       setName("");
       setEmail("");
     } catch (err) {
@@ -139,6 +144,11 @@ export default function StakeholderManager({
 
   async function remove(id: string) {
     setList((prev) => prev.filter((s) => s.id !== id)); // optimistic
+    setPicked((prev) => {
+      const next = new Set(prev);
+      next.delete(id);
+      return next;
+    });
     try {
       await fetch(`/api/stakeholders/${id}`, { method: "DELETE" });
     } catch {
