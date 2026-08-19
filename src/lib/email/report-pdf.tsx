@@ -46,6 +46,7 @@ const s = StyleSheet.create({
   status: { fontSize: 8, color: COLOURS.muted, marginLeft: 5 },
   body: { lineHeight: 1.45, color: COLOURS.body },
   meta: { flexDirection: "row", flexWrap: "wrap", marginTop: 4 },
+  child: { marginTop: 6, marginLeft: 10, paddingLeft: 8, borderLeftWidth: 2, borderLeftColor: "#cbd5e1", backgroundColor: "#ffffff", paddingVertical: 6, paddingRight: 6 },
   flag: { fontSize: 7, color: "#6d28d9", backgroundColor: "#ede9fe", paddingVertical: 2, paddingHorizontal: 4, marginRight: 4 },
   metaText: { fontSize: 8, color: COLOURS.faint },
 
@@ -64,12 +65,11 @@ const s = StyleSheet.create({
   }
 });
 
-function Item({ row, accent }: { row: ReportRow; accent: string }) {
+function ItemBody({ row }: { row: ReportRow }) {
   const meta = [row.owner, row.due ? `due ${row.due}` : null, row.area].filter(Boolean).join("  ·  ");
   const flags = row.tags.filter((t) => FLAGS.includes(t));
   return (
-    // wrap={false} keeps a single item from splitting across pages.
-    <View style={[s.item, { borderLeftColor: accent }]} wrap={false}>
+    <View>
       <View style={s.itemHead}>
         <Text style={s.badge}>{row.type}</Text>
         <Text style={s.itemTitle}>{row.title}</Text>
@@ -86,6 +86,23 @@ function Item({ row, accent }: { row: ReportRow; accent: string }) {
           {meta ? <Text style={s.metaText}>{meta}</Text> : null}
         </View>
       )}
+    </View>
+  );
+}
+
+function Item({ row, accent }: { row: ReportRow; accent: string }) {
+  const kids = row.children ?? [];
+  return (
+    // wrap={false} keeps an item — with the tasks raised under it — whole.
+    <View style={[s.item, { borderLeftColor: accent }]} wrap={false}>
+      <ItemBody row={row} />
+      {kids.map((child, i) => (
+        // A task raised under this item, nested exactly as on screen rather
+        // than repeated as a separate entry.
+        <View key={i} style={s.child}>
+          <ItemBody row={child} />
+        </View>
+      ))}
     </View>
   );
 }
