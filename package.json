@@ -21,6 +21,7 @@
   "dependencies": {
     "@anthropic-ai/sdk": "^0.115.0",
     "@prisma/client": "6.1.0",
+    "@react-pdf/renderer": "^4.6.1",
     "@sendgrid/mail": "^8.1.6",
     "@supabase/ssr": "0.5.2",
     "@supabase/supabase-js": "2.47.10",

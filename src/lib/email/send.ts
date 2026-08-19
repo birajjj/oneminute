@@ -33,11 +33,18 @@ export function emailConfigured(): boolean {
   return activeProvider() !== null;
 }
 
+export interface Attachment {
+  filename: string;
+  content: Buffer;
+  contentType: string;
+}
+
 export interface SendEmailInput {
   to: { email: string; name?: string }[];
   subject: string;
   html: string;
   text?: string;
+  attachments?: Attachment[];
 }
 
 export async function sendEmail(input: SendEmailInput): Promise<void> {
@@ -64,6 +71,12 @@ export async function sendEmail(input: SendEmailInput): Promise<void> {
       subject: input.subject,
       html: input.html,
       text,
+      attachments: input.attachments?.map((a) => ({
+        filename: a.filename,
+        type: a.contentType,
+        disposition: "attachment",
+        content: a.content.toString("base64")
+      })),
       personalizations: input.to.map((r) => ({ to: [{ email: r.email, name: r.name }] }))
     });
     return;
@@ -86,7 +99,12 @@ export async function sendEmail(input: SendEmailInput): Promise<void> {
       replyTo,
       subject: input.subject,
       html: input.html,
-      text
+      text,
+      attachments: input.attachments?.map((a) => ({
+        filename: a.filename,
+        content: a.content,
+        contentType: a.contentType
+      }))
     });
   }
 }

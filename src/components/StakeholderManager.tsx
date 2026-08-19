@@ -61,13 +61,16 @@ export default function StakeholderManager({
           preview: true
         })
       });
-      const j = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(j.error || "Could not build a preview");
-      const w = window.open("", "_blank");
-      if (w) {
-        w.document.write(j.html);
-        w.document.close();
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}));
+        throw new Error(j.error || "Could not build a preview");
       }
+      // The preview IS the PDF that will be attached — open it in a new tab.
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      window.open(url, "_blank");
+      // Give the tab time to load before releasing the object URL.
+      setTimeout(() => URL.revokeObjectURL(url), 60_000);
     } catch (e) {
       setSendErr(e instanceof Error ? e.message : "Could not build a preview");
     }
@@ -236,7 +239,7 @@ export default function StakeholderManager({
                   onClick={preview}
                   disabled={picked.size === 0}
                   className="rounded border border-slate-300 px-3 py-1.5 text-sm text-slate-700 disabled:opacity-40"
-                  title="Open the email exactly as it will arrive — nothing is sent"
+                  title="Open the PDF that will be attached — nothing is sent"
                 >
                   Preview
                 </button>
@@ -255,7 +258,7 @@ export default function StakeholderManager({
                 {sendErr && <span className="text-xs text-red-600">{sendErr}</span>}
               </div>
               <p className="text-xs text-slate-400">
-                Each person receives their own copy — recipients never see each other.
+                The report is attached as a PDF. Each person receives their own copy — recipients never see each other.
               </p>
             </div>
           )}

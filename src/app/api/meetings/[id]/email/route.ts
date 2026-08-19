@@ -56,11 +56,13 @@ export async function POST(
     const subject = parsed.data.subject?.trim() || built.subject;
 
     if (parsed.data.preview) {
-      return NextResponse.json({
-        preview: true,
-        subject,
-        html: built.html,
-        recipients: recipients.map((r) => r.email)
+      // Return the PDF itself — the point of previewing is to check the
+      // attachment recipients will actually open.
+      return new NextResponse(new Uint8Array(built.attachment.content), {
+        headers: {
+          "Content-Type": "application/pdf",
+          "Content-Disposition": `inline; filename="${built.attachment.filename}"`
+        }
       });
     }
 
@@ -77,7 +79,8 @@ export async function POST(
     await sendEmail({
       to: recipients.map((r) => ({ email: r.email, name: r.name })),
       subject,
-      html: built.html
+      html: built.html,
+      attachments: [built.attachment]
     });
 
     return NextResponse.json({ sent: recipients.length, recipients: recipients.map((r) => r.email) });
