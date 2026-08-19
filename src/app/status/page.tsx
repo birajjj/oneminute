@@ -47,7 +47,7 @@ export default async function StatusPage() {
           </div>
         ) : (
           <div className="space-y-2">
-            <p className="text-sm text-slate-600">Live row counts from Supabase:</p>
+            <p className="text-sm text-slate-600">Live row counts from Postgres:</p>
             <table className="w-full text-left text-sm">
               <thead>
                 <tr className="border-b border-slate-200 text-slate-500">
@@ -63,7 +63,7 @@ export default async function StatusPage() {
               </tbody>
             </table>
             <p className="pt-4 text-xs text-slate-500">
-              If this loaded without an error, the Next.js app is talking to Supabase Postgres via Prisma.
+              If this loaded without an error, the Next.js app is talking to Postgres via Prisma.
               All zeros is expected — no data yet.
             </p>
           </div>

@@ -699,7 +699,7 @@ export default function ProjectBoardClient({
             ← Browse
           </a>
           <span className="hidden text-sm text-slate-500 sm:inline">{userName}</span>
-          <form action="/auth/signout" method="post">
+          <form action="/api/auth/signout" method="post">
             <button className="rounded border border-slate-300 px-3 py-1.5 text-sm">Sign out</button>
           </form>
         </div>

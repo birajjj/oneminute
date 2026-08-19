@@ -144,6 +144,57 @@ SELECT id FROM meetings WHERE owner_user_id IS NOT NULL
 
 ---
 
+## Status: auth has been replaced (this branch)
+
+Supabase is gone from the codebase — `@supabase/ssr` and `@supabase/supabase-js`
+are uninstalled and `src/lib/supabase/` is deleted. Login now runs on standard
+OpenID Connect via `openid-client`, so the provider is configuration:
+
+| File | Role |
+|---|---|
+| `src/lib/oidc.ts` | Discovers the provider from its issuer URL |
+| `src/lib/session.ts` | Signed session cookie (JWT, 8 hours, httpOnly) |
+| `src/lib/auth.ts` | Unchanged contract — `getCurrentUser()` / `requireUser()` |
+| `src/app/api/auth/login` | Starts the flow (PKCE + state) |
+| `src/app/api/auth/callback` | Exchanges the code, mints the session |
+| `src/app/api/auth/signout` | Clears the session |
+| `src/proxy.ts` | Verifies the cookie at the edge; no DB call |
+
+**The 32 files that ask who is signed in did not change** — they still call
+`getCurrentUser()` / `requireUser()`, which kept the same signature.
+
+### Configure the provider
+
+```
+OIDC_ISSUER=https://login.microsoftonline.com/<tenant-id>/v2.0
+OIDC_CLIENT_ID=<application id>
+OIDC_CLIENT_SECRET=<client secret>
+AUTH_SECRET=<random string, 32+ chars>
+AUTH_URL=https://<this app's URL>        # optional
+```
+
+Register this redirect URI with the provider:
+
+```
+<AUTH_URL>/api/auth/callback
+```
+
+Until these are set, the sign-in page says so plainly rather than failing oddly.
+
+### Existing users keep their ids
+
+`getCurrentUser()` matches on **email** and reuses the `User.id` already in the
+database; the OIDC subject is recorded in `entraObjectId`. So the Supabase-issued
+ids that `meetings.owner_user_id` and `minutes.assigned_to_user_id` point at stay
+valid. Run the two queries below after the first real sign-in to confirm.
+
+### Remove afterwards
+
+Once sign-in is verified, delete `NEXT_PUBLIC_SUPABASE_URL` and
+`NEXT_PUBLIC_SUPABASE_ANON_KEY` from the environment — nothing reads them now.
+
+---
+
 ## Order of work
 
 1. ✅ Confirm the database is portable — `scripts/check-db.js` against the new server.
