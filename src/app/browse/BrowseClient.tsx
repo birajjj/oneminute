@@ -878,10 +878,10 @@ export default function BrowseClient({
                     🗑
                   </button>
                 </div>
-                <div className="mt-0.5 text-sm text-slate-500">{fmtDate(selected.date)}</div>
-
-                <div className="mt-4 text-sm">
-                  <div className="text-slate-500">Project:</div>
+                {/* One meta line rather than five stacked label/value blocks —
+                    on a meeting with no description or attendees, those blocks
+                    were ~300px of the card announcing that things were empty. */}
+                <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-slate-500">
                   <a
                     href={`/project/${selected.projectId}`}
                     className="inline-flex items-center gap-1 font-medium text-brand-blue hover:underline"
@@ -890,55 +890,77 @@ export default function BrowseClient({
                     {selected.projectName}
                     <span aria-hidden>↗</span>
                   </a>
-                </div>
-
-                <div className="mt-3 text-sm">
-                  <div className="text-slate-500">Description:</div>
-                  {isEditingMeeting ? (
-                    <textarea
-                      value={mDraft.description}
-                      onChange={(e) => setMDraft((d) => ({ ...d, description: e.target.value }))}
-                      rows={3}
-                      className="mt-1 w-full rounded border border-brand-blue p-2 text-slate-700"
-                    />
-                  ) : (
-                    <div
-                      onClick={() => startEditMeeting(selected)}
-                      className="mt-1 cursor-text rounded border border-slate-100 bg-slate-50 px-3 py-2 text-slate-700 hover:border-slate-200"
-                    >
-                      {selected.description || <span className="text-slate-400">—</span>}
-                    </div>
+                  <span aria-hidden>·</span>
+                  <span>{fmtDate(selected.date)}</span>
+                  {selected.attendee ? (
+                    <>
+                      <span aria-hidden>·</span>
+                      <button
+                        onClick={() => startEditMeeting(selected)}
+                        className="hover:underline"
+                        title="Click to edit attendees"
+                      >
+                        {selected.attendee}
+                      </button>
+                    </>
+                  ) : null}
+                  {selected.followUpFrom && (
+                    <>
+                      <span aria-hidden>·</span>
+                      <span className="text-slate-400">
+                        follow-up from{" "}
+                        <span className="text-brand-blue">{selected.followUpFrom.title}</span>
+                      </span>
+                    </>
                   )}
                 </div>
 
+                {/* Description: shown when there is one; otherwise a quiet offer
+                    to add it, instead of a filled box containing a dash that
+                    reads like a broken input. */}
                 <div className="mt-3 text-sm">
-                  <div className="text-slate-500">Attendees:</div>
                   {isEditingMeeting ? (
-                    <input
-                      value={mDraft.attendee}
-                      onChange={(e) => setMDraft((d) => ({ ...d, attendee: e.target.value }))}
-                      className="mt-1 w-full rounded border border-brand-blue px-2 py-1 text-slate-700"
-                    />
-                  ) : (
+                    <div className="space-y-2">
+                      <textarea
+                        value={mDraft.description}
+                        onChange={(e) => setMDraft((d) => ({ ...d, description: e.target.value }))}
+                        rows={3}
+                        placeholder="What was this meeting about?"
+                        className="w-full rounded border border-brand-blue p-2 text-slate-700"
+                        autoFocus
+                      />
+                      <input
+                        value={mDraft.attendee}
+                        onChange={(e) => setMDraft((d) => ({ ...d, attendee: e.target.value }))}
+                        placeholder="Attendees"
+                        className="w-full rounded border border-brand-blue px-2 py-1 text-slate-700"
+                      />
+                    </div>
+                  ) : selected.description ? (
                     <div
                       onClick={() => startEditMeeting(selected)}
-                      className="cursor-text font-medium hover:underline"
+                      className="cursor-text rounded text-slate-700 hover:bg-slate-50"
                       title="Click to edit"
                     >
-                      {selected.attendee || <span className="text-slate-400">—</span>}
+                      {selected.description}
                     </div>
+                  ) : (
+                    <button
+                      onClick={() => startEditMeeting(selected)}
+                      className="text-slate-400 hover:text-brand-blue hover:underline"
+                    >
+                      + Add description
+                    </button>
+                  )}
+                  {!isEditingMeeting && !selected.attendee && (
+                    <button
+                      onClick={() => startEditMeeting(selected)}
+                      className="ml-3 text-slate-400 hover:text-brand-blue hover:underline"
+                    >
+                      + Add attendees
+                    </button>
                   )}
                 </div>
-
-                {selected.followUpFrom && (
-                  <div className="mt-3 text-sm">
-                    <span className="text-slate-500">Follow-up From: </span>
-                    <span className="font-medium text-brand-blue">
-                      {selected.followUpFrom.title}
-                      {selected.followUpFrom.date ? ` — ${fmtDate(selected.followUpFrom.date)}` : ""}
-                    </span>
-                  </div>
-                )}
 
                 <div className="mt-4 border-t border-slate-100 pt-3">
                   <MeetingAttachments
@@ -999,7 +1021,7 @@ export default function BrowseClient({
                   )}
                   <a
                     href={`/report/${selected.id}`}
-                    className="rounded bg-gradient-to-r from-brand-blue to-brand-purple px-4 py-2 text-sm font-medium text-white"
+                    className="rounded border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
                     title="Open a printable stakeholder report for this meeting"
                   >
                     📄 Generate Report
@@ -1315,7 +1337,7 @@ export default function BrowseClient({
                               displayDescription && (
                                 <div
                                   onClick={() => startEditMinute(itemId, displayTitle, displayDescription ?? "")}
-                                  className="mt-2 cursor-text rounded border border-white bg-white/60 px-3 py-2 text-sm text-slate-700 hover:border-slate-200"
+                                  className="mt-1.5 cursor-text rounded px-1 py-0.5 text-sm text-slate-700 hover:bg-white/60"
                                 >
                                   {displayDescription}
                                 </div>

@@ -90,14 +90,16 @@ export default function MeetingAttachments({
 
   return (
     <div className="text-sm">
-      <div className="mb-1 flex items-center gap-2 text-slate-500">
-        <span>📎 Attachments</span>
-        {attachments.length > 0 && <span className="text-xs text-slate-400">({attachments.length})</span>}
-      </div>
+      {/* With nothing attached, a heading plus "No documents attached." was three
+          lines saying nothing — the add control below carries the meaning. */}
+      {attachments.length > 0 && (
+        <div className="mb-1 flex items-center gap-2 text-slate-500">
+          <span>📎 Attachments</span>
+          <span className="text-xs text-slate-400">({attachments.length})</span>
+        </div>
+      )}
 
-      {attachments.length === 0 ? (
-        <p className="text-slate-400">No documents attached.</p>
-      ) : (
+      {attachments.length === 0 ? null : (
         <ul className="space-y-1">
           {attachments.map((a) => (
             <li
