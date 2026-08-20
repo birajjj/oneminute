@@ -114,3 +114,68 @@ export async function getStyleProfile(orgId: string, projectId: string): Promise
   });
   return row?.profile?.trim() || null;
 }
+
+// ---------------------------------------------------------------------------
+// Worked examples + rejection memory — the other two things that make a
+// suggestion sound like this team rather than like a generic assistant.
+// ---------------------------------------------------------------------------
+
+export interface StyleExample {
+  title: string;
+  description: string;
+  type: string;
+}
+
+/**
+ * Real minutes from this project, to show rather than tell. A model imitates
+ * concrete examples far better than it follows described rules, and this
+ * improves on its own as more minutes are written.
+ *
+ * Excludes the meeting being checked — those are already in the prompt as the
+ * work under review.
+ */
+export async function getStyleExamples(
+  orgId: string,
+  projectId: string,
+  excludeMeetingId?: string,
+  take = 12
+): Promise<StyleExample[]> {
+  const rows = await db.minute.findMany({
+    where: {
+      orgId,
+      parentMinuteId: null, // the items themselves, not their update entries
+      description: { not: null },
+      meeting: { projectId, ...(excludeMeetingId ? { id: { not: excludeMeetingId } } : {}) }
+    },
+    orderBy: { createdAt: "desc" },
+    take,
+    select: { title: true, description: true, type: true }
+  });
+
+  return rows
+    .filter((r) => (r.description ?? "").trim().length > 30) // a stub teaches nothing
+    .map((r) => ({
+      title: r.title,
+      description: (r.description ?? "").trim(),
+      type: TYPE_LABEL[r.type] ?? r.type
+    }));
+}
+
+/**
+ * Titles this project has explicitly declined. Fed back so the same thing is not
+ * offered every meeting — the clearest signal of what they consider not worth
+ * recording.
+ */
+export async function getDeclinedTitles(
+  orgId: string,
+  projectId: string,
+  take = 25
+): Promise<string[]> {
+  const rows = await db.suggestionFeedback.findMany({
+    where: { orgId, projectId, accepted: false },
+    orderBy: { createdAt: "desc" },
+    take,
+    select: { title: true }
+  });
+  return [...new Set(rows.map((r) => r.title.trim()).filter(Boolean))];
+}

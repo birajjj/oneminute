@@ -2,7 +2,11 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { requireUser } from "@/lib/auth";
 import { suggestMissing } from "@/lib/ai/suggest";
-import { getStyleProfile } from "@/lib/ai/style-profile";
+import {
+  getStyleProfile,
+  getStyleExamples,
+  getDeclinedTitles
+} from "@/lib/ai/style-profile";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -25,7 +29,9 @@ const BodySchema = z.object({
   areas: z.array(z.string()).optional(),
   // Which project's house style to apply. Optional — without it the check still
   // works, just without the learned voice.
-  projectId: z.string().optional()
+  projectId: z.string().optional(),
+  // Excluded from the worked examples — these minutes are the work under review.
+  meetingId: z.string().optional()
 });
 
 export async function POST(req: NextRequest) {
@@ -37,13 +43,20 @@ export async function POST(req: NextRequest) {
     const user = await requireUser();
 
     // Scoped to the caller's org, so a project id from elsewhere reveals nothing.
-    const styleProfile = parsed.data.projectId
-      ? await getStyleProfile(user.orgId, parsed.data.projectId)
-      : null;
+    const pid = parsed.data.projectId;
+    const [styleProfile, examples, declined] = pid
+      ? await Promise.all([
+          getStyleProfile(user.orgId, pid),
+          getStyleExamples(user.orgId, pid, parsed.data.meetingId),
+          getDeclinedTitles(user.orgId, pid)
+        ])
+      : [null, [], []];
 
     const suggestions = await suggestMissing(parsed.data.chunk, parsed.data.captured, {
       areas: parsed.data.areas,
-      styleProfile
+      styleProfile,
+      examples,
+      declined
     });
     return NextResponse.json({ suggestions });
   } catch (err) {

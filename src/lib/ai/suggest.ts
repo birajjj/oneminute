@@ -50,7 +50,12 @@ const TYPES = ["Note", "To-Do", "Action", "Devops"];
 export async function suggestMissing(
   transcript: string,
   captured: CapturedMinute[],
-  opts?: { areas?: string[]; styleProfile?: string | null }
+  opts?: {
+    areas?: string[];
+    styleProfile?: string | null;
+    examples?: { title: string; description: string; type: string }[];
+    declined?: string[];
+  }
 ): Promise<Suggestion[]> {
   const lines: string[] = [];
   lines.push("A person took the minutes below BY HAND during a meeting. You are reviewing their");
@@ -81,6 +86,27 @@ export async function suggestMissing(
   if (opts?.areas?.length) {
     lines.push(`- Reuse one of these existing areas where it fits: ${opts.areas.map((a) => `"${a}"`).join(", ")}.`);
   }
+  // Showing beats telling: real minutes from this project are a stronger guide
+  // to voice and granularity than any description of them.
+  if (opts?.examples?.length) {
+    lines.push("");
+    lines.push("### HOW THEIR MINUTES READ (real examples from this project)");
+    lines.push("Write any suggestion so it would sit naturally beside these.");
+    for (const e of opts.examples) {
+      lines.push(`- (${e.type}) ${e.title}`);
+      lines.push(`  ${e.description}`);
+    }
+  }
+
+  // The clearest statement of what this team does not consider worth recording.
+  if (opts?.declined?.length) {
+    lines.push("");
+    lines.push("### ALREADY OFFERED AND DECLINED");
+    lines.push("They were shown these before and chose not to record them. Do not offer anything");
+    lines.push("of this kind again unless the transcript makes it materially more significant.");
+    for (const d of opts.declined) lines.push(`- ${d}`);
+  }
+
   lines.push("");
   lines.push("### MINUTES THEY ALREADY WROTE");
   if (captured.length === 0) {

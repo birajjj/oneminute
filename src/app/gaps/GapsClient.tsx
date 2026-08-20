@@ -17,6 +17,24 @@ export default function GapsClient() {
   const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
   const [suggestions, setSuggestions] = useState<MissedSuggestion[] | null>(null);
   const [accepted, setAccepted] = useState<Set<number>>(new Set());
+  const [declined, setDeclined] = useState<Set<number>>(new Set());
+
+  // Records what happened to a suggestion so the next check can learn from it.
+  // Fire-and-forget: feedback is valuable, but never worth blocking or failing
+  // the thing the user actually asked for.
+  function recordFeedback(s: MissedSuggestion, wasAccepted: boolean) {
+    if (!payload?.projectId) return;
+    void fetch("/api/suggest/feedback", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        projectId: payload.projectId,
+        title: s.title,
+        minuteType: s.minuteType,
+        accepted: wasAccepted
+      })
+    }).catch(() => { /* ignore */ });
+  }
   const [error, setError] = useState("");
 
   useEffect(() => {
@@ -30,10 +48,17 @@ export default function GapsClient() {
     setBusy(true);
     setError("");
     setAccepted(new Set());
+    setDeclined(new Set());
     setProgress(null);
     try {
-      const out = await suggestMissingChunked(p.transcript, p.captured, p.areas, p.projectId, (x) =>
-        setProgress({ done: x.done, total: x.total })
+      const out = await suggestMissingChunked(
+        p.transcript,
+        p.captured,
+        p.areas,
+        p.projectId,
+        p.meetingId,
+        (x) =>
+          setProgress({ done: x.done, total: x.total })
       );
       setSuggestions(out);
     } catch (e) {
@@ -150,11 +175,16 @@ export default function GapsClient() {
               <ul className="space-y-2">
                 {suggestions.map((s, i) => {
                   const isAccepted = accepted.has(i);
+                  const isDeclined = declined.has(i);
                   return (
                     <li
                       key={i}
                       className={`rounded border p-3 text-sm ${
-                        isAccepted ? "border-emerald-300 bg-emerald-50" : "border-amber-200 bg-white"
+                        isAccepted
+                          ? "border-emerald-300 bg-emerald-50"
+                          : isDeclined
+                            ? "border-slate-200 bg-slate-50 opacity-60"
+                            : "border-amber-200 bg-white"
                       }`}
                     >
                       <div className="flex flex-wrap items-baseline justify-between gap-2">
@@ -168,7 +198,9 @@ export default function GapsClient() {
                           <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[11px] text-slate-500">
                             {s.area}
                           </span>
-                          {isAccepted ? (
+                          {isDeclined ? (
+                            <span className="text-xs text-slate-500">Not needed</span>
+                          ) : isAccepted ? (
                             <span className="text-xs font-medium text-emerald-700">
                               Added ✓
                             </span>
@@ -204,12 +236,29 @@ export default function GapsClient() {
                                     area: s.area
                                   });
                                 }
+                                recordFeedback(s, true);
                                 setAccepted((prev) => new Set(prev).add(i));
                               }}
                               className="rounded bg-brand-blue px-2 py-1 text-xs font-medium text-white"
                               title="Add this to the minutes in your meeting tab"
                             >
                               + Add to my minutes
+                            </button>
+                          )}
+                          {!isAccepted && !isDeclined && (
+                            // An explicit decline. "Didn't click Add" is not the
+                            // same thing — treating that as rejection would fill
+                            // the record with false negatives every time someone
+                            // closed the tab early.
+                            <button
+                              onClick={() => {
+                                recordFeedback(s, false);
+                                setDeclined((prev) => new Set(prev).add(i));
+                              }}
+                              className="rounded px-2 py-1 text-xs text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+                              title="Not worth minuting — stop suggesting this kind of thing"
+                            >
+                              ✕ Not needed
                             </button>
                           )}
                         </span>

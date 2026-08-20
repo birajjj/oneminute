@@ -241,6 +241,7 @@ export async function suggestMissingChunked(
   captured: { title: string; description: string; type: string }[],
   areas: string[],
   projectId: string | undefined,
+  meetingId: string | undefined,
   onProgress?: (p: ChunkProgress) => void
 ): Promise<MissedSuggestion[]> {
   const chunks = splitTranscript(transcript);
@@ -257,7 +258,8 @@ export async function suggestMissingChunked(
         ...out.map((s) => ({ title: s.title, description: s.description, type: s.minuteType }))
       ],
       areas,
-      projectId
+      projectId,
+      meetingId
     });
     for (const s of r.suggestions ?? []) {
       const key = s.title.trim().toLowerCase();
