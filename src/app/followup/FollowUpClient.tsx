@@ -8,6 +8,7 @@ import { TagChips } from "@/components/TagChips";
 import { normalizeTags } from "@/lib/tags";
 import BusyOverlay from "@/components/BusyOverlay";
 import MeetingAttachments from "@/components/MeetingAttachments";
+import NotifyAssignees from "@/components/NotifyAssignees";
 import { downloadTranscript } from "@/lib/download-transcript";
 import { writeGapsPayload, drainAccepted, GAPS_ACCEPTED_KEY } from "@/lib/gaps-handoff";
 
@@ -920,6 +921,13 @@ export default function FollowUpClient({
             View in Browse
           </a>
         </div>
+
+        {/* Assignees are roster people who never open this app — tell them. */}
+        {result.meetingId && (
+          <div className="mt-4 w-full">
+            <NotifyAssignees meetingId={result.meetingId} />
+          </div>
+        )}
       </div>
     );
   }

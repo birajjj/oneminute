@@ -8,6 +8,7 @@ import { analyzeAutoChunked, commitAutoChunked } from "@/lib/chunk-analyze";
 import { TagChips } from "@/components/TagChips";
 import { downloadTranscript } from "@/lib/download-transcript";
 import BusyOverlay from "@/components/BusyOverlay";
+import NotifyAssignees from "@/components/NotifyAssignees";
 import { writeGapsPayload, drainAccepted, GAPS_ACCEPTED_KEY } from "@/lib/gaps-handoff";
 
 // The page is manual-first: you land straight in the editable form and can fill
@@ -538,6 +539,16 @@ export default function AutoModeClient({
               )}
               <a href={`/browse?meeting=${result.meetingId ?? ""}`} className="rounded border border-emerald-300 px-4 py-2 text-center font-medium text-emerald-700">View in Browse</a>
             </div>
+          </div>
+
+          {/* The people who now own work do not use this app — tell them. */}
+          {result.meetingId && (
+            <div className="mt-4">
+              <NotifyAssignees meetingId={result.meetingId} />
+            </div>
+          )}
+
+          <div className="mt-4">
             <button onClick={reset} className="rounded bg-brand-blue px-4 py-2 font-medium text-white">Capture another</button>
           </div>
         </div>
