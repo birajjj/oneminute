@@ -1,0 +1,117 @@
+Inghams Farming — Dev Sync, Weekly
+Speaker-attributed transcript
+
+Rob: Right, are we all here? Dinesh, can you hear us?
+
+Dinesh: Yeah I'm here, sorry, the tunnel killed my signal for a second.
+
+Rob: No worries. Before we start — is everyone right for Thursday? I've got a
+dentist thing at two so I might need to shift it to the morning.
+
+Sarah: Thursday morning's fine for me.
+
+Dinesh: Same, works either way.
+
+Rob: Beauty. I'll move the invite after this. Okay, hatchery first. Sarah, where
+did we land on the egg docket thing?
+
+Sarah: So I went through it properly this week. The setting egg dockets aren't
+transactional at all — if the insert into the setting table fails halfway
+through, you end up with a docket header and no lines, and nothing tells you.
+I found three of them in production going back to about March. The stock numbers
+have been quietly wrong since then.
+
+Rob: Three? That's not great. How wrong are we talking?
+
+Sarah: Not catastrophic, it's about four thousand eggs across the three. But the
+point is nobody noticed, which means it could have been much worse.
+
+Rob: Yeah. Okay so we wrap that whole thing in a transaction, agreed?
+
+Sarah: That's what I'd do. It's not a big change, the hard part is the existing
+three need correcting by hand and I need someone from the hatchery side to tell
+me what the real numbers should have been.
+
+Rob: Talk to Marcus, he'll know. Right, let's do that — wrap it in a transaction,
+and Sarah you'll sort the three historical ones with Marcus.
+
+Sarah: Will do.
+
+Dinesh: While we're on hatchery — the settings page. There's no validation on the
+incubation days field. I put four hundred in it yesterday by accident and it
+saved happily.
+
+Sarah: Four hundred days. That's some chicken.
+
+Dinesh: Right? It should be capped, twenty-five or so at the outside.
+
+Rob: Log it, but it's low priority. Nobody's actually going to type four hundred.
+
+Dinesh: Fair.
+
+Rob: Feed transfer. Dinesh, you were splitting the stored procedure.
+
+Dinesh: Yeah, that's done and it's in test. Farm-to-farm and batch-to-batch are
+separate procedures now, which means the farm-to-farm path stops touching batch
+records it has no business touching. That was the source of the trigger failure
+when a farm closes without a next batch set — that's gone now, I've tested it
+with a closed farm and it handles it cleanly.
+
+Rob: Good. Has DK looked at it?
+
+Dinesh: Not yet, he's got it from tomorrow. I'd want his sign-off before it goes
+anywhere near production.
+
+Rob: Yep, hold it until then. Anything else on feed?
+
+Dinesh: One thing. We talked about a flag to track completed farm-to-farm
+transfers. I've realised we don't actually need a new flag — the transfer record
+already has a completed timestamp we're not using. So it's a reporting change,
+not a schema change.
+
+Rob: Even better. Does that change the estimate?
+
+Dinesh: Cuts it roughly in half. Day, maybe less.
+
+Rob: Nice. Notifications — Sarah?
+
+Sarah: Struggling a bit honestly. The requirement says notify the farm manager
+when a batch is placed, but nobody can tell me who the farm manager IS in the
+data. There's a contact on the farm record but it's free text and about a third
+of them are blank or say "office".
+
+Rob: Hmm. That's a data problem, not a code problem.
+
+Sarah: That's my read too. I can build the notification but it'll only fire for
+the two-thirds that have something usable, and some of those will be wrong.
+
+Rob: Okay. I don't think we should build it half-working. Let's park notifications
+until Inghams give us a proper contact structure on the farm record — I'll raise
+that with Peter. Don't sink more time into it this sprint.
+
+Sarah: Happy with that.
+
+Dinesh: Should we still do the groundwork? The template, the sending bit?
+
+Rob: No, park the whole thing. If the data changes shape the template probably
+changes with it.
+
+Rob: Last thing from me — Peter mentioned they're looking at a second hatchery
+site next financial year, Bendigo or thereabouts. Nothing's signed. But if it
+happens it's multi-site, and a lot of what we've built assumes one hatchery.
+
+Sarah: Assumes it fairly deeply in places.
+
+Rob: I know. I'm not asking anyone to do anything about it yet, I just want it
+written down that it's coming, so when someone designs something next month they
+think about it.
+
+Dinesh: Worth knowing.
+
+Rob: Right. Anything else? No? Good — oh, Sarah, did you end up going to that
+thing on the weekend?
+
+Sarah: The markets? Yeah, it was packed. Got some very average coffee.
+
+Rob: Ha. Alright, I'll move Thursday to the morning and send the invite. Thanks
+everyone.
