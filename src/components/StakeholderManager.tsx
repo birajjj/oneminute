@@ -47,35 +47,6 @@ export default function StakeholderManager({
     });
   }
 
-  async function preview() {
-    setSendErr("");
-    setSendMsg("");
-    try {
-      const res = await fetch(`/api/meetings/${meetingId}/email`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          stakeholderIds: [...picked],
-          subject,
-          note,
-          preview: true
-        })
-      });
-      if (!res.ok) {
-        const j = await res.json().catch(() => ({}));
-        throw new Error(j.error || "Could not build a preview");
-      }
-      // The preview IS the PDF that will be attached — open it in a new tab.
-      const blob = await res.blob();
-      const url = URL.createObjectURL(blob);
-      window.open(url, "_blank");
-      // Give the tab time to load before releasing the object URL.
-      setTimeout(() => URL.revokeObjectURL(url), 60_000);
-    } catch (e) {
-      setSendErr(e instanceof Error ? e.message : "Could not build a preview");
-    }
-  }
-
   async function send() {
     setSending(true);
     setSendErr("");
@@ -245,14 +216,6 @@ export default function StakeholderManager({
                 className="w-full resize-y rounded border border-slate-300 p-1.5 text-sm"
               />
               <div className="flex flex-wrap items-center gap-2">
-                <button
-                  onClick={preview}
-                  disabled={picked.size === 0}
-                  className="rounded border border-slate-300 px-3 py-1.5 text-sm text-slate-700 disabled:opacity-40"
-                  title="Open the PDF that will be attached — nothing is sent"
-                >
-                  Preview
-                </button>
                 <button
                   onClick={send}
                   disabled={sending || picked.size === 0}
