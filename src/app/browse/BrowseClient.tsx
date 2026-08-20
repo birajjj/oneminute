@@ -769,7 +769,7 @@ export default function BrowseClient({
         )}
         {/* Sidebar — off-canvas drawer on mobile, static on desktop */}
         <aside
-          className={`w-72 shrink-0 flex-col overflow-y-auto border-r border-slate-200 bg-white p-4 ${
+          className={`w-72 shrink-0 flex-col overflow-y-auto border-r border-slate-200 bg-white p-4 md:w-80 xl:w-96 ${
             sidebarOpen ? "fixed inset-y-0 left-0 z-40 flex" : "hidden"
           } ${desktopSidebarCollapsed ? "md:hidden" : "md:static md:z-auto md:flex"}`}
         >
