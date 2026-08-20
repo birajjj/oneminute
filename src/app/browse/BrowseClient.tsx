@@ -93,6 +93,17 @@ const blankMinute = (): MinuteDraft => ({
 });
 
 // Colour per minute type, for the small type badge on raised sub-minutes.
+// Status colours, matching the dashboard and board so a status reads the same
+// wherever it appears.
+const STATUS_BADGE: Record<string, string> = {
+  New: "bg-slate-100 text-slate-600",
+  Initiated: "bg-indigo-100 text-indigo-700",
+  "In Progress": "bg-blue-100 text-blue-700",
+  Resolved: "bg-teal-100 text-teal-700",
+  Closed: "bg-emerald-100 text-emerald-700",
+  Cancelled: "bg-slate-200 text-slate-500"
+};
+
 const TYPE_BADGE: Record<string, string> = {
   Note: "bg-slate-100 text-slate-600",
   "To-Do": "bg-blue-100 text-blue-700",
@@ -797,7 +808,8 @@ export default function BrowseClient({
             <div className="mb-1 text-[11px] font-medium uppercase tracking-wide text-slate-400">
               Filter by flag
             </div>
-            <TagChips value={tagFilter} onChange={setTagFilter} />
+            {/* The filter needs all three on screen — they ARE the control. */}
+            <TagChips value={tagFilter} onChange={setTagFilter} showAll />
           </div>
 
           <div className="min-h-0 flex-1 space-y-2 overflow-y-auto pr-1">
@@ -1225,7 +1237,7 @@ export default function BrowseClient({
                                 <select
                                   value={edits[itemId]?.type ?? headerType}
                                   onChange={(e) => saveMinute(itemId, { type: e.target.value })}
-                                  className={`rounded border-0 px-1 py-0.5 text-[10px] font-semibold ${TYPE_BADGE[edits[itemId]?.type ?? headerType] ?? "bg-slate-100 text-slate-600"}`}
+                                  className={`cursor-pointer appearance-none rounded border-0 px-1.5 py-0.5 text-[10px] font-semibold hover:ring-1 hover:ring-slate-300 ${TYPE_BADGE[edits[itemId]?.type ?? headerType] ?? "bg-slate-100 text-slate-600"}`}
                                   title="Type — applies to the whole item"
                                 >
                                   {["Note", "To-Do", "Action", "Devops"].map((t) => (
@@ -1245,7 +1257,9 @@ export default function BrowseClient({
                               <select
                                 value={displayStatus}
                                 onChange={(e) => saveMinute(entryId, { status: e.target.value })}
-                                className="rounded border border-slate-300 bg-white px-1 py-0.5 text-[11px] text-slate-600"
+                                className={`cursor-pointer appearance-none rounded px-1.5 py-0.5 text-[11px] font-semibold hover:ring-1 hover:ring-slate-300 ${
+                                  STATUS_BADGE[displayStatus] ?? "bg-slate-100 text-slate-600"
+                                }`}
                                 title="Change status"
                               >
                                 {STATUS_OPTIONS.map((s) => (
@@ -1253,8 +1267,11 @@ export default function BrowseClient({
                                 ))}
                               </select>
                               {isOpenPending && (
-                                <span className="rounded bg-amber-200 px-1.5 py-0.5 text-[10px] font-semibold text-amber-800">
-                                  ● pending
+                                <span
+                                  className="text-[10px] text-slate-400"
+                                  title="Open — not yet resolved or closed"
+                                >
+                                  pending
                                 </span>
                               )}
                               {mn.threadCount > 1 && (
