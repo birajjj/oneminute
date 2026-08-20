@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { TagBadges } from "@/components/TagChips";
 import { MINUTE_TAGS, TAG_STYLES } from "@/lib/tags";
+import StyleProfilePanel from "@/components/StyleProfilePanel";
 
 export interface BoardThreadEntry {
   id: string;
@@ -707,6 +708,11 @@ export default function ProjectBoardClient({
 
       <main className="min-h-0 flex-1 overflow-y-auto">
         <div className="mx-auto max-w-[1440px] px-4 py-5 sm:px-6">
+          {/* How this project's minutes are written — shapes AI Recommendation. */}
+          <div className="mb-4">
+            <StyleProfilePanel projectId={project.id} />
+          </div>
+
           {/* Title + summary */}
           <div className="mb-4">
             <div className="flex flex-wrap items-center gap-2">

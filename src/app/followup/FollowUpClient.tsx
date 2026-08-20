@@ -1081,6 +1081,7 @@ export default function FollowUpClient({
           onClick={() => {
             writeGapsPayload({
               source: "followup",
+              projectId: data.parent.projectId,
               meetingTitle: title,
               transcript: recorder.transcript,
               captured: [

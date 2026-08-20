@@ -1001,6 +1001,7 @@ export default function BrowseClient({
                           writeGapsPayload({
                             source: "browse",
                             meetingId: selected.id,
+                            projectId: selected.projectId,
                             meetingTitle: selected.title,
                             transcript: selected.transcript ?? "",
                             captured: selected.minutes.map((mn) => ({

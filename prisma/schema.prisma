@@ -29,6 +29,7 @@ model Org {
   audit        AuditLog[]
   attachments  Attachment[]
   stakeholders Stakeholder[]
+  styleProfiles StyleProfile[]
 
   @@map("orgs")
 }
@@ -66,6 +67,7 @@ model Project {
   org          Org           @relation(fields: [orgId], references: [id], onDelete: Cascade)
   meetings     Meeting[]
   stakeholders Stakeholder[]
+  styleProfile StyleProfile?
 
   @@unique([orgId, name])
   @@index([orgId])
@@ -149,6 +151,34 @@ model Stakeholder {
   @@unique([projectId, email])
   @@index([projectId])
   @@map("stakeholders")
+}
+
+// What "good minutes" look like for a project, learned from the minutes people
+// have actually written there and injected into the AI Recommendation prompt.
+//
+// Deliberately a short paragraph of plain English rather than an opaque model:
+// the person whose style it describes can read it, disagree with it, and correct
+// it by hand — which is why `editedByHand` exists. Regenerating never silently
+// overwrites an edited profile without being asked.
+model StyleProfile {
+  id            String   @id @default(uuid()) @db.Uuid
+  orgId         String   @map("org_id") @db.Uuid
+  projectId     String   @unique @map("project_id") @db.Uuid
+
+  // The learned guidance, as prose.
+  profile       String
+  // How many meetings it was distilled from — shown so a stale profile is
+  // obvious ("learned from 10 meetings; there are 25 now").
+  meetingsSeen  Int      @default(0) @map("meetings_seen")
+  editedByHand  Boolean  @default(false) @map("edited_by_hand")
+
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  org     Org     @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@map("style_profiles")
 }
 
 model MeetingArea {

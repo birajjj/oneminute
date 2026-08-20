@@ -19,6 +19,8 @@ export interface GapsPayload {
   // Set when the meeting is already saved (Browse): accepting a suggestion
   // writes it straight to that meeting instead of into a draft.
   meetingId?: string;
+  // Which project's learned house style to apply to the suggestions.
+  projectId?: string;
   meetingTitle: string;
   transcript: string;
   captured: CapturedItem[];

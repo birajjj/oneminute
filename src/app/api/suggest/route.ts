@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { requireUser } from "@/lib/auth";
 import { suggestMissing } from "@/lib/ai/suggest";
+import { getStyleProfile } from "@/lib/ai/style-profile";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -21,7 +22,10 @@ const BodySchema = z.object({
       })
     )
     .default([]),
-  areas: z.array(z.string()).optional()
+  areas: z.array(z.string()).optional(),
+  // Which project's house style to apply. Optional — without it the check still
+  // works, just without the learned voice.
+  projectId: z.string().optional()
 });
 
 export async function POST(req: NextRequest) {
@@ -30,10 +34,16 @@ export async function POST(req: NextRequest) {
     if (!parsed.success) {
       return NextResponse.json({ error: "chunk is required" }, { status: 400 });
     }
-    await requireUser();
+    const user = await requireUser();
+
+    // Scoped to the caller's org, so a project id from elsewhere reveals nothing.
+    const styleProfile = parsed.data.projectId
+      ? await getStyleProfile(user.orgId, parsed.data.projectId)
+      : null;
 
     const suggestions = await suggestMissing(parsed.data.chunk, parsed.data.captured, {
-      areas: parsed.data.areas
+      areas: parsed.data.areas,
+      styleProfile
     });
     return NextResponse.json({ suggestions });
   } catch (err) {

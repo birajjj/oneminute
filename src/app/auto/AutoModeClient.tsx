@@ -452,6 +452,9 @@ export default function AutoModeClient({
             onClick={() => {
               writeGapsPayload({
                 source: "auto",
+                // Only when filing into an existing project — a brand-new one has
+                // no minutes yet, so no style to apply.
+                projectId: plan.project.existingProjectId ?? undefined,
                 meetingTitle: plan.meeting.title || "New meeting",
                 transcript,
                 captured: plan.minutes.map((m) => ({

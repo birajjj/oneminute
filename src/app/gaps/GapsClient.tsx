@@ -32,7 +32,7 @@ export default function GapsClient() {
     setAccepted(new Set());
     setProgress(null);
     try {
-      const out = await suggestMissingChunked(p.transcript, p.captured, p.areas, (x) =>
+      const out = await suggestMissingChunked(p.transcript, p.captured, p.areas, p.projectId, (x) =>
         setProgress({ done: x.done, total: x.total })
       );
       setSuggestions(out);

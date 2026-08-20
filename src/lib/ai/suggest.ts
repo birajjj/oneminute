@@ -50,11 +50,20 @@ const TYPES = ["Note", "To-Do", "Action", "Devops"];
 export async function suggestMissing(
   transcript: string,
   captured: CapturedMinute[],
-  opts?: { areas?: string[] }
+  opts?: { areas?: string[]; styleProfile?: string | null }
 ): Promise<Suggestion[]> {
   const lines: string[] = [];
   lines.push("A person took the minutes below BY HAND during a meeting. You are reviewing their");
   lines.push("work against the transcript to catch anything they missed.");
+  // The learned house style goes FIRST: it governs both what is worth suggesting
+  // and how the suggestion should read, so it must frame everything after it.
+  if (opts?.styleProfile?.trim()) {
+    lines.push("");
+    lines.push("### HOW THIS TEAM WRITES MINUTES");
+    lines.push("Learned from the minutes they have already written on this project. Anything you");
+    lines.push("suggest must match it — in what is worth recording, and in how it is worded.");
+    lines.push(opts.styleProfile.trim());
+  }
   lines.push("");
   lines.push("Return `suggestions`: things that were genuinely discussed in the transcript but are");
   lines.push("NOT represented in their minutes. For each: title, description, minuteType");
